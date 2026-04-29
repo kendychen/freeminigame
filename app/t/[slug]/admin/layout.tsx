@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Trophy, Users, Calendar, BarChart3, Settings, Layers } from "lucide-react";
+import { Trophy, Users, Calendar, BarChart3, Settings, Layers, UserPlus } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
@@ -36,6 +36,7 @@ export default async function AdminLayout({
 
   const nav = [
     { href: `/t/${slug}/admin`, label: "Tổng quan", icon: BarChart3 },
+    { href: `/t/${slug}/admin/members`, label: "Thành viên", icon: UserPlus },
     { href: `/t/${slug}/admin/teams`, label: "Đội", icon: Users },
     { href: `/t/${slug}/admin/groups`, label: "Chia bảng", icon: Layers },
     { href: `/t/${slug}/admin/bracket`, label: "Sơ đồ thi đấu", icon: Calendar },
