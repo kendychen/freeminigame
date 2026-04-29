@@ -189,8 +189,49 @@ export async function promoteGroupQualifiers(input: { tournamentId: string }) {
 
   const knockout = promoteToKnockout(qualifiedByGroup);
   const rows = toDbRows(input.tournamentId, knockout, "bo1");
-  const { error } = await supabase.from("matches").insert(rows);
+
+  // Phase A: insert without next_*_match_id (UUIDs not yet known).
+  const { data: inserted, error } = await supabase
+    .from("matches")
+    .insert(rows)
+    .select("id, round, match_number, bracket, group_label");
   if (error) return { error: error.message } as const;
+
+  // Phase B: map nextWinId key strings → UUIDs and link.
+  const idMap = new Map<string, string>();
+  for (const r of (inserted ?? []) as Array<{
+    id: string;
+    round: number;
+    match_number: number;
+    bracket: string;
+    group_label: string | null;
+  }>) {
+    const key = r.group_label
+      ? `${r.bracket}:${r.group_label}:r${r.round}:m${r.match_number}`
+      : `${r.bracket}:r${r.round}:m${r.match_number}`;
+    idMap.set(key, r.id);
+  }
+  for (const m of knockout) {
+    const selfKey = m.groupLabel
+      ? `${m.bracket}:${m.groupLabel}:r${m.round}:m${m.matchNumber}`
+      : `${m.bracket}:r${m.round}:m${m.matchNumber}`;
+    const id = idMap.get(selfKey);
+    if (!id) continue;
+    const nextWinUuid = m.nextWinId ? (idMap.get(m.nextWinId) ?? null) : null;
+    const nextLossUuid = m.nextLossId
+      ? (idMap.get(m.nextLossId) ?? null)
+      : null;
+    if (nextWinUuid || nextLossUuid) {
+      await supabase
+        .from("matches")
+        .update({
+          next_win_match_id: nextWinUuid,
+          next_loss_match_id: nextLossUuid,
+        })
+        .eq("id", id);
+    }
+  }
+
   return { ok: true } as const;
 }
 
