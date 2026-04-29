@@ -39,13 +39,36 @@ export interface BracketViewProps {
   height?: number;
 }
 
+// Approximate sizes for layout calculation. The g-loot lib uses ~270x70 per
+// match card with vertical spacing.
+const MATCH_HEIGHT = 90;
+const ROUND_WIDTH = 320;
+const PADDING = 80;
+
+function calcSize(matches: { round: number }[]): {
+  width: number;
+  height: number;
+} {
+  if (matches.length === 0) return { width: 800, height: 400 };
+  const rounds = new Map<number, number>();
+  for (const m of matches) {
+    rounds.set(m.round, (rounds.get(m.round) ?? 0) + 1);
+  }
+  const roundCount = rounds.size;
+  const maxMatchesInRound = Math.max(...rounds.values());
+  const width = Math.max(800, roundCount * ROUND_WIDTH + PADDING);
+  // First round determines vertical span; subsequent rounds fit within it.
+  const height = Math.max(420, maxMatchesInRound * MATCH_HEIGHT * 2 + PADDING);
+  return { width, height };
+}
+
 export function BracketView({
   matches,
   teams,
   variant,
   onMatchClick,
-  width = 1200,
-  height = 600,
+  width: widthProp,
+  height: heightProp,
 }: BracketViewProps) {
   const teamById = useMemo(() => {
     const map = new Map<string, Team>();
@@ -57,16 +80,19 @@ export function BracketView({
     <CustomMatch {...props} onClick={onMatchClick} />
   );
 
-  const svgWrapperFactory = ({ children, ...props }: SVGWrapperProps) => (
-    <SVGViewer {...{ width, height, ...props }}>{children}</SVGViewer>
-  );
-
   if (variant === "single") {
     const main = matches.filter((m) => m.bracket === "main");
     if (main.length === 0) {
       return <BracketEmpty />;
     }
     const transformed = main.map((m) => transformMatch(m, teamById));
+    const { width, height } = {
+      width: widthProp ?? calcSize(main).width,
+      height: heightProp ?? calcSize(main).height,
+    };
+    const svgWrapperFactory = ({ children, ...props }: SVGWrapperProps) => (
+      <SVGViewer {...{ width, height, ...props }}>{children}</SVGViewer>
+    );
     return (
       <div className="overflow-auto rounded-lg border bg-background">
         <SingleEliminationBracket
@@ -90,13 +116,25 @@ export function BracketView({
     upper: [...winners, ...gf].map((m) => transformMatch(m, teamById)),
     lower: losers.map((m) => transformMatch(m, teamById)),
   };
+  const allDoubleElim = [...winners, ...gf, ...losers];
+  const sizeDE = calcSize(allDoubleElim);
+  const widthDE = widthProp ?? Math.max(sizeDE.width, 1100);
+  // Double elim has WB on top, LB on bottom — needs more vertical space
+  const heightDE = heightProp ?? Math.max(sizeDE.height + 300, 700);
+  const svgWrapperFactoryDE = ({ children, ...props }: SVGWrapperProps) => (
+    <SVGViewer
+      {...{ width: widthDE, height: heightDE, ...props }}
+    >
+      {children}
+    </SVGViewer>
+  );
   return (
     <div className="overflow-auto rounded-lg border bg-background">
       <DoubleEliminationBracket
         {...{
           matches: transformed,
           matchComponent: matchComponentFactory,
-          svgWrapper: svgWrapperFactory,
+          svgWrapper: svgWrapperFactoryDE,
         }}
       />
     </div>
