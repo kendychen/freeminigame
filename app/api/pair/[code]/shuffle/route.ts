@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { shuffleParticipants, type PairParticipant } from "@/lib/pair/shuffle";
+import { buildBracket } from "@/lib/tournament/build-bracket";
+import type { TournamentFormat } from "@/lib/pairing/types";
 
 export const maxDuration = 15;
 
@@ -34,7 +36,7 @@ export async function POST(
   const { data: session, error } = await sb
     .from("pair_sessions")
     .select(
-      "host_token, status, group_size, participants, shuffle_count, expires_at, linked_tournament_id, team_id_map",
+      "host_token, status, group_size, participants, shuffle_count, expires_at, linked_tournament_id, team_id_map, player_id_map, team_name_pattern",
     )
     .eq("code", code)
     .maybeSingle();
@@ -108,13 +110,19 @@ export async function POST(
     return NextResponse.json({ error: phaseErr2.message }, { status: 500 });
   }
 
-  // Auto-apply group labels to linked tournament's teams
-  const linkedId = (session as { linked_tournament_id?: string })
-    .linked_tournament_id;
-  const teamIdMap = (
-    session as { team_id_map?: Record<string, string> | null }
-  ).team_id_map;
+  // Auto-apply to linked tournament — 2 modes
+  const s = session as {
+    linked_tournament_id?: string;
+    team_id_map?: Record<string, string> | null;
+    player_id_map?: Record<string, string> | null;
+    team_name_pattern?: string | null;
+  };
+  const linkedId = s.linked_tournament_id;
+  const teamIdMap = s.team_id_map;
+  const playerIdMap = s.player_id_map;
+
   if (linkedId && teamIdMap) {
+    // Mode A: GROUP DRAW (chia bảng) — set teams.group_label + auto-generate bracket
     const labels = "ABCDEFGHIJKLMNOP";
     for (let gi = 0; gi < result.groups.length; gi++) {
       const label = labels[gi] ?? String(gi + 1);
@@ -133,6 +141,62 @@ export async function POST(
       const teamId = teamIdMap[pid];
       if (teamId) {
         await sb.from("teams").update({ group_label: null }).eq("id", teamId);
+      }
+    }
+    // Auto-generate bracket ONLY after group draw
+    try {
+      const { data: t } = await sb
+        .from("tournaments")
+        .select("format, config")
+        .eq("id", linkedId)
+        .maybeSingle();
+      if (t) {
+        const cfg = (t.config ?? {}) as {
+          seriesFormat?: "bo1" | "bo3" | "bo5";
+          doubleRound?: boolean;
+          groupSize?: number;
+          qualifyPerGroup?: number;
+        };
+        await buildBracket(sb, {
+          tournamentId: linkedId,
+          format: t.format as TournamentFormat,
+          seriesFormat: cfg.seriesFormat,
+          doubleRound: cfg.doubleRound,
+          groupSize: cfg.groupSize,
+          qualifyPerGroup: cfg.qualifyPerGroup,
+        });
+      }
+    } catch (e) {
+      console.error("Auto-bracket after group draw failed:", e);
+    }
+  } else if (linkedId && playerIdMap) {
+    // Mode B: TEAM DRAW (chia đội từ thành viên) — create teams + members. NO bracket.
+    const pattern = s.team_name_pattern ?? "Đội {n}";
+    for (let gi = 0; gi < result.groups.length; gi++) {
+      const teamName = pattern.replace("{n}", String(gi + 1));
+      const groupIds = result.groups[gi]!;
+      const { data: createdTeam, error: teamErr } = await sb
+        .from("teams")
+        .insert({
+          tournament_id: linkedId,
+          name: teamName,
+          seed: gi + 1,
+        })
+        .select("id")
+        .single();
+      if (teamErr || !createdTeam) {
+        console.error("Team create failed:", teamErr);
+        continue;
+      }
+      const memberRows = groupIds
+        .map((pid) => playerIdMap[pid])
+        .filter((id): id is string => !!id)
+        .map((playerId) => ({
+          team_id: createdTeam.id,
+          player_id: playerId,
+        }));
+      if (memberRows.length > 0) {
+        await sb.from("team_members").insert(memberRows);
       }
     }
   }
