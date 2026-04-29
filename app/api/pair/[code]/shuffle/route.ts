@@ -53,6 +53,12 @@ export async function POST(
       { status: 409 },
     );
   }
+  if (session.shuffle_count >= 1) {
+    return NextResponse.json(
+      { error: "already_shuffled_once" },
+      { status: 409 },
+    );
+  }
   const participants = session.participants as PairParticipant[];
   if (participants.length < 2) {
     return NextResponse.json(

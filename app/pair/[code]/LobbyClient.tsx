@@ -206,10 +206,10 @@ export function LobbyClient({
                 ? "🎲 ĐANG BỐC THĂM..."
                 : isLocked && session.shuffle_count === 0
                   ? "👁️ Preset · chỉ xem"
-                  : isLocked
-                    ? `🔒 Đã khoá · bốc ${session.shuffle_count} lần`
-                    : isShuffled
-                      ? `🎲 Đã bốc ${session.shuffle_count} lần`
+                  : isShuffled
+                    ? "✅ Đã bốc thăm xong"
+                    : isLocked
+                      ? "🔒 Đã khoá"
                       : "🟢 Đang chờ tham gia"}
             </span>
           </p>
@@ -339,6 +339,7 @@ export function LobbyClient({
                 disabled={
                   shuffling ||
                   isShuffling ||
+                  isShuffled ||
                   session.participants.length < 2
                 }
                 size="sm"
@@ -351,7 +352,7 @@ export function LobbyClient({
                 {shuffling || isShuffling
                   ? "Đang bốc..."
                   : isShuffled
-                    ? "Bốc lại"
+                    ? "✅ Đã bốc thăm"
                     : "🎲 Bốc thăm"}
               </Button>
               <Button onClick={onToggleLock} variant="outline" size="sm">
