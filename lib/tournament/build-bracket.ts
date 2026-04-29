@@ -200,12 +200,16 @@ export async function buildBracket(
       matchKey(m.bracket, m.round, m.matchNumber, m.groupLabel ?? null),
     );
     if (!id) continue;
-    if (m.nextWinId || m.nextLossId) {
+    // m.nextWinId/nextLossId are KEY STRINGS (e.g. "main:r2:m1") that need
+    // mapping to UUIDs via idMap before persisting.
+    const nextWinUuid = m.nextWinId ? (idMap.get(m.nextWinId) ?? null) : null;
+    const nextLossUuid = m.nextLossId ? (idMap.get(m.nextLossId) ?? null) : null;
+    if (nextWinUuid || nextLossUuid) {
       await supabase
         .from("matches")
         .update({
-          next_win_match_id: m.nextWinId ?? null,
-          next_loss_match_id: m.nextLossId ?? null,
+          next_win_match_id: nextWinUuid,
+          next_loss_match_id: nextLossUuid,
         })
         .eq("id", id);
     }

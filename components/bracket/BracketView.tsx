@@ -63,6 +63,9 @@ export function BracketView({
 
   if (variant === "single") {
     const main = matches.filter((m) => m.bracket === "main");
+    if (main.length === 0) {
+      return <BracketEmpty />;
+    }
     const transformed = main.map((m) => transformMatch(m, teamById));
     return (
       <div className="overflow-auto rounded-lg border bg-background">
@@ -80,6 +83,9 @@ export function BracketView({
   const winners = matches.filter((m) => m.bracket === "winners");
   const losers = matches.filter((m) => m.bracket === "losers");
   const gf = matches.filter((m) => m.bracket === "grand_final");
+  if (winners.length === 0 && losers.length === 0 && gf.length === 0) {
+    return <BracketEmpty />;
+  }
   const transformed = {
     upper: [...winners, ...gf].map((m) => transformMatch(m, teamById)),
     lower: losers.map((m) => transformMatch(m, teamById)),
@@ -93,6 +99,16 @@ export function BracketView({
           svgWrapper: svgWrapperFactory,
         }}
       />
+    </div>
+  );
+}
+
+function BracketEmpty() {
+  return (
+    <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
+      Sơ đồ thi đấu chính chưa được tạo.
+      <br />
+      Hãy bốc thăm chia bảng (group format) hoặc bấm <strong>Tạo bảng đấu</strong> để sinh sơ đồ.
     </div>
   );
 }
