@@ -69,20 +69,20 @@ export default async function AdminLayout({
           </span>
         </div>
       </div>
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 lg:flex-row">
-        <nav className="flex flex-row gap-1 lg:w-48 lg:flex-col">
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 lg:flex-row">
+        <nav className="flex shrink-0 flex-row gap-1 overflow-x-auto lg:w-56 lg:flex-col lg:overflow-visible">
           {nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
+              className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm hover:bg-accent"
             >
-              <item.icon className="size-4" />
+              <item.icon className="size-4 shrink-0" />
               {item.label}
             </Link>
           ))}
         </nav>
-        <div className="flex-1">{children}</div>
+        <div className="min-w-0 flex-1">{children}</div>
       </div>
     </div>
   );
