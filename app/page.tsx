@@ -50,23 +50,29 @@ export default function HomePage() {
               trên trình duyệt.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Link href="/quick/new">
+              <Link href="/pair/new">
                 <Button size="lg" className="min-w-[220px]">
-                  <Zap className="size-4" />
-                  Tạo cặp nhanh
+                  <Users className="size-4" />
+                  Bốc thăm realtime
                   <ArrowRight className="size-4" />
                 </Button>
               </Link>
-              <Link href="/login">
+              <Link href="/quick/new">
                 <Button size="lg" variant="outline" className="min-w-[220px]">
+                  <Zap className="size-4" />
+                  Tạo cặp nhanh
+                </Button>
+              </Link>
+              <Link href="/login">
+                <Button size="lg" variant="ghost" className="min-w-[220px]">
                   <Trophy className="size-4" />
                   Giải đấu trực tiếp
                 </Button>
               </Link>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Quick Mode: chia cặp ngay không cần đăng nhập · Live Mode: nhập
-              điểm realtime, nhiều admin
+              Realtime: tạo link mọi người cùng vào · Quick: chia cặp local
+              ngay · Live: giải đấu nhiều admin
             </p>
           </div>
         </section>
