@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trophy, Wand2, Dice5 } from "lucide-react";
+import { Trophy, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { LiveTournamentView } from "../../LiveTournamentView";
@@ -126,42 +126,6 @@ export function BracketAdminClient({
     });
   };
 
-  const onLaunchLobby = () => {
-    if (teams.length < 2) {
-      toast({
-        title: "Cần ít nhất 2 đội",
-        description: "Thêm đội ở tab Đội trước",
-        variant: "destructive",
-      });
-      return;
-    }
-    startTransition(async () => {
-      const res = await fetch("/api/pair/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `${tournament.name} · Bốc thăm`,
-          groupSize: 2,
-          presetNames: teams.map((t) => t.name),
-          lockOnCreate: true,
-        }),
-      });
-      const json = (await res.json()) as {
-        code?: string;
-        host_token?: string;
-        error?: string;
-      };
-      if (!res.ok || !json.code || !json.host_token) {
-        toast({
-          title: "Lỗi",
-          description: json.error ?? "",
-          variant: "destructive",
-        });
-        return;
-      }
-      window.open(`/pair/${json.code}?host=${json.host_token}`, "_blank");
-    });
-  };
 
   return (
     <div className="space-y-6">
@@ -181,15 +145,6 @@ export function BracketAdminClient({
             Sinh vòng tiếp theo
           </Button>
         )}
-        <Button
-          variant="outline"
-          onClick={onLaunchLobby}
-          disabled={pending || teams.length < 2}
-          title="Mở phòng bốc thăm realtime với đội của giải này"
-        >
-          <Dice5 className="size-4" />
-          Bốc thăm realtime
-        </Button>
         {tournament.format === "group_knockout" && liveMatches.length > 0 && (
           <Button variant="outline" onClick={onPromote} disabled={pending}>
             <Trophy className="size-4" />

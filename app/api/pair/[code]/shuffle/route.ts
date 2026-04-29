@@ -34,7 +34,7 @@ export async function POST(
   const { data: session, error } = await sb
     .from("pair_sessions")
     .select(
-      "host_token, status, group_size, participants, shuffle_count, expires_at",
+      "host_token, status, group_size, participants, shuffle_count, expires_at, linked_tournament_id, team_id_map",
     )
     .eq("code", code)
     .maybeSingle();
@@ -106,6 +106,35 @@ export async function POST(
     .eq("code", code);
   if (phaseErr2) {
     return NextResponse.json({ error: phaseErr2.message }, { status: 500 });
+  }
+
+  // Auto-apply group labels to linked tournament's teams
+  const linkedId = (session as { linked_tournament_id?: string })
+    .linked_tournament_id;
+  const teamIdMap = (
+    session as { team_id_map?: Record<string, string> | null }
+  ).team_id_map;
+  if (linkedId && teamIdMap) {
+    const labels = "ABCDEFGHIJKLMNOP";
+    for (let gi = 0; gi < result.groups.length; gi++) {
+      const label = labels[gi] ?? String(gi + 1);
+      const groupIds = result.groups[gi]!;
+      for (const pid of groupIds) {
+        const teamId = teamIdMap[pid];
+        if (teamId) {
+          await sb
+            .from("teams")
+            .update({ group_label: label })
+            .eq("id", teamId);
+        }
+      }
+    }
+    for (const pid of result.byes) {
+      const teamId = teamIdMap[pid];
+      if (teamId) {
+        await sb.from("teams").update({ group_label: null }).eq("id", teamId);
+      }
+    }
   }
 
   return NextResponse.json({ result, round, spinMs });
