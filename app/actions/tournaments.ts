@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { ensureSafeSlug, withRandomSuffix } from "@/lib/slug";
 import type { TournamentFormat } from "@/lib/pairing/types";
 
@@ -19,6 +20,19 @@ export async function createTournament(input: CreateTournamentInput) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "unauthorized" } as const;
+
+  // Ensure profile exists (resilient if handle_new_user trigger missed)
+  const svc = createServiceClient();
+  await svc.from("profiles").upsert(
+    {
+      id: user.id,
+      display_name:
+        (user.user_metadata?.full_name as string | undefined) ??
+        user.email?.split("@")[0] ??
+        "User",
+    },
+    { onConflict: "id", ignoreDuplicates: true },
+  );
 
   let slug = ensureSafeSlug(input.name);
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -38,14 +52,14 @@ export async function createTournament(input: CreateTournamentInput) {
     if (attempt === 4) return { error: "slug_conflict" } as const;
   }
 
-  // Bind owner role
-  const { data: t } = await supabase
+  // Bind owner role (use service role to bypass any RLS hiccups)
+  const { data: t } = await svc
     .from("tournaments")
     .select("id, slug")
     .eq("slug", slug)
     .single();
   if (t) {
-    await supabase
+    await svc
       .from("tournament_admins")
       .upsert({ tournament_id: t.id, admin_id: user.id, role: "owner" });
   }
