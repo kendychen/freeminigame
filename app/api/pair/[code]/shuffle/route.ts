@@ -36,9 +36,7 @@ export async function POST(
   if (new Date(session.expires_at).getTime() < Date.now()) {
     return NextResponse.json({ error: "expired" }, { status: 410 });
   }
-  if (session.status === "locked") {
-    return NextResponse.json({ error: "locked" }, { status: 409 });
-  }
+  // Note: shuffle ALLOWED even when status='locked' (locked just means no new joins)
   const participants = session.participants as PairParticipant[];
   if (participants.length < 2) {
     return NextResponse.json(

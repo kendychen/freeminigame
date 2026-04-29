@@ -196,11 +196,13 @@ export function LobbyClient({
                     : "text-muted-foreground"
               }
             >
-              {isLocked
-                ? "🔒 Đã khoá"
-                : isShuffled
-                  ? `🎲 Đã bốc ${session.shuffle_count} lần`
-                  : "🟢 Đang chờ"}
+              {isLocked && session.shuffle_count === 0
+                ? "👁️ Preset · chỉ xem"
+                : isLocked
+                  ? `🔒 Đã khoá · bốc ${session.shuffle_count} lần`
+                  : isShuffled
+                    ? `🎲 Đã bốc ${session.shuffle_count} lần`
+                    : "🟢 Đang chờ tham gia"}
             </span>
           </p>
         </div>
@@ -273,7 +275,7 @@ export function LobbyClient({
             <div className="flex gap-2">
               <Button
                 onClick={onShuffle}
-                disabled={shuffling || session.participants.length < 2 || isLocked}
+                disabled={shuffling || session.participants.length < 2}
                 size="sm"
               >
                 <Dice5 className="size-4" />

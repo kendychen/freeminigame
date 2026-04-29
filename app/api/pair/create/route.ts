@@ -11,7 +11,17 @@ const tokenGen = customAlphabet(
 interface CreateBody {
   title?: string;
   groupSize?: number;
+  presetNames?: string[];
+  lockOnCreate?: boolean;
 }
+
+interface Participant {
+  id: string;
+  name: string;
+  joinedAt: number;
+}
+
+const idGen = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 10);
 
 export async function POST(req: Request) {
   let body: CreateBody = {};
@@ -33,6 +43,16 @@ export async function POST(req: Request) {
     );
   }
 
+  // Build preset participants (deduped, trimmed, capped at 200)
+  const presetParticipants: Participant[] = (body.presetNames ?? [])
+    .map((n) => n.trim())
+    .filter((n) => n.length >= 1 && n.length <= 40)
+    .filter((n, i, arr) => arr.findIndex((x) => x.toLowerCase() === n.toLowerCase()) === i)
+    .slice(0, 200)
+    .map((name) => ({ id: idGen(), name, joinedAt: Date.now() }));
+
+  const lockOnCreate = body.lockOnCreate ?? presetParticipants.length > 0;
+
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = codeGen();
     const hostToken = tokenGen();
@@ -42,6 +62,8 @@ export async function POST(req: Request) {
       host_token: hostToken,
       title,
       group_size: groupSize,
+      participants: presetParticipants,
+      status: lockOnCreate ? "locked" : "lobby",
       expires_at: expiresAt.toISOString(),
     });
     if (!error) {
