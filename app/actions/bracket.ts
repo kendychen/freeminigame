@@ -3,18 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { requireTournamentAdmin } from "@/lib/auth";
 import type { Match, Team, TournamentFormat } from "@/lib/pairing/types";
-import { generateSingleElim } from "@/lib/pairing/single-elim";
-import { generateDoubleElim } from "@/lib/pairing/double-elim";
 import { generateRoundRobin } from "@/lib/pairing/round-robin";
 import {
   buildSwissHistory,
   generateSwissRound,
 } from "@/lib/pairing/swiss";
-import {
-  generateGroupKnockout,
-  promoteToKnockout,
-} from "@/lib/pairing/group-knockout";
+import { promoteToKnockout } from "@/lib/pairing/group-knockout";
 import { computeStandings } from "@/lib/standings/compute";
+import { buildBracket } from "@/lib/tournament/build-bracket";
 
 interface DbMatchRow {
   id?: string;
@@ -60,126 +56,19 @@ export async function generateBracket(input: {
   qualifyPerGroup?: number;
 }) {
   const { supabase } = await requireTournamentAdmin(input.tournamentId);
-
-  // Idempotency: refuse if matches already exist
-  const { count } = await supabase
-    .from("matches")
-    .select("id", { count: "exact", head: true })
-    .eq("tournament_id", input.tournamentId);
-  if ((count ?? 0) > 0) {
+  const result = await buildBracket(supabase, input);
+  if (result.skipped === "already_generated") {
     return { error: "already_generated" } as const;
   }
-
-  const { data: teamRows } = await supabase
-    .from("teams")
-    .select("id, name, seed, rating, region")
-    .eq("tournament_id", input.tournamentId)
-    .order("seed", { ascending: true, nullsFirst: false });
-  const teams: Team[] = (teamRows ?? []).map((t) => ({
-    id: t.id,
-    name: t.name,
-    seed: t.seed ?? undefined,
-    rating: t.rating ?? undefined,
-    region: t.region ?? undefined,
-  }));
-  if (teams.length < 2) return { error: "not_enough_teams" } as const;
-
-  const seriesFormat = input.seriesFormat ?? "bo1";
-  let matches: Match[] = [];
-  switch (input.format) {
-    case "single_elim":
-      matches = generateSingleElim(teams);
-      break;
-    case "double_elim":
-      matches = generateDoubleElim(teams);
-      break;
-    case "round_robin":
-      matches = generateRoundRobin(teams, {
-        doubleRound: input.doubleRound ?? false,
-      });
-      break;
-    case "swiss": {
-      const history = buildSwissHistory(teams, []);
-      matches = generateSwissRound(teams, history, 1);
-      break;
-    }
-    case "group_knockout": {
-      const result = generateGroupKnockout(teams, {
-        groupSize: input.groupSize ?? 4,
-        qualifyPerGroup: input.qualifyPerGroup ?? 2,
-        doubleRound: input.doubleRound ?? false,
-      });
-      const all: Match[] = [];
-      for (const ms of result.groups.values()) all.push(...ms);
-      matches = all;
-      break;
-    }
+  if (result.skipped === "not_enough_teams") {
+    return { error: "not_enough_teams" } as const;
   }
-
-  const rows = toDbRows(input.tournamentId, matches, seriesFormat);
-  // Phase A: insert without next_*_match_id (we don't yet have UUIDs).
-  const { data: inserted, error } = await supabase
-    .from("matches")
-    .insert(rows)
-    .select("id, round, match_number, bracket, group_label");
-  if (error) return { error: error.message } as const;
-
-  // Phase B: build idKey -> uuid map and patch next_win/loss
-  const idMap = new Map<string, string>();
-  for (const r of inserted ?? []) {
-    const key = matchKey(r.bracket, r.round, r.match_number, r.group_label);
-    idMap.set(key, r.id);
+  if (!result.ok) {
+    return { error: result.error ?? "build_failed" } as const;
   }
-  const updates: Array<{
-    id: string;
-    next_win_match_id: string | null;
-    next_loss_match_id: string | null;
-  }> = [];
-  for (const m of matches) {
-    const id = idMap.get(
-      matchKey(m.bracket, m.round, m.matchNumber, m.groupLabel ?? null),
-    );
-    if (!id) continue;
-    const nextWin = m.nextWinId
-      ? idMap.get(remapId(m.nextWinId, matches, m.bracket)) ?? null
-      : null;
-    const nextLoss = m.nextLossId
-      ? idMap.get(remapId(m.nextLossId, matches, "losers")) ?? null
-      : null;
-    updates.push({ id, next_win_match_id: nextWin, next_loss_match_id: nextLoss });
-  }
-  for (const u of updates) {
-    await supabase
-      .from("matches")
-      .update({
-        next_win_match_id: u.next_win_match_id,
-        next_loss_match_id: u.next_loss_match_id,
-      })
-      .eq("id", u.id);
-  }
-
-  await supabase
-    .from("tournaments")
-    .update({ status: "running" })
-    .eq("id", input.tournamentId);
 
   revalidatePath(`/t`, "layout");
-  return { ok: true, count: rows.length } as const;
-}
-
-function matchKey(
-  bracket: string,
-  round: number,
-  matchNumber: number,
-  groupLabel: string | null,
-): string {
-  return groupLabel
-    ? `${bracket}:${groupLabel}:r${round}:m${matchNumber}`
-    : `${bracket}:r${round}:m${matchNumber}`;
-}
-
-function remapId(idStr: string, _matches: Match[], _expected: string): string {
-  return idStr;
+  return { ok: true, count: result.count ?? 0 } as const;
 }
 
 export async function generateSwissNextRound(input: {
