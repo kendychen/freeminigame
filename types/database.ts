@@ -68,6 +68,7 @@ export interface DbTeam {
   region: string | null;
   rating: number | null;
   seed: number | null;
+  group_label: string | null;
   created_at: string;
 }
 
