@@ -1,0 +1,7 @@
+Replace with real icons:
+- icon-192.png (192x192)
+- icon-512.png (512x512)
+- icon-maskable.png (512x512, maskable)
+
+Use a logo generator or design tool. Until real icons are added the manifest
+will reference 404s; PWA install will show default browser icon.

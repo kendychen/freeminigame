@@ -1,0 +1,41 @@
+name: Weekly DB Backup
+on:
+  schedule:
+    - cron: "0 2 * * 1"  # Monday 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.BACKUP_REPO }}
+          token: ${{ secrets.BACKUP_REPO_TOKEN }}
+          path: backup
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client gnupg
+      - name: Dump + encrypt
+        run: |
+          STAMP=$(date +%Y%m%dT%H%M%SZ)
+          PGPASSWORD="${SUPABASE_DB_PASSWORD}" pg_dump \
+            -h "${SUPABASE_DB_HOST}" \
+            -U postgres -p 5432 -d postgres \
+            -F custom -Z 6 \
+            -f "backup/freeminigame-${STAMP}.dump"
+          gpg --batch --yes --passphrase "${BACKUP_GPG_PASSPHRASE}" \
+            --symmetric --cipher-algo AES256 \
+            "backup/freeminigame-${STAMP}.dump"
+          rm "backup/freeminigame-${STAMP}.dump"
+        env:
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+      - name: Push to backup repo
+        working-directory: backup
+        run: |
+          git config user.name "freeminigame-bot"
+          git config user.email "bot@hoinhompick.team"
+          git add .
+          git commit -m "backup: $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
