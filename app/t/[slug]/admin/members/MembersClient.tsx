@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Plus, Trash2, Upload, Dice5, RotateCcw, Users } from "lucide-react";
+import { Plus, Trash2, Upload, Dice5, RotateCcw, Users, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ import {
   createPlayerTeamDraw,
   deletePlayer,
 } from "@/app/actions/players";
+import { ensureBracket } from "@/app/actions/group-draw";
 
 interface Player {
   id: string;
@@ -171,6 +172,28 @@ export function MembersClient({
       } else {
         toast({ title: "Đã xoá tất cả đội" });
       }
+    });
+  };
+
+  const onEnsureBracket = () => {
+    startTransition(async () => {
+      const res = await ensureBracket(tournamentId);
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: res.error,
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: res.alreadyGenerated
+          ? "Sơ đồ đã có"
+          : "Đã sinh sơ đồ thi đấu",
+        description: res.alreadyGenerated
+          ? "Vào tab 'Sơ đồ thi đấu' để xem"
+          : `${res.count} trận được tạo`,
+      });
     });
   };
 
@@ -332,19 +355,26 @@ export function MembersClient({
             >
               <Dice5 className="size-4" />
               {teamCount > 0
-                ? `Đã tạo ${teamCount} đội — xoá trước nếu muốn bốc lại`
+                ? `✅ Đã tạo ${teamCount} đội — bốc 1 lần duy nhất`
                 : "🎲 Bốc thăm chia đội realtime"}
             </Button>
             {teamCount > 0 && (
               <Button onClick={onClearTeams} variant="outline">
                 <RotateCcw className="size-4" />
-                Xoá tất cả đội
+                Xoá để bốc lại
+              </Button>
+            )}
+            {teamCount > 0 && (
+              <Button onClick={onEnsureBracket} variant="outline" disabled={pending}>
+                <Wand2 className="size-4" />
+                Sinh sơ đồ thi đấu
               </Button>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            ⚠️ Bốc thăm 1 lần duy nhất. Sau bốc thăm, server tự sinh sơ đồ thi
-            đấu (bracket) theo format giải.
+            ⚠️ Bốc thăm 1 lần duy nhất. Server tự sinh sơ đồ thi đấu sau bốc
+            thăm — nếu chưa thấy ở tab "Sơ đồ thi đấu", bấm{" "}
+            <strong>Sinh sơ đồ thi đấu</strong>.
           </p>
         </CardContent>
       </Card>

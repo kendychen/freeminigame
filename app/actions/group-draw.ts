@@ -4,6 +4,8 @@ import { customAlphabet } from "nanoid";
 import { revalidatePath } from "next/cache";
 import { requireTournamentAdmin } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
+import { buildBracket } from "@/lib/tournament/build-bracket";
+import type { TournamentFormat } from "@/lib/pairing/types";
 
 const codeGen = customAlphabet("abcdefghjkmnpqrstuvwxyz23456789", 6);
 const tokenGen = customAlphabet(
@@ -95,4 +97,43 @@ export async function manualAssignGroup(input: {
     .eq("tournament_id", input.tournamentId);
   if (error) return { error: error.message } as const;
   return { ok: true } as const;
+}
+
+/**
+ * Idempotent bracket generation — fallback when auto-bracket-after-draw
+ * timed out or failed. Returns alreadyGenerated=true if matches already exist.
+ */
+export async function ensureBracket(tournamentId: string) {
+  const { supabase } = await requireTournamentAdmin(tournamentId);
+  const { data: t } = await supabase
+    .from("tournaments")
+    .select("id, format, config")
+    .eq("id", tournamentId)
+    .single();
+  if (!t) return { error: "tournament_not_found" } as const;
+  const cfg = (t.config ?? {}) as {
+    seriesFormat?: "bo1" | "bo3" | "bo5";
+    doubleRound?: boolean;
+    groupSize?: number;
+    qualifyPerGroup?: number;
+  };
+  const result = await buildBracket(supabase, {
+    tournamentId,
+    format: t.format as TournamentFormat,
+    seriesFormat: cfg.seriesFormat,
+    doubleRound: cfg.doubleRound,
+    groupSize: cfg.groupSize,
+    qualifyPerGroup: cfg.qualifyPerGroup,
+  });
+  if (result.skipped === "already_generated") {
+    return { ok: true, alreadyGenerated: true, count: 0 } as const;
+  }
+  if (result.skipped === "not_enough_teams") {
+    return { error: "not_enough_teams" } as const;
+  }
+  if (!result.ok) {
+    return { error: result.error ?? "build_failed" } as const;
+  }
+  revalidatePath(`/t`);
+  return { ok: true, alreadyGenerated: false, count: result.count ?? 0 } as const;
 }

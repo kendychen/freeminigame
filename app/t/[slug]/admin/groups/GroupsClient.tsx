@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Dice5, RotateCcw, Users } from "lucide-react";
+import { Dice5, RotateCcw, Users, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ import { getSupabaseBrowser } from "@/lib/supabase/client";
 import {
   clearTournamentGroups,
   createTournamentGroupDraw,
+  ensureBracket,
   manualAssignGroup,
 } from "@/app/actions/group-draw";
 
@@ -146,6 +147,31 @@ export function GroupsClient({
     });
   };
 
+  const onEnsureBracket = () => {
+    startTransition(async () => {
+      const res = await ensureBracket(tournamentId);
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: res.error,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (res.alreadyGenerated) {
+        toast({
+          title: "Sơ đồ đã có sẵn",
+          description: "Vào tab 'Sơ đồ thi đấu' để xem",
+        });
+      } else {
+        toast({
+          title: "Đã sinh sơ đồ thi đấu",
+          description: `${res.count} trận được tạo`,
+        });
+      }
+    });
+  };
+
   const hasGroups = groupedTeams.groups.length > 0;
 
   return (
@@ -192,10 +218,14 @@ export function GroupsClient({
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={onLaunchDraw}
-              disabled={pending || teams.length < groupSize}
+              disabled={pending || teams.length < groupSize || hasGroups}
             >
               <Dice5 className="size-4" />
-              {pending ? "Đang tạo phòng…" : "🎲 Bốc thăm chia bảng realtime"}
+              {pending
+                ? "Đang tạo phòng…"
+                : hasGroups
+                  ? "✅ Đã bốc thăm xong"
+                  : "🎲 Bốc thăm chia bảng realtime"}
             </Button>
             {hasGroups && (
               <Button
@@ -204,14 +234,24 @@ export function GroupsClient({
                 disabled={pending}
               >
                 <RotateCcw className="size-4" />
-                Xoá phân bảng
+                Xoá để bốc lại
+              </Button>
+            )}
+            {hasGroups && (
+              <Button
+                variant="outline"
+                onClick={onEnsureBracket}
+                disabled={pending}
+              >
+                <Wand2 className="size-4" />
+                Sinh sơ đồ thi đấu
               </Button>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Nhấn nút sẽ mở tab mới — bạn share link cho mọi người xem cùng. Khi
-            bấm bốc thăm, các đội sẽ được phân vào bảng A/B/C/D ngẫu nhiên +
-            tự lưu vào giải đấu này.
+            ⚠️ Mỗi giải đấu chỉ bốc thăm chia bảng 1 lần. Sau khi bốc thăm, sơ
+            đồ thi đấu tự động sinh; nếu chưa thấy ở tab "Sơ đồ thi đấu", bấm
+            <strong> Sinh sơ đồ thi đấu </strong> để tạo thủ công.
           </p>
         </CardContent>
       </Card>
