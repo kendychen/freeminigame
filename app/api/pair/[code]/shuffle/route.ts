@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { shuffleParticipants, type PairParticipant } from "@/lib/pair/shuffle";
 
+export const maxDuration = 15;
+
 interface ShuffleBody {
   hostToken: string;
+  spinDurationMs?: number; // 5000-10000 typical
 }
+
+const DEFAULT_SPIN_MS = 7000;
 
 export async function POST(
   req: Request,
@@ -20,11 +25,17 @@ export async function POST(
   if (!body.hostToken) {
     return NextResponse.json({ error: "missing_token" }, { status: 400 });
   }
+  const spinMs = Math.max(
+    1000,
+    Math.min(10000, body.spinDurationMs ?? DEFAULT_SPIN_MS),
+  );
 
   const sb = createServiceClient();
   const { data: session, error } = await sb
     .from("pair_sessions")
-    .select("host_token, status, group_size, participants, shuffle_count, expires_at")
+    .select(
+      "host_token, status, group_size, participants, shuffle_count, expires_at",
+    )
     .eq("code", code)
     .maybeSingle();
   if (error || !session) {
@@ -36,7 +47,12 @@ export async function POST(
   if (new Date(session.expires_at).getTime() < Date.now()) {
     return NextResponse.json({ error: "expired" }, { status: 410 });
   }
-  // Note: shuffle ALLOWED even when status='locked' (locked just means no new joins)
+  if (session.status === "shuffling") {
+    return NextResponse.json(
+      { error: "already_shuffling" },
+      { status: 409 },
+    );
+  }
   const participants = session.participants as PairParticipant[];
   if (participants.length < 2) {
     return NextResponse.json(
@@ -54,17 +70,37 @@ export async function POST(
     round,
   );
 
-  const { error: updErr } = await sb
+  // Phase 1: broadcast "shuffling" state — all clients show spinner.
+  const shufflingUntil = new Date(Date.now() + spinMs).toISOString();
+  const { error: phaseErr1 } = await sb
     .from("pair_sessions")
     .update({
-      result,
-      status: "shuffled",
-      shuffle_count: round,
-      shuffled_at: new Date().toISOString(),
+      status: "shuffling",
+      shuffling_until: shufflingUntil,
+      result: null,
     })
     .eq("code", code);
-  if (updErr) {
-    return NextResponse.json({ error: updErr.message }, { status: 500 });
+  if (phaseErr1) {
+    return NextResponse.json({ error: phaseErr1.message }, { status: 500 });
   }
-  return NextResponse.json({ result, round });
+
+  // Wait spinMs server-side (max 10s, well within 15s function limit)
+  await new Promise((r) => setTimeout(r, spinMs));
+
+  // Phase 2: reveal result.
+  const { error: phaseErr2 } = await sb
+    .from("pair_sessions")
+    .update({
+      status: "shuffled",
+      result,
+      shuffle_count: round,
+      shuffled_at: new Date().toISOString(),
+      shuffling_until: null,
+    })
+    .eq("code", code);
+  if (phaseErr2) {
+    return NextResponse.json({ error: phaseErr2.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ result, round, spinMs });
 }

@@ -10,13 +10,15 @@ import {
   Dice5,
   LogIn,
   LogOut,
+  Eye,
+  Wifi,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { usePairLobby, type PairSessionState } from "@/hooks/usePairLobby";
+import { SpinningWheel } from "@/components/pair/SpinningWheel";
 
 export interface LobbyClientProps {
   code: string;
@@ -29,8 +31,6 @@ export function LobbyClient({
   hostTokenFromUrl,
   initial,
 }: LobbyClientProps) {
-  const session = usePairLobby(code, initial) ?? initial;
-
   // Host token: from URL, or localStorage, or null
   const [hostToken, setHostToken] = useState<string | null>(null);
   useEffect(() => {
@@ -43,14 +43,18 @@ export function LobbyClient({
     if (stored) setHostToken(stored);
   }, [code, hostTokenFromUrl]);
 
-  // Participant identity (in localStorage so refresh keeps you in)
+  const { session, presence } = usePairLobby(
+    code,
+    initial,
+    hostToken ? "host" : "viewer",
+  );
+
   const [myId, setMyId] = useState<string | null>(null);
   const [myName, setMyName] = useState("");
   const [joinName, setJoinName] = useState("");
   const [joining, setJoining] = useState(false);
   const [shuffling, setShuffling] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [revealing, setRevealing] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(`pair-me-${code}`);
@@ -64,6 +68,7 @@ export function LobbyClient({
   const isHost = !!hostToken;
   const isLocked = session.status === "locked";
   const isShuffled = session.status === "shuffled";
+  const isShuffling = session.status === "shuffling";
   const me = useMemo(
     () => session.participants.find((p) => p.id === myId) ?? null,
     [session.participants, myId],
@@ -142,12 +147,11 @@ export function LobbyClient({
       return;
     }
     setShuffling(true);
-    setRevealing(true);
     try {
       const res = await fetch(`/api/pair/${code}/shuffle`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hostToken }),
+        body: JSON.stringify({ hostToken, spinDurationMs: 7000 }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -156,13 +160,9 @@ export function LobbyClient({
           description: json.error ?? "",
           variant: "destructive",
         });
-        return;
       }
-      // animation will finish via useEffect on result change
     } finally {
       setShuffling(false);
-      // Let animation play 1.5s
-      setTimeout(() => setRevealing(false), 1500);
     }
   };
 
@@ -189,29 +189,72 @@ export function LobbyClient({
             · Nhóm {session.group_size} người ·{" "}
             <span
               className={
-                isLocked
-                  ? "text-destructive"
-                  : isShuffled
-                    ? "text-primary"
-                    : "text-muted-foreground"
+                isShuffling
+                  ? "text-primary animate-pulse font-semibold"
+                  : isLocked && session.shuffle_count === 0
+                    ? "text-muted-foreground"
+                    : isLocked
+                      ? "text-destructive"
+                      : isShuffled
+                        ? "text-primary"
+                        : "text-muted-foreground"
               }
             >
-              {isLocked && session.shuffle_count === 0
-                ? "👁️ Preset · chỉ xem"
-                : isLocked
-                  ? `🔒 Đã khoá · bốc ${session.shuffle_count} lần`
-                  : isShuffled
-                    ? `🎲 Đã bốc ${session.shuffle_count} lần`
-                    : "🟢 Đang chờ tham gia"}
+              {isShuffling
+                ? "🎲 ĐANG BỐC THĂM..."
+                : isLocked && session.shuffle_count === 0
+                  ? "👁️ Preset · chỉ xem"
+                  : isLocked
+                    ? `🔒 Đã khoá · bốc ${session.shuffle_count} lần`
+                    : isShuffled
+                      ? `🎲 Đã bốc ${session.shuffle_count} lần`
+                      : "🟢 Đang chờ tham gia"}
             </span>
           </p>
         </div>
-        {isHost && (
-          <span className="self-start rounded-full border bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-            Bạn là Host
+        <div className="flex items-center gap-2 self-start">
+          {/* Presence indicator */}
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+              presence.hostOnline
+                ? "border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400"
+                : "border-muted bg-muted/30 text-muted-foreground"
+            }`}
+            title={
+              presence.hostOnline ? "Host đang trực tuyến" : "Host offline"
+            }
+          >
+            <span
+              className={`size-2 rounded-full ${
+                presence.hostOnline
+                  ? "bg-green-500 animate-pulse"
+                  : "bg-muted-foreground"
+              }`}
+            />
+            Host {presence.hostOnline ? "online" : "offline"}
           </span>
-        )}
+          {presence.viewerCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border bg-secondary px-2 py-0.5 text-xs">
+              <Eye className="size-3" />
+              {presence.viewerCount}
+            </span>
+          )}
+          {isHost && (
+            <span className="rounded-full border bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              Bạn là Host
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* SHUFFLING SPINNER — broadcast realtime to all */}
+      {isShuffling && session.shuffling_until && (
+        <SpinningWheel
+          participants={session.participants}
+          groupSize={session.group_size}
+          shufflingUntil={session.shuffling_until}
+        />
+      )}
 
       {/* Share link card */}
       <Card>
@@ -228,7 +271,7 @@ export function LobbyClient({
       </Card>
 
       {/* Join form OR identity */}
-      {!me && !isLocked && (
+      {!me && !isLocked && !isShuffling && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Tham gia phòng</CardTitle>
@@ -275,15 +318,23 @@ export function LobbyClient({
             <div className="flex gap-2">
               <Button
                 onClick={onShuffle}
-                disabled={shuffling || session.participants.length < 2}
+                disabled={
+                  shuffling ||
+                  isShuffling ||
+                  session.participants.length < 2
+                }
                 size="sm"
               >
-                <Dice5 className="size-4" />
-                {shuffling
-                  ? "Đang bốc thăm…"
+                <Dice5
+                  className={`size-4 ${
+                    shuffling || isShuffling ? "animate-spin" : ""
+                  }`}
+                />
+                {shuffling || isShuffling
+                  ? "Đang bốc..."
                   : isShuffled
                     ? "Bốc lại"
-                    : "Bốc thăm"}
+                    : "🎲 Bốc thăm"}
               </Button>
               <Button onClick={onToggleLock} variant="outline" size="sm">
                 {isLocked ? (
@@ -313,7 +364,7 @@ export function LobbyClient({
                   key={p.id}
                   className={`flex items-center gap-2 rounded-md border p-2 ${
                     p.id === myId ? "bg-primary/10 border-primary/30" : ""
-                  }`}
+                  } ${isShuffling ? "animate-pulse" : ""}`}
                 >
                   <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
                     {i + 1}
@@ -330,7 +381,7 @@ export function LobbyClient({
       </Card>
 
       {/* Result */}
-      {session.result && (
+      {session.result && !isShuffling && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -344,59 +395,65 @@ export function LobbyClient({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {revealing ? (
-              <div className="py-12 text-center">
-                <div className="text-5xl animate-spin">🎲</div>
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Đang bốc thăm…
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {session.result.groups.map((groupIds, i) => (
-                    <div
-                      key={i}
-                      className="rounded-lg border bg-card p-3 transition-shadow hover:shadow-md"
-                    >
-                      <div className="text-xs text-muted-foreground mb-2">
-                        {session.group_size === 2 ? "Cặp" : "Nhóm"} #{i + 1}
-                      </div>
-                      <div className="space-y-1">
-                        {groupIds.map((id) => {
-                          const p = session.participants.find((x) => x.id === id);
-                          return (
-                            <div
-                              key={id}
-                              className={`text-sm font-medium ${
-                                id === myId ? "text-primary" : ""
-                              }`}
-                            >
-                              {p?.name ?? "—"}
-                              {id === myId && (
-                                <span className="ml-1 text-xs">(bạn)</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {session.result.groups.map((groupIds, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border bg-card p-3 transition-shadow hover:shadow-md"
+                    style={{
+                      animation: `fadeInUp 0.5s ease-out ${i * 0.1}s both`,
+                    }}
+                  >
+                    <div className="text-xs text-muted-foreground mb-2">
+                      {session.group_size === 2 ? "Cặp" : "Nhóm"} #{i + 1}
                     </div>
-                  ))}
-                </div>
-                {session.result.byes.length > 0 && (
-                  <div className="rounded-md border bg-secondary/30 p-3 text-sm">
-                    <span className="text-muted-foreground">Miễn (BYE):</span>{" "}
-                    {session.result.byes
-                      .map(
-                        (id) =>
-                          session.participants.find((x) => x.id === id)?.name ??
-                          "—",
-                      )
-                      .join(", ")}
+                    <div className="space-y-1">
+                      {groupIds.map((id) => {
+                        const p = session.participants.find((x) => x.id === id);
+                        return (
+                          <div
+                            key={id}
+                            className={`text-sm font-medium ${
+                              id === myId ? "text-primary" : ""
+                            }`}
+                          >
+                            {p?.name ?? "—"}
+                            {id === myId && (
+                              <span className="ml-1 text-xs">(bạn)</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
-            )}
+              {session.result.byes.length > 0 && (
+                <div className="rounded-md border bg-secondary/30 p-3 text-sm">
+                  <span className="text-muted-foreground">Miễn (BYE):</span>{" "}
+                  {session.result.byes
+                    .map(
+                      (id) =>
+                        session.participants.find((x) => x.id === id)?.name ??
+                        "—",
+                    )
+                    .join(", ")}
+                </div>
+              )}
+            </div>
+            <style jsx>{`
+              @keyframes fadeInUp {
+                from {
+                  opacity: 0;
+                  transform: translateY(20px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
+              }
+            `}</style>
           </CardContent>
         </Card>
       )}

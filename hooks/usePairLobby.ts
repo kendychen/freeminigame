@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import type { PairResult, PairParticipant } from "@/lib/pair/shuffle";
 
 export interface PairSessionState {
   code: string;
   title: string;
-  status: "lobby" | "shuffled" | "locked";
+  status: "lobby" | "shuffling" | "shuffled" | "locked";
   group_size: number;
   participants: PairParticipant[];
   result: PairResult | null;
@@ -15,14 +15,45 @@ export interface PairSessionState {
   created_at: string;
   expires_at: string;
   shuffled_at: string | null;
+  shuffling_until: string | null;
 }
 
-export function usePairLobby(code: string, initial: PairSessionState | null) {
-  const [session, setSession] = useState<PairSessionState | null>(initial);
+export interface PresenceState {
+  hostOnline: boolean;
+  viewerCount: number;
+  myKey: string;
+}
+
+export interface PairLobbyState {
+  session: PairSessionState;
+  presence: PresenceState;
+}
+
+const genKey = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+
+export function usePairLobby(
+  code: string,
+  initial: PairSessionState,
+  role: "host" | "viewer",
+): PairLobbyState {
+  const [session, setSession] = useState<PairSessionState>(initial);
+  const [presence, setPresence] = useState<PresenceState>(() => ({
+    hostOnline: false,
+    viewerCount: 0,
+    myKey: genKey(),
+  }));
 
   useEffect(() => {
     setSession(initial);
   }, [initial]);
+
+  const myKey = useMemo(
+    () => presence.myKey,
+    [presence.myKey],
+  );
 
   useEffect(() => {
     if (!code) return;
@@ -31,7 +62,6 @@ export function usePairLobby(code: string, initial: PairSessionState | null) {
 
     const sb = getSupabaseBrowser();
 
-    // Initial fetch (in case initial=null on client navigate)
     const refresh = async () => {
       const res = await fetch(`/api/pair/${code}`, { cache: "no-store" });
       if (res.ok && active) {
@@ -40,34 +70,55 @@ export function usePairLobby(code: string, initial: PairSessionState | null) {
       }
     };
 
-    const channel = sb
-      .channel(`pair:${code}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "pair_sessions",
-          filter: `code=eq.${code}`,
-        },
-        (payload: { new: PairSessionState }) => {
-          if (!active) return;
-          setSession(payload.new);
-        },
-      )
-      .subscribe((status: string) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          // Polling fallback
-          pollHandle = setInterval(() => void refresh(), 3000);
+    const channel = sb.channel(`pair:${code}`, {
+      config: { presence: { key: myKey } },
+    });
+
+    channel.on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "pair_sessions",
+        filter: `code=eq.${code}`,
+      },
+      (payload: { new: PairSessionState }) => {
+        if (!active) return;
+        setSession(payload.new);
+      },
+    );
+
+    channel.on("presence", { event: "sync" }, () => {
+      if (!active) return;
+      const state = channel.presenceState() as Record<
+        string,
+        Array<{ role?: string }>
+      >;
+      let hostOnline = false;
+      let viewerCount = 0;
+      for (const arr of Object.values(state)) {
+        for (const p of arr) {
+          if (p.role === "host") hostOnline = true;
+          else viewerCount += 1;
         }
-      });
+      }
+      setPresence((prev) => ({ ...prev, hostOnline, viewerCount }));
+    });
+
+    channel.subscribe(async (status: string) => {
+      if (status === "SUBSCRIBED") {
+        await channel.track({ role, ts: Date.now() });
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        pollHandle = setInterval(() => void refresh(), 3000);
+      }
+    });
 
     return () => {
       active = false;
       if (pollHandle) clearInterval(pollHandle);
       sb.removeChannel(channel);
     };
-  }, [code]);
+  }, [code, role, myKey]);
 
-  return session;
+  return { session, presence };
 }
