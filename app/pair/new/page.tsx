@@ -213,7 +213,7 @@ export default function NewPairLobbyPage() {
                     <li>Họ paste link → nhập tên → vào lobby</li>
                   )}
                   <li>Bạn bấm 🎲 Bốc thăm → tất cả cùng thấy kết quả</li>
-                  <li>Có thể bốc lại nhiều lần đến khi vừa ý</li>
+                  <li>⚠️ Mỗi phòng chỉ bốc thăm 1 lần — kết quả là cuối cùng</li>
                   <li>Phòng tự động hết hạn sau 72 giờ</li>
                 </ul>
               </div>
