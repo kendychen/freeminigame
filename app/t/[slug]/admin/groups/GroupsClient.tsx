@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Dice5, RotateCcw, Users, Wand2 } from "lucide-react";
+import { Dice5, Users, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -227,16 +227,6 @@ export function GroupsClient({
                   ? "✅ Đã bốc thăm xong"
                   : "🎲 Bốc thăm chia bảng realtime"}
             </Button>
-            {hasGroups && (
-              <Button
-                variant="outline"
-                onClick={onClear}
-                disabled={pending}
-              >
-                <RotateCcw className="size-4" />
-                Xoá để bốc lại
-              </Button>
-            )}
             {hasGroups && (
               <Button
                 variant="outline"

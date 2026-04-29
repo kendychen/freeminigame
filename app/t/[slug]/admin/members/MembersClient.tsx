@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Plus, Trash2, Upload, Dice5, RotateCcw, Users } from "lucide-react";
+import { Plus, Trash2, Upload, Dice5, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,8 @@ import {
   createPlayerTeamDraw,
   deletePlayer,
 } from "@/app/actions/players";
+import { getActiveDraw } from "@/app/actions/group-draw";
+import { ExternalLink } from "lucide-react";
 
 interface Player {
   id: string;
@@ -45,6 +47,34 @@ export function MembersClient({
   const [teamSize, setTeamSize] = useState(2);
   const [teamCount, setTeamCount] = useState(0);
   const [pending, startTransition] = useTransition();
+  const [activeDraw, setActiveDraw] = useState<{
+    code: string;
+    host_token: string;
+    status: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      const res = await getActiveDraw(tournamentId);
+      if (!mounted) return;
+      if ("active" in res && res.active) {
+        setActiveDraw({
+          code: res.code,
+          host_token: res.host_token,
+          status: res.status,
+        });
+      } else {
+        setActiveDraw(null);
+      }
+    };
+    void refresh();
+    const interval = setInterval(refresh, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [tournamentId]);
 
   useEffect(() => {
     const sb = getSupabaseBrowser();
@@ -194,6 +224,17 @@ export function MembersClient({
     startTransition(async () => {
       const res = await createPlayerTeamDraw({ tournamentId, teamSize });
       if ("error" in res) {
+        if (res.error === "draw_in_progress" && "existingCode" in res) {
+          window.open(
+            `/pair/${res.existingCode}?host=${res.existingHostToken}`,
+            "_blank",
+          );
+          toast({
+            title: "Đã có phiên bốc thăm",
+            description: "Mở lại phòng đang chạy",
+          });
+          return;
+        }
         toast({
           title: "Lỗi",
           description: res.error,
@@ -320,27 +361,44 @@ export function MembersClient({
             </div>
           </div>
 
+          {activeDraw && teamCount === 0 && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <p className="font-semibold text-amber-700 dark:text-amber-400">
+                🎲 Phiên bốc thăm đang chạy
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Trạng thái: <strong>{activeDraw.status}</strong> · Mã{" "}
+                <code>{activeDraw.code}</code>
+              </p>
+              <a
+                href={`/pair/${activeDraw.code}?host=${activeDraw.host_token}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline"
+              >
+                <ExternalLink className="size-3" />
+                Mở phòng host
+              </a>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={onTeamDraw}
               disabled={
                 pending ||
                 players.length < teamSize ||
-                teamCount > 0
+                teamCount > 0 ||
+                !!activeDraw
               }
               size="lg"
             >
               <Dice5 className="size-4" />
               {teamCount > 0
                 ? `✅ Đã tạo ${teamCount} đội — bốc 1 lần duy nhất`
-                : "🎲 Bốc thăm chia đội realtime"}
+                : activeDraw
+                  ? "🔒 Đang có phiên bốc thăm…"
+                  : "🎲 Bốc thăm chia đội realtime"}
             </Button>
-            {teamCount > 0 && (
-              <Button onClick={onClearTeams} variant="outline">
-                <RotateCcw className="size-4" />
-                Xoá để bốc lại
-              </Button>
-            )}
           </div>
           <p className="text-xs text-muted-foreground">
             ⚠️ Bốc thăm chia đội 1 lần duy nhất. Sau bốc thăm, sang tab{" "}

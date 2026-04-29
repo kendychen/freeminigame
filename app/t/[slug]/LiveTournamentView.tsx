@@ -104,16 +104,43 @@ export function LiveTournamentView({
           ))}
       </div>
       {activeTab === "bracket" && (isElim || isGroupKO) && (
-        <BracketView
-          matches={
-            isGroupKO
-              ? matchesTyped.filter((m) => m.bracket === "main")
-              : matchesTyped
+        (() => {
+          if (isGroupKO) {
+            const mainMatches = matchesTyped.filter((m) => m.bracket === "main");
+            const groupMatches = matchesTyped.filter((m) => m.bracket === "group");
+            if (mainMatches.length === 0 && groupMatches.length > 0) {
+              return (
+                <div className="rounded-lg border bg-card p-6 text-center text-sm">
+                  <p className="font-medium">
+                    🟢 Vòng bảng đã sinh ({groupMatches.length} trận)
+                  </p>
+                  <p className="mt-2 text-muted-foreground">
+                    Nhập điểm cho vòng bảng ở tab <strong>Lịch</strong> hoặc{" "}
+                    <strong>Bảng điểm</strong>. Sau khi xong, bấm{" "}
+                    <strong>Tạo knockout</strong> ở trên để sinh sơ đồ loại
+                    trực tiếp.
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <BracketView
+                matches={mainMatches}
+                teams={teamsTyped}
+                variant="single"
+                onMatchClick={onMatchClick}
+              />
+            );
           }
-          teams={teamsTyped}
-          variant={tournament.format === "double_elim" ? "double" : "single"}
-          onMatchClick={onMatchClick}
-        />
+          return (
+            <BracketView
+              matches={matchesTyped}
+              teams={teamsTyped}
+              variant={tournament.format === "double_elim" ? "double" : "single"}
+              onMatchClick={onMatchClick}
+            />
+          );
+        })()
       )}
       {activeTab === "schedule" && (
         <ScheduleView

@@ -100,6 +100,30 @@ export async function manualAssignGroup(input: {
 }
 
 /**
+ * Get the active pair_session for a tournament (used to detect ongoing draw).
+ */
+export async function getActiveDraw(tournamentId: string) {
+  await requireTournamentAdmin(tournamentId);
+  const svc = createServiceClient();
+  const { data } = await svc
+    .from("pair_sessions")
+    .select("code, host_token, status, shuffle_count, created_at")
+    .eq("linked_tournament_id", tournamentId)
+    .gte("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return { active: false } as const;
+  return {
+    active: true,
+    code: data.code,
+    host_token: data.host_token,
+    status: data.status,
+    shuffle_count: data.shuffle_count,
+  } as const;
+}
+
+/**
  * Idempotent bracket generation — fallback when auto-bracket-after-draw
  * timed out or failed. Returns alreadyGenerated=true if matches already exist.
  */
