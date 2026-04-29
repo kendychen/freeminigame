@@ -2,49 +2,58 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Pickleball-themed palette
+   - Primary: ball yellow-green (Penn 40 ball ~#D8E000, hsl(75 95% 55%))
+   - Court: deep teal-blue (USAPA standard court ~#1E5C7A → hsl(195 60% 30%))
+   - Accent line: bright lime
+*/
 :root {
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
+  --background: 0 0% 99%;
+  --foreground: 200 30% 12%;
   --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
+  --card-foreground: 200 30% 12%;
   --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-  --destructive: 0 84.2% 60.2%;
+  --popover-foreground: 200 30% 12%;
+  --primary: 75 90% 45%; /* ball yellow-green */
+  --primary-foreground: 200 50% 10%;
+  --secondary: 195 35% 94%; /* light court tint */
+  --secondary-foreground: 200 30% 18%;
+  --muted: 195 25% 95%;
+  --muted-foreground: 200 15% 40%;
+  --accent: 75 80% 92%;
+  --accent-foreground: 200 30% 18%;
+  --destructive: 0 80% 55%;
   --destructive-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 5% 64.9%;
-  --radius: 0.5rem;
+  --border: 200 20% 88%;
+  --input: 200 20% 88%;
+  --ring: 75 80% 50%;
+  --radius: 0.75rem;
+  --court: 195 60% 35%;
+  --ball: 75 95% 55%;
 }
 
 .dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 10% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 240 3.7% 15.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
+  --background: 200 40% 6%; /* deep court night */
+  --foreground: 60 30% 96%;
+  --card: 200 35% 9%;
+  --card-foreground: 60 30% 96%;
+  --popover: 200 35% 9%;
+  --popover-foreground: 60 30% 96%;
+  --primary: 75 90% 60%; /* brighter ball in dark */
+  --primary-foreground: 200 50% 8%;
+  --secondary: 200 30% 14%;
+  --secondary-foreground: 60 30% 92%;
+  --muted: 200 25% 14%;
+  --muted-foreground: 200 12% 60%;
+  --accent: 75 50% 22%;
+  --accent-foreground: 60 30% 96%;
+  --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
+  --border: 200 25% 18%;
+  --input: 200 25% 18%;
+  --ring: 75 80% 55%;
+  --court: 195 70% 25%;
+  --ball: 75 90% 60%;
 }
 
 @theme inline {
@@ -67,9 +76,13 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-court: hsl(var(--court));
+  --color-ball: hsl(var(--ball));
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
 }
 
 * {
@@ -79,5 +92,58 @@
 body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Pickleball court line texture (subtle) */
+.bg-court {
+  background-color: hsl(var(--court));
+  background-image:
+    linear-gradient(0deg, transparent 49%, hsla(60, 100%, 95%, 0.08) 49%, hsla(60, 100%, 95%, 0.08) 51%, transparent 51%),
+    linear-gradient(90deg, transparent 49%, hsla(60, 100%, 95%, 0.08) 49%, hsla(60, 100%, 95%, 0.08) 51%, transparent 51%);
+  background-size: 80px 80px;
+}
+
+/* Pickleball ball — used as logo accent */
+.pickleball-ball {
+  background: radial-gradient(circle at 30% 30%, hsl(60 100% 80%), hsl(75 95% 50%) 60%, hsl(75 95% 35%) 100%);
+  position: relative;
+  border-radius: 9999px;
+  box-shadow:
+    inset 0 -2px 4px hsla(0, 0%, 0%, 0.2),
+    0 2px 6px hsla(0, 0%, 0%, 0.15);
+}
+.pickleball-ball::before,
+.pickleball-ball::after {
+  content: "";
+  position: absolute;
+  background: hsla(75, 50%, 30%, 0.35);
+  border-radius: 9999px;
+}
+.pickleball-ball::before {
+  width: 12%; height: 12%; top: 22%; left: 50%;
+  box-shadow:
+    150% 0 hsla(75, 50%, 30%, 0.35),
+    -150% 0 hsla(75, 50%, 30%, 0.35),
+    0 250% hsla(75, 50%, 30%, 0.35),
+    150% 250% hsla(75, 50%, 30%, 0.35),
+    -150% 250% hsla(75, 50%, 30%, 0.35);
+}
+
+/* Mobile bottom tab bar */
+.mobile-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (min-width: 1024px) {
+  .mobile-tabbar {
+    display: none;
+  }
 }

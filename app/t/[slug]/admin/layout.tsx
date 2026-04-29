@@ -1,8 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Trophy, Users, Calendar, BarChart3, Settings, Layers, UserPlus } from "lucide-react";
+import {
+  Users,
+  Calendar,
+  BarChart3,
+  Settings,
+  Layers,
+  UserPlus,
+} from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { PickleballLogo } from "@/components/brand/PickleballLogo";
 
 export default async function AdminLayout({
   children,
@@ -35,47 +43,59 @@ export default async function AdminLayout({
   if (!role || r === "viewer") notFound();
 
   const nav = [
-    { href: `/t/${slug}/admin`, label: "Tổng quan", icon: BarChart3 },
-    { href: `/t/${slug}/admin/members`, label: "Thành viên", icon: UserPlus },
-    { href: `/t/${slug}/admin/teams`, label: "Đội", icon: Users },
-    { href: `/t/${slug}/admin/groups`, label: "Chia bảng", icon: Layers },
-    { href: `/t/${slug}/admin/bracket`, label: "Sơ đồ thi đấu", icon: Calendar },
-    { href: `/t/${slug}/admin/settings`, label: "Cấu hình", icon: Settings },
+    { href: `/t/${slug}/admin`, label: "Tổng quan", short: "Trang chủ", icon: BarChart3 },
+    { href: `/t/${slug}/admin/members`, label: "Thành viên", short: "Người", icon: UserPlus },
+    { href: `/t/${slug}/admin/teams`, label: "Đội", short: "Đội", icon: Users },
+    { href: `/t/${slug}/admin/groups`, label: "Chia bảng", short: "Bảng", icon: Layers },
+    { href: `/t/${slug}/admin/bracket`, label: "Sơ đồ thi đấu", short: "Sơ đồ", icon: Calendar },
+    { href: `/t/${slug}/admin/settings`, label: "Cấu hình", short: "Cấu hình", icon: Settings },
   ];
 
   return (
-    <div className="flex flex-col flex-1">
-      <header className="border-b">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
-          <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-            <Trophy className="size-5 text-primary" />
-            FreeMinigame
+    <div className="flex flex-col flex-1 pb-20 lg:pb-0">
+      {/* Top header */}
+      <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-3 sm:h-16 sm:px-4">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 font-semibold"
+          >
+            <PickleballLogo size={26} />
+            <span className="hidden sm:inline">FreeMinigame</span>
           </Link>
           <ThemeToggle />
         </div>
       </header>
-      <div className="border-b bg-secondary/30">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3">
+
+      {/* Tournament name banner */}
+      <div className="border-b bg-gradient-to-r from-primary/10 via-secondary/30 to-primary/5">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-3 py-2.5 sm:px-4 sm:py-3">
           <div className="min-w-0">
-            <h1 className="truncate font-semibold">{t.name}</h1>
+            <h1 className="truncate text-base font-bold sm:text-lg">{t.name}</h1>
             <p className="text-xs text-muted-foreground">
-              <Link href={`/t/${slug}`} className="underline-offset-2 hover:underline">
+              <Link
+                href={`/t/${slug}`}
+                className="underline-offset-2 hover:underline"
+              >
                 Xem trang công khai →
               </Link>
             </p>
           </div>
-          <span className="rounded-full border bg-background px-2 py-0.5 text-xs">
-            {role}
+          <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            {role === "owner" ? "👑" : "👤"} {role}
           </span>
         </div>
       </div>
-      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 lg:flex-row">
-        <nav className="flex shrink-0 flex-row gap-1 overflow-x-auto lg:w-56 lg:flex-col lg:overflow-visible">
+
+      {/* Main 2-column on desktop / stacked on mobile */}
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6 lg:flex-row lg:gap-6">
+        {/* Desktop sidebar (hidden on mobile) */}
+        <nav className="hidden shrink-0 lg:flex lg:w-56 lg:flex-col lg:gap-1">
           {nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm hover:bg-accent"
+              className="flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
             >
               <item.icon className="size-4 shrink-0" />
               {item.label}
@@ -84,6 +104,22 @@ export default async function AdminLayout({
         </nav>
         <div className="min-w-0 flex-1">{children}</div>
       </div>
+
+      {/* Mobile bottom tab bar (hidden on desktop) */}
+      <nav className="mobile-tabbar border-t bg-background/95 backdrop-blur lg:hidden">
+        <div className="grid grid-cols-6">
+          {nav.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <item.icon className="size-5" />
+              <span className="leading-tight">{item.short}</span>
+            </Link>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }
