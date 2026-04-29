@@ -204,6 +204,7 @@ export function BracketAdminClient({
           teams={teams}
           initialMatches={liveMatches}
           onMatchClick={onMatchClick}
+          subscribe={false}
         />
       )}
 

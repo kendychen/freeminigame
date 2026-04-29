@@ -12,13 +12,17 @@ export function useLiveMatches(tournamentId: string, initial: DbMatch[]) {
   }, [initial]);
 
   useEffect(() => {
+    if (!tournamentId) return;
     let active = true;
     let pollHandle: ReturnType<typeof setInterval> | undefined;
     let etag = "";
 
     const sb = getSupabaseBrowser();
+    // Use a unique channel key per hook instance to avoid 'already subscribed'
+    // when multiple components subscribe to the same tournament.
+    const instanceKey = Math.random().toString(36).slice(2, 8);
     const channel = sb
-      .channel(`matches:${tournamentId}`)
+      .channel(`matches:${tournamentId}:${instanceKey}`)
       .on(
         "postgres_changes",
         {

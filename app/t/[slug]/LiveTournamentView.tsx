@@ -16,6 +16,12 @@ interface LiveProps {
   teams: DbTeam[];
   initialMatches: DbMatch[];
   onMatchClick?: (matchId: string) => void;
+  /**
+   * If parent already subscribes via useLiveMatches, pass `subscribe=false`
+   * and forward the live matches via `initialMatches`. Avoids duplicate
+   * realtime subscription on the same channel which Supabase rejects.
+   */
+  subscribe?: boolean;
 }
 
 export function LiveTournamentView({
@@ -23,8 +29,13 @@ export function LiveTournamentView({
   teams,
   initialMatches,
   onMatchClick,
+  subscribe = true,
 }: LiveProps) {
-  const liveMatches = useLiveMatches(tournament.id, initialMatches);
+  const subscribed = useLiveMatches(
+    subscribe ? tournament.id : "",
+    initialMatches,
+  );
+  const liveMatches = subscribe ? subscribed : initialMatches;
   const [activeTab, setActiveTab] = useState<Tab>("bracket");
 
   const isElim =
