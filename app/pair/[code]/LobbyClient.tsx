@@ -37,6 +37,8 @@ export function LobbyClient({
     if (hostTokenFromUrl) {
       localStorage.setItem(`pair-host-${code}`, hostTokenFromUrl);
       setHostToken(hostTokenFromUrl);
+      // Strip ?host= from URL so host copying address bar doesn't leak token.
+      window.history.replaceState({}, "", `/pair/${code}`);
       return;
     }
     const stored = localStorage.getItem(`pair-host-${code}`);
@@ -239,13 +241,29 @@ export function LobbyClient({
               {presence.viewerCount}
             </span>
           )}
-          {isHost && (
-            <span className="rounded-full border bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              Bạn là Host
+          {isHost ? (
+            <span className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              👑 Bạn là Host
+            </span>
+          ) : (
+            <span className="rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-muted-foreground">
+              👁️ Bạn đang xem
             </span>
           )}
         </div>
       </div>
+
+      {/* Viewer-only info banner */}
+      {!isHost && !isShuffling && (
+        <div className="rounded-lg border bg-secondary/30 p-3 text-sm">
+          🔒 <strong>Chỉ host được bốc thăm.</strong>{" "}
+          <span className="text-muted-foreground">
+            {presence.hostOnline
+              ? "Đợi host bấm bốc thăm — kết quả sẽ hiện cho bạn ngay khi xong."
+              : "Host đang offline. Kết quả sẽ tự động hiện khi host bốc."}
+          </span>
+        </div>
+      )}
 
       {/* SHUFFLING SPINNER — broadcast realtime to all */}
       {isShuffling && session.shuffling_until && (
