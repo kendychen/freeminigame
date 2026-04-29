@@ -19,6 +19,7 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { createTournament } from "@/app/actions/tournaments";
 import type { TournamentFormat } from "@/lib/pairing/types";
 import { toast } from "@/components/ui/toast";
+import { translateError } from "@/lib/error-messages";
 
 export default function NewTournamentPage() {
   const router = useRouter();
@@ -48,7 +49,7 @@ export default function NewTournamentPage() {
     });
     setSubmitting(false);
     if ("error" in res) {
-      toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+      toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
       return;
     }
     router.push(`/t/${res.slug}/admin/teams`);

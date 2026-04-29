@@ -12,6 +12,7 @@ import {
   deleteTeam,
 } from "@/app/actions/teams";
 import { toast } from "@/components/ui/toast";
+import { translateError } from "@/lib/error-messages";
 
 interface TeamRow {
   id: string;
@@ -47,7 +48,7 @@ export function TeamsClient({
         rating: rating ? Number(rating) : undefined,
       });
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
         return;
       }
       setTeams((p) => [
@@ -71,7 +72,7 @@ export function TeamsClient({
     start(async () => {
       const res = await deleteTeam({ id, tournamentId });
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
         return;
       }
       setTeams((p) => p.filter((x) => x.id !== id));
@@ -91,7 +92,7 @@ export function TeamsClient({
     start(async () => {
       const res = await bulkImportTeams({ tournamentId, rows });
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
         return;
       }
       toast({ title: "Import thành công", description: `${res.count} đội` });

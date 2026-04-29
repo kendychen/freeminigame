@@ -10,6 +10,8 @@ export interface ScheduleViewProps {
   matches: Match[];
   onMatchClick?: (matchId: string) => void;
   filterGroup?: string;
+  /** Show "Bảng X" column inline on each match. Auto when matches have mixed group_labels. */
+  showGroupColumn?: boolean;
 }
 
 export function ScheduleView({
@@ -17,6 +19,7 @@ export function ScheduleView({
   matches,
   onMatchClick,
   filterGroup,
+  showGroupColumn,
 }: ScheduleViewProps) {
   const teamById = useMemo(() => {
     const m = new Map<string, Team>();
@@ -27,6 +30,14 @@ export function ScheduleView({
   const filtered = filterGroup
     ? matches.filter((m) => m.groupLabel === filterGroup)
     : matches;
+
+  // Auto-detect: show group column if multiple distinct group_labels exist
+  const groupCount = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of filtered) if (m.groupLabel) set.add(m.groupLabel);
+    return set.size;
+  }, [filtered]);
+  const showGroupCol = showGroupColumn ?? groupCount > 1;
 
   const byRound = useMemo(() => {
     const m = new Map<number, Match[]>();
@@ -61,6 +72,20 @@ export function ScheduleView({
                     disabled={isBye}
                   >
                     <span className="flex flex-1 items-center gap-3">
+                      {showGroupCol && (
+                        <span
+                          className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                            m.groupLabel
+                              ? "bg-primary/15 text-primary"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                          title={
+                            m.groupLabel ? `Bảng ${m.groupLabel}` : "Không bảng"
+                          }
+                        >
+                          {m.groupLabel ?? "—"}
+                        </span>
+                      )}
                       <span
                         className={`flex-1 text-left ${
                           isCompleted && m.winner === m.teamA

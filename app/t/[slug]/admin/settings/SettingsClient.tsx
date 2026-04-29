@@ -13,6 +13,7 @@ import {
 import { softDeleteTournament, togglePublic } from "@/app/actions/tournaments";
 import type { DbTournament } from "@/types/database";
 import { toast } from "@/components/ui/toast";
+import { translateError } from "@/lib/error-messages";
 
 export function SettingsClient({ tournament }: { tournament: DbTournament }) {
   const router = useRouter();
@@ -24,7 +25,7 @@ export function SettingsClient({ tournament }: { tournament: DbTournament }) {
       const next = !isPublic;
       const res = await togglePublic(tournament.id, next);
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
       } else {
         setPublic(next);
         toast({ title: next ? "Đã công khai" : "Đã ẩn" });
@@ -36,7 +37,7 @@ export function SettingsClient({ tournament }: { tournament: DbTournament }) {
     start(async () => {
       const res = await softDeleteTournament(tournament.id);
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
       } else {
         router.push("/dashboard");
       }

@@ -15,6 +15,7 @@ import {
 import { updateMatchScore } from "@/app/actions/matches";
 import type { DbMatch, DbTeam, DbTournament } from "@/types/database";
 import type { Match, Team } from "@/lib/pairing/types";
+import { translateError } from "@/lib/error-messages";
 
 export function BracketAdminClient({
   tournament,
@@ -38,7 +39,10 @@ export function BracketAdminClient({
     logoUrl: t.logo_url ?? undefined,
   }));
 
+  const [genClicked, setGenClicked] = useState(false);
+
   const onGenerate = () => {
+    setGenClicked(true);
     startTransition(async () => {
       const cfg = (tournament.config ?? {}) as {
         groupSize?: number;
@@ -55,7 +59,13 @@ export function BracketAdminClient({
         qualifyPerGroup: cfg.qualifyPerGroup,
       });
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        // Reset only if user can retry (not "already_generated")
+        if (res.error !== "already_generated") setGenClicked(false);
       } else {
         toast({
           title: "Đã tạo bảng đấu",
@@ -76,7 +86,11 @@ export function BracketAdminClient({
         roundNumber: maxRound + 1,
       });
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
       } else {
         toast({ title: "Đã sinh vòng mới" });
       }
@@ -87,7 +101,11 @@ export function BracketAdminClient({
     startTransition(async () => {
       const res = await promoteGroupQualifiers({ tournamentId: tournament.id });
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
       } else {
         toast({ title: "Đã sinh knockout" });
       }
@@ -103,7 +121,11 @@ export function BracketAdminClient({
         scoreB: sb,
       });
       if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
       }
     });
   };
@@ -131,13 +153,13 @@ export function BracketAdminClient({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         {liveMatches.length === 0 ? (
-          <Button onClick={onGenerate} disabled={pending}>
-            <Wand2 className="size-4" />
-            {pending ? "Đang tạo…" : "Tạo bảng đấu"}
+          <Button onClick={onGenerate} disabled={pending || genClicked}>
+            <Wand2 className={`size-4 ${pending ? "animate-spin" : ""}`} />
+            {pending || genClicked ? "Đang tạo bảng đấu…" : "Tạo bảng đấu"}
           </Button>
         ) : (
           <span className="rounded-md border bg-secondary px-3 py-1 text-sm">
-            {liveMatches.length} trận
+            ✅ {liveMatches.length} trận đã tạo
           </span>
         )}
         {tournament.format === "swiss" && liveMatches.length > 0 && (

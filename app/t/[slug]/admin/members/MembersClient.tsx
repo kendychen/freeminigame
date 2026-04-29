@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
+import { translateError } from "@/lib/error-messages";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import {
   addPlayer,
@@ -140,7 +141,7 @@ export function MembersClient({
       if ("error" in res) {
         toast({
           title: "Lỗi",
-          description: res.error,
+          description: translateError(res.error),
           variant: "destructive",
         });
         return;
@@ -160,7 +161,7 @@ export function MembersClient({
       if ("error" in res) {
         toast({
           title: "Lỗi",
-          description: res.error,
+          description: translateError(res.error),
           variant: "destructive",
         });
         return;
@@ -176,7 +177,7 @@ export function MembersClient({
       if ("error" in res) {
         toast({
           title: "Lỗi",
-          description: res.error,
+          description: translateError(res.error),
           variant: "destructive",
         });
       }
@@ -195,7 +196,7 @@ export function MembersClient({
       if ("error" in res) {
         toast({
           title: "Lỗi",
-          description: res.error,
+          description: translateError(res.error),
           variant: "destructive",
         });
       } else {
@@ -237,7 +238,7 @@ export function MembersClient({
         }
         toast({
           title: "Lỗi",
-          description: res.error,
+          description: translateError(res.error),
           variant: "destructive",
         });
         return;
