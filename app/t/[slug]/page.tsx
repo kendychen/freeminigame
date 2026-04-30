@@ -1,13 +1,64 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { AuthNavLink } from "@/components/nav/AuthNavLink";
 import { Button } from "@/components/ui/button";
 import { LiveTournamentView } from "./LiveTournamentView";
 
 export const revalidate = 60;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  try {
+    const svc = createServiceClient();
+    const { data: t } = await svc
+      .from("tournaments")
+      .select("name, format, status, is_public")
+      .eq("slug", slug)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (!t || !t.is_public) {
+      return {
+        title: "Giải đấu không tồn tại",
+        robots: { index: false, follow: false },
+      };
+    }
+    const formatLabel: Record<string, string> = {
+      single_elim: "Single Elimination",
+      double_elim: "Double Elimination",
+      round_robin: "Round Robin",
+      swiss: "Swiss",
+      group_knockout: "Group + Knockout",
+    };
+    const fmt = formatLabel[t.format as string] ?? t.format;
+    const title = `${t.name} — Giải đấu ${fmt}`;
+    const description = `Theo dõi giải đấu ${t.name} (${fmt}) trên Hội Nhóm Pickleball: bảng đấu, lịch thi đấu, sơ đồ KO, bảng điểm tự cập nhật.`;
+    return {
+      title,
+      description,
+      alternates: { canonical: `/t/${slug}` },
+      openGraph: {
+        type: "website",
+        title,
+        description,
+        url: `/t/${slug}`,
+        siteName: "Hội Nhóm Pickleball",
+        locale: "vi_VN",
+      },
+      twitter: { card: "summary", title, description },
+    };
+  } catch {
+    return {};
+  }
+}
 
 export default async function PublicTournamentPage({
   params,

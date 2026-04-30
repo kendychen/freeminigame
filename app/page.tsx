@@ -43,9 +43,76 @@ const FORMATS = [
   { icon: Users, name: "Group + KO", desc: "Bảng đấu + loại trực tiếp" },
 ];
 
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://hoinhompick.team/#org",
+      name: "Hội Nhóm Pickleball",
+      url: "https://hoinhompick.team",
+      logo: "https://hoinhompick.team/icon",
+      sameAs: ["https://www.facebook.com/linhnguyendac93"],
+      founder: {
+        "@type": "Person",
+        name: "Nguyễn Đắc Linh",
+        url: "https://www.facebook.com/linhnguyendac93",
+      },
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://hoinhompick.team/#website",
+      url: "https://hoinhompick.team",
+      name: "Hội Nhóm Pickleball",
+      description:
+        "Web tổ chức giải đấu Pickleball miễn phí: bốc thăm chia bảng realtime, sơ đồ thi đấu tự động, trọng tài chấm điểm qua link share.",
+      inLanguage: "vi-VN",
+      publisher: { "@id": "https://hoinhompick.team/#org" },
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "Hội Nhóm Pickleball",
+      operatingSystem: "Any",
+      applicationCategory: "SportsApplication",
+      url: "https://hoinhompick.team",
+      description:
+        "Tổ chức giải Pickleball trong vài giây — bốc thăm chia bảng realtime, sơ đồ thi đấu tự động (Single Elim, Double Elim, Round Robin, Swiss, Group + KO), Cúp phụ Series B, trọng tài chấm điểm qua link share, PWA cài như app trên điện thoại.",
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "VND",
+      },
+      featureList: [
+        "Bốc thăm chia bảng realtime",
+        "Chia đội từ thành viên (cân bằng Nam/Nữ hoặc A/B)",
+        "Sơ đồ thi đấu tự động 5 thể thức",
+        "Cúp phụ Series B",
+        "Trọng tài chấm điểm qua link share — không cần đăng ký",
+        "Tỷ số nhanh (free, không cần tài khoản)",
+        "Đa admin realtime",
+        "PWA — cài như app native",
+        "Public viewer link",
+        "Export PDF / CSV",
+      ],
+      author: {
+        "@type": "Person",
+        name: "Nguyễn Đắc Linh",
+        url: "https://www.facebook.com/linhnguyendac93",
+      },
+    },
+  ],
+};
+
 export default async function HomePage() {
   const { user } = await getOptionalUser();
   return (
+    <>
+      <script
+        type="application/ld+json"
+        // Structured data is static — no XSS risk.
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+      />
     <div className="flex flex-col flex-1">
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:h-16">
@@ -418,5 +485,6 @@ export default async function HomePage() {
         </div>
       </footer>
     </div>
+    </>
   );
 }
