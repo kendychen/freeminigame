@@ -509,19 +509,20 @@ export async function publicReopenByToken(input: { token: string }) {
 // Scoped referee tokens (per-group / per-bracket)
 // ─────────────────────────────────────────────────────────────────────
 
-/** Admin: get-or-create a referee token covering all matches in a group. */
-export async function getOrCreateGroupRefereeToken(input: {
+/** Admin: get-or-create a scoped referee token (group | bracket | match). */
+export async function getOrCreateScopedRefereeToken(input: {
   tournamentId: string;
-  groupLabel: string;
+  scope: "group" | "bracket" | "match";
+  scopeValue: string;
 }) {
   const { user, supabase } = await requireTournamentAdmin(input.tournamentId);
-  if (!input.groupLabel) return { error: "missing_id" } as const;
+  if (!input.scopeValue) return { error: "missing_id" } as const;
   const { data: existing } = await supabase
     .from("referee_tokens")
     .select("token")
     .eq("tournament_id", input.tournamentId)
-    .eq("scope", "group")
-    .eq("scope_value", input.groupLabel)
+    .eq("scope", input.scope)
+    .eq("scope_value", input.scopeValue)
     .is("revoked_at", null)
     .maybeSingle();
   if (existing?.token) return { ok: true, token: existing.token } as const;
@@ -529,12 +530,24 @@ export async function getOrCreateGroupRefereeToken(input: {
   const { error } = await supabase.from("referee_tokens").insert({
     token,
     tournament_id: input.tournamentId,
-    scope: "group",
-    scope_value: input.groupLabel,
+    scope: input.scope,
+    scope_value: input.scopeValue,
     created_by: user.id,
   });
   if (error) return { error: error.message } as const;
   return { ok: true, token } as const;
+}
+
+/** Convenience wrapper for group scope (kept for backward compatibility). */
+export async function getOrCreateGroupRefereeToken(input: {
+  tournamentId: string;
+  groupLabel: string;
+}) {
+  return getOrCreateScopedRefereeToken({
+    tournamentId: input.tournamentId,
+    scope: "group",
+    scopeValue: input.groupLabel,
+  });
 }
 
 /** Admin: revoke a scoped token. */

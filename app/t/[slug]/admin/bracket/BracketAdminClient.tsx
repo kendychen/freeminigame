@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Trophy, Wand2 } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Link2, Trophy, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { LiveTournamentView } from "../../LiveTournamentView";
@@ -12,7 +12,10 @@ import {
   generateSwissNextRound,
   promoteGroupQualifiers,
 } from "@/app/actions/bracket";
-import { updateMatchScore } from "@/app/actions/matches";
+import {
+  getOrCreateScopedRefereeToken,
+  updateMatchScore,
+} from "@/app/actions/matches";
 import type { DbMatch, DbTeam, DbTournament } from "@/types/database";
 import type { Match, Team } from "@/lib/pairing/types";
 import { translateError } from "@/lib/error-messages";
@@ -130,6 +133,46 @@ export function BracketAdminClient({
     });
   };
 
+  const onShareBracket = (bracket: "main" | "plate") => {
+    startTransition(async () => {
+      const res = await getOrCreateScopedRefereeToken({
+        tournamentId: tournament.id,
+        scope: "bracket",
+        scopeValue: bracket,
+      });
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        return;
+      }
+      const url = `${window.location.origin}/r/${res.token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast({
+          title: "Đã copy link trọng tài",
+          description: url,
+        });
+      } catch {
+        prompt("Sao chép link trọng tài:", url);
+      }
+    });
+  };
+
+  const bracketKinds = useMemo(() => {
+    const has = { main: false, plate: false };
+    for (const m of liveMatches) {
+      if (m.bracket === "main") has.main = true;
+      else if (m.bracket === "plate") has.plate = true;
+    }
+    const result: Array<{ key: "main" | "plate"; label: string }> = [];
+    if (has.main) result.push({ key: "main", label: "Cúp chính" });
+    if (has.plate) result.push({ key: "plate", label: "Cúp phụ" });
+    return result;
+  }, [liveMatches]);
+
   const onMatchClick = (id: string) => {
     const dbm = liveMatches.find((x) => x.id === id);
     if (!dbm) return;
@@ -173,6 +216,19 @@ export function BracketAdminClient({
             Tạo knockout
           </Button>
         )}
+        {bracketKinds.map((b) => (
+          <Button
+            key={b.key}
+            variant="outline"
+            size="sm"
+            onClick={() => onShareBracket(b.key)}
+            disabled={pending}
+            title={`Tạo / copy link trọng tài cho ${b.label}`}
+          >
+            <Link2 className="size-4" />
+            Link trọng tài: {b.label}
+          </Button>
+        ))}
       </div>
 
       {liveMatches.length > 0 && (

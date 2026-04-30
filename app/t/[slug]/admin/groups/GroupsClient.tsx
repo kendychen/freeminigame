@@ -23,7 +23,8 @@ import {
   getActiveDraw,
   manualAssignGroup,
 } from "@/app/actions/group-draw";
-import { ExternalLink } from "lucide-react";
+import { getOrCreateScopedRefereeToken } from "@/app/actions/matches";
+import { ExternalLink, Link2 } from "lucide-react";
 import { ChatBox } from "@/components/chat/ChatBox";
 
 interface TeamRow {
@@ -199,6 +200,34 @@ export function GroupsClient({
     });
   };
 
+  const onShareGroup = (label: string) => {
+    startTransition(async () => {
+      const res = await getOrCreateScopedRefereeToken({
+        tournamentId,
+        scope: "group",
+        scopeValue: label,
+      });
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        return;
+      }
+      const url = `${window.location.origin}/r/${res.token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast({
+          title: `Đã copy link trọng tài bảng ${label}`,
+          description: url,
+        });
+      } catch {
+        prompt("Sao chép link trọng tài:", url);
+      }
+    });
+  };
+
   const onEnsureBracket = () => {
     startTransition(async () => {
       const res = await ensureBracket(tournamentId);
@@ -331,15 +360,27 @@ export function GroupsClient({
           {groupedTeams.groups.map(([label, list]) => (
             <Card key={label}>
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between text-base">
+                <CardTitle className="flex items-center justify-between gap-2 text-base">
                   <span className="flex items-center gap-2">
                     <span className="flex size-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                       {label}
                     </span>
                     Bảng {label}
                   </span>
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {list.length} đội
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {list.length} đội
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onShareGroup(label)}
+                      disabled={pending}
+                      className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                      title={`Copy link trọng tài bảng ${label}`}
+                    >
+                      <Link2 className="size-3" />
+                      Trọng tài
+                    </button>
                   </span>
                 </CardTitle>
               </CardHeader>

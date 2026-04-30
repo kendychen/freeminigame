@@ -40,6 +40,12 @@ const ERROR_VI: Record<string, string> = {
   locked: "Phòng đã khoá",
   tournament_mismatch: "Sai giải đấu",
   negative_score: "Điểm không được âm",
+  tie_score: "Đang hoà — cần chênh điểm để kết thúc",
+  match_not_in_scope: "Trận đấu không thuộc phạm vi của link này",
+  missing_team: "Trận chưa đủ 2 đội",
+  no_result_yet: "Chưa có kết quả bốc thăm",
+  not_linked: "Phòng chưa liên kết với giải đấu",
+  invalid_token: "Link không hợp lệ hoặc đã bị thu hồi",
 };
 
 export function translateError(code: string | undefined | null): string {
