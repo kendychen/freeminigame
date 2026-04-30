@@ -59,7 +59,7 @@ export async function createTournamentGroupDraw(input: CreateGroupDrawInput) {
       participants,
       team_id_map: teamIdMap,
       linked_tournament_id: input.tournamentId,
-      status: "locked",
+      status: "lobby",
       expires_at: expiresAt.toISOString(),
     });
     if (!error) {

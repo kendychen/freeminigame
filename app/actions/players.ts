@@ -153,7 +153,7 @@ export async function createPlayerTeamDraw(input: {
       player_id_map: playerIdMap,
       team_name_pattern: input.teamNamePattern ?? "Đội {n}",
       linked_tournament_id: input.tournamentId,
-      status: "locked",
+      status: "lobby",
       expires_at: expiresAt.toISOString(),
     });
     if (!error) {
