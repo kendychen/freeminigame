@@ -10,6 +10,7 @@ const MAX_MESSAGES = 80;
 const MAX_LEN = 200;
 const MIN_INTERVAL_MS = 1500; // ~1 msg / 1.5s per user
 const STORAGE_KEY_NAME = "freeminigame:chat-name";
+const STORAGE_KEY_OPEN = "freeminigame:chat-open";
 
 export interface ChatMessage {
   id: string;
@@ -35,7 +36,8 @@ const genId = () =>
     : Math.random().toString(36).slice(2);
 
 export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: ChatBoxProps) {
-  const [open, setOpen] = useState(false);
+  // Default OPEN — user can collapse to a small launcher button if they want.
+  const [open, setOpen] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [name, setName] = useState<string>("");
@@ -46,13 +48,24 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
   > | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Load name from storage or prop
+  // Load name + open state from storage
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem(STORAGE_KEY_NAME);
     if (stored) setName(stored);
     else if (defaultName) setName(defaultName);
+    const storedOpen = localStorage.getItem(STORAGE_KEY_OPEN);
+    if (storedOpen === "0") setOpen(false);
   }, [defaultName]);
+
+  const setOpenPersist = (v: boolean) => {
+    setOpen(v);
+    try {
+      localStorage.setItem(STORAGE_KEY_OPEN, v ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Subscribe to broadcast channel
   useEffect(() => {
@@ -161,7 +174,7 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => setOpenPersist(true)}
         className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition-all hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
         aria-label="Mở chat"
       >
@@ -177,7 +190,7 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-[70vh] w-full max-w-md flex-col rounded-t-2xl border border-b-0 bg-card shadow-2xl sm:bottom-6 sm:right-6 sm:left-auto sm:mx-0 sm:h-[480px] sm:rounded-2xl sm:border-b">
+    <div className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-[60vh] w-full max-w-md flex-col rounded-t-2xl border border-b-0 bg-card shadow-2xl sm:bottom-6 sm:right-6 sm:left-auto sm:mx-0 sm:h-[calc(100vh-7rem)] sm:max-h-[640px] sm:w-[340px] sm:rounded-2xl sm:border-b">
       <header className="flex shrink-0 items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-2">
           <MessageCircle className="size-4 text-primary" />
@@ -191,7 +204,7 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
           </button>
         </div>
         <button
-          onClick={() => setOpen(false)}
+          onClick={() => setOpenPersist(false)}
           className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label="Thu nhỏ chat"
         >
