@@ -35,6 +35,8 @@ export interface BracketViewProps {
   teams: Team[];
   variant: "single" | "double";
   onMatchClick?: (matchId: string) => void;
+  /** When set, renders a small ⚖️ link on each match card → referee page. */
+  refereeBaseHref?: string;
   width?: number;
   height?: number;
 }
@@ -67,6 +69,7 @@ export function BracketView({
   teams,
   variant,
   onMatchClick,
+  refereeBaseHref,
   width: widthProp,
   height: heightProp,
 }: BracketViewProps) {
@@ -77,7 +80,11 @@ export function BracketView({
   }, [teams]);
 
   const matchComponentFactory = (props: BracketMatchProps) => (
-    <CustomMatch {...props} onClick={onMatchClick} />
+    <CustomMatch
+      {...props}
+      onClick={onMatchClick}
+      refereeBaseHref={refereeBaseHref}
+    />
   );
 
   if (variant === "single") {
@@ -176,12 +183,19 @@ function CustomMatch({
   topWon,
   bottomWon,
   onClick,
-}: BracketMatchProps & { onClick?: (id: string) => void }) {
+  refereeBaseHref,
+}: BracketMatchProps & {
+  onClick?: (id: string) => void;
+  refereeBaseHref?: string;
+}) {
+  const hasTeams =
+    !!topParty.name && !!bottomParty.name && topParty.name !== "TBD" && bottomParty.name !== "TBD";
   return (
-    <g onClick={() => onClick?.(match.id)} style={{ cursor: "pointer" }}>
+    <g style={{ cursor: "pointer" }}>
       <foreignObject x={0} y={0} width={220} height={70}>
-        <div className="rounded-md border bg-card p-1 text-xs hover:border-primary transition-colors">
+        <div className="relative rounded-md border bg-card p-1 text-xs hover:border-primary transition-colors">
           <div
+            onClick={() => onClick?.(match.id)}
             className={`flex justify-between gap-2 px-2 py-1 ${
               topWon ? "font-bold text-primary" : ""
             }`}
@@ -191,6 +205,7 @@ function CustomMatch({
           </div>
           <div className="border-t" />
           <div
+            onClick={() => onClick?.(match.id)}
             className={`flex justify-between gap-2 px-2 py-1 ${
               bottomWon ? "font-bold text-primary" : ""
             }`}
@@ -198,6 +213,30 @@ function CustomMatch({
             <span className="truncate">{bottomParty.name ?? "—"}</span>
             <span>{bottomParty.resultText ?? "-"}</span>
           </div>
+          {refereeBaseHref && hasTeams && (
+            <a
+              href={`${refereeBaseHref}/${match.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-primary/40 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+              title="Mở chế độ trọng tài"
+              aria-label="Trọng tài"
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M14.5 12.5 4 23l-3-3L11.5 9.5" />
+                <path d="M16 3 7 12l5 5 9-9" />
+              </svg>
+            </a>
+          )}
         </div>
       </foreignObject>
     </g>
