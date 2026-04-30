@@ -89,7 +89,13 @@ export function usePairLobby(
       },
       (payload: { new: PairSessionState }) => {
         if (!active) return;
-        setSession(payload.new);
+        // payload.new is the raw DB row; participantMembers is a derived field
+        // computed by the API GET endpoint. Preserve it from previous state so
+        // it doesn't get blanked on every realtime tick.
+        setSession((prev) => ({
+          ...payload.new,
+          participantMembers: prev.participantMembers,
+        }));
       },
     );
 
