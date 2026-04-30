@@ -133,36 +133,45 @@ export async function POST(
     }
     const pattern =
       (session.team_name_pattern as string | null) ?? "Đội {n}";
+    const teamRows = result.groups.map((_, gi) => ({
+      tournament_id: linkedId,
+      name: pattern.replace("{n}", String(gi + 1)),
+      seed: gi + 1,
+    }));
+    const { data: createdTeams, error: teamErr } = await sb
+      .from("teams")
+      .insert(teamRows)
+      .select("id, seed");
+    if (teamErr) {
+      console.error("Apply: bulk team create failed:", teamErr);
+      return NextResponse.json(
+        { error: teamErr.message },
+        { status: 500 },
+      );
+    }
+    teamsCreated = (createdTeams ?? []).length;
+    const teamIdBySeed = new Map<number, string>();
+    for (const t of (createdTeams ?? []) as Array<{
+      id: string;
+      seed: number | null;
+    }>) {
+      if (t.seed != null) teamIdBySeed.set(t.seed, t.id);
+    }
+    const memberRows: Array<{ team_id: string; player_id: string }> = [];
     for (let gi = 0; gi < result.groups.length; gi++) {
-      const teamName = pattern.replace("{n}", String(gi + 1));
+      const teamId = teamIdBySeed.get(gi + 1);
+      if (!teamId) continue;
       const groupIds = result.groups[gi]!;
-      const { data: createdTeam, error: teamErr } = await sb
-        .from("teams")
-        .insert({
-          tournament_id: linkedId,
-          name: teamName,
-          seed: gi + 1,
-        })
-        .select("id")
-        .single();
-      if (teamErr || !createdTeam) {
-        console.error("Apply: team create failed:", teamErr);
-        continue;
+      for (const pid of groupIds) {
+        const playerId = playerIdMap[pid];
+        if (playerId) memberRows.push({ team_id: teamId, player_id: playerId });
       }
-      teamsCreated += 1;
-      const memberRows = groupIds
-        .map((pid) => playerIdMap[pid])
-        .filter((id): id is string => !!id)
-        .map((playerId) => ({
-          team_id: createdTeam.id,
-          player_id: playerId,
-        }));
-      if (memberRows.length > 0) {
-        const { error: memErr } = await sb
-          .from("team_members")
-          .insert(memberRows);
-        if (memErr) console.error("Apply: member insert failed:", memErr);
-      }
+    }
+    if (memberRows.length > 0) {
+      const { error: memErr } = await sb
+        .from("team_members")
+        .insert(memberRows);
+      if (memErr) console.error("Apply: member insert failed:", memErr);
     }
   }
 
