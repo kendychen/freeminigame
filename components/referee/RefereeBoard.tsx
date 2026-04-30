@@ -32,13 +32,17 @@ export interface RefereeBoardProps {
   exitHref?: string | null;
   /** Optional element rendered in the header right slot (eg. share button). */
   headerExtra?: React.ReactNode;
-  /** Increment one side by delta (typically ±1). Should resolve once server confirms. */
-  onIncrement: (side: "a" | "b", delta: number) => Promise<{ error?: string }>;
-  /** Reset both scores to 0-0. */
-  onReset: () => Promise<{ error?: string }>;
-  /** Finalize the match (declare winner from current scores, advance bracket). */
-  onFinalize?: () => Promise<{ error?: string }>;
-  /** Reopen a completed match for re-scoring. */
+  /** Optional: legacy fire-and-forget per-tap save. Most callers should leave
+   *  this undefined — score is local until Kết thúc lưu một phát. */
+  onIncrement?: (side: "a" | "b", delta: number) => Promise<{ error?: string }>;
+  /** Local reset by default; if provided, also called for server-side cleanup. */
+  onReset?: () => Promise<{ error?: string }>;
+  /** Finalize: receives the FINAL scores. Saves once + declares winner. */
+  onFinalize?: (
+    scoreA: number,
+    scoreB: number,
+  ) => Promise<{ error?: string }>;
+  /** Reopen a completed match for re-scoring (server resets winner). */
   onReopen?: () => Promise<{ error?: string }>;
   /** Optional team-id → member display names. Shown under each team name. */
   membersByTeam?: Record<string, string[]>;
@@ -58,37 +62,57 @@ export function RefereeBoard({
   membersByTeam,
 }: RefereeBoardProps) {
   const [pending, start] = useTransition();
-  const [optimisticA, setOptimisticA] = useState<number | null>(null);
-  const [optimisticB, setOptimisticB] = useState<number | null>(null);
-  // Brief flash after a successful save so the user knows it landed without
-  // the "Đang lưu…" indicator lingering through useTransition's pending state.
-  const [savedFlash, setSavedFlash] = useState(false);
-  const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flashSaved = () => {
-    if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
-    setSavedFlash(true);
-    savedFlashTimer.current = setTimeout(() => setSavedFlash(false), 700);
-  };
+  // Local-first: scores live in component state. localStorage backup so a
+  // refresh / accidental tab close mid-match doesn't lose progress.
+  const lsKey = `ref-score:${match.id}`;
+  const isCompleted = match.status === "completed";
+  const [scoreA, setScoreA] = useState<number>(match.score_a);
+  const [scoreB, setScoreB] = useState<number>(match.score_b);
+
+  // On mount: if completed → DB wins; else if localStorage has scores, restore
   useEffect(() => {
-    return () => {
-      if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
-    };
-  }, []);
+    if (isCompleted) return;
+    try {
+      const raw = localStorage.getItem(lsKey);
+      if (!raw) return;
+      const v = JSON.parse(raw) as { a: number; b: number };
+      if (typeof v.a === "number" && typeof v.b === "number") {
+        setScoreA(v.a);
+        setScoreB(v.b);
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.id]);
+
+  // Persist to localStorage on every change
+  useEffect(() => {
+    if (isCompleted) return;
+    try {
+      localStorage.setItem(lsKey, JSON.stringify({ a: scoreA, b: scoreB }));
+    } catch {
+      /* ignore */
+    }
+  }, [scoreA, scoreB, isCompleted, lsKey]);
+
+  // When match completes (final saved), drop the local backup
+  useEffect(() => {
+    if (isCompleted) {
+      try {
+        localStorage.removeItem(lsKey);
+      } catch {
+        /* ignore */
+      }
+      // Sync displayed scores from DB after finalize
+      setScoreA(match.score_a);
+      setScoreB(match.score_b);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCompleted, match.score_a, match.score_b]);
 
   const teamA = teams.find((t) => t.id === match.team_a_id);
   const teamB = teams.find((t) => t.id === match.team_b_id);
-  const scoreA = optimisticA ?? match.score_a;
-  const scoreB = optimisticB ?? match.score_b;
-
-  // Drop optimistic value when server catches up
-  useEffect(() => {
-    if (optimisticA !== null && match.score_a === optimisticA) {
-      setOptimisticA(null);
-    }
-    if (optimisticB !== null && match.score_b === optimisticB) {
-      setOptimisticB(null);
-    }
-  }, [match.score_a, match.score_b, optimisticA, optimisticB]);
 
   const bump = (side: "a" | "b", delta: number) => {
     if (!match.team_a_id || !match.team_b_id) {
@@ -99,52 +123,37 @@ export function RefereeBoard({
       });
       return;
     }
-    if (match.status === "completed" && delta > 0) {
+    if (isCompleted && delta > 0) {
       toast({
         title: "Trận đã kết thúc",
-        description: "Reset trước nếu muốn nhập lại.",
+        description: "Mở lại trước khi nhập lại.",
       });
       return;
     }
-    const cur = side === "a" ? scoreA : scoreB;
-    const next = Math.max(0, cur + delta);
-    if (side === "a") setOptimisticA(next);
-    else setOptimisticB(next);
-    // Fire-and-forget — don't gate on useTransition. Optimistic UI already
-    // updated; we just need to either flash a tick on success or roll back
-    // + toast on error. Avoids "Đang lưu…" sticking around between rapid taps.
-    void (async () => {
-      const res = await onIncrement(side, delta);
-      if (res.error) {
-        if (side === "a") setOptimisticA(null);
-        else setOptimisticB(null);
-        toast({
-          title: "Lỗi",
-          description: translateError(res.error),
-          variant: "destructive",
-        });
-      } else {
-        flashSaved();
-      }
-    })();
+    if (side === "a") setScoreA((v) => Math.max(0, v + delta));
+    else setScoreB((v) => Math.max(0, v + delta));
+    // Optional fire-and-forget legacy path (most callers don't pass this)
+    if (onIncrement) {
+      void onIncrement(side, delta).catch(() => {});
+    }
   };
 
   const reset = () => {
     if (!confirm("Reset điểm trận này về 0-0?")) return;
-    setOptimisticA(0);
-    setOptimisticB(0);
-    start(async () => {
-      const res = await onReset();
-      if (res.error) {
-        setOptimisticA(null);
-        setOptimisticB(null);
-        toast({
-          title: "Lỗi",
-          description: translateError(res.error),
-          variant: "destructive",
-        });
-      }
-    });
+    setScoreA(0);
+    setScoreB(0);
+    if (onReset) {
+      start(async () => {
+        const res = await onReset();
+        if (res.error) {
+          toast({
+            title: "Lỗi",
+            description: translateError(res.error),
+            variant: "destructive",
+          });
+        }
+      });
+    }
   };
 
   // Two-tap confirm: first tap arms the button (visual), second tap finalizes.
@@ -176,7 +185,7 @@ export function RefereeBoard({
     }
     setArmedFinalize(false);
     start(async () => {
-      const res = await onFinalize();
+      const res = await onFinalize(scoreA, scoreB);
       if (res.error) {
         toast({
           title: "Lỗi kết thúc",
@@ -185,6 +194,11 @@ export function RefereeBoard({
         });
       } else {
         toast({ title: "Đã kết thúc trận" });
+        try {
+          localStorage.removeItem(lsKey);
+        } catch {
+          /* ignore */
+        }
       }
     });
   };
@@ -310,13 +324,13 @@ export function RefereeBoard({
             Chưa bắt đầu
           </span>
         )}
-        {savedFlash && (
-          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-600 dark:text-emerald-400">
-            ✓ Đã lưu
-          </span>
-        )}
-        {pending && !savedFlash && (
+        {pending && (
           <span className="text-muted-foreground">Đang lưu…</span>
+        )}
+        {!isCompleted && (scoreA > 0 || scoreB > 0) && !pending && (
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 font-semibold text-amber-600 dark:text-amber-400">
+            • Chưa lưu — bấm Kết thúc
+          </span>
         )}
       </div>
 

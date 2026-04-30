@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { RefereeBoard } from "@/components/referee/RefereeBoard";
 import {
-  publicIncrementByToken,
-  publicResetByToken,
   publicFinalizeByToken,
   publicReopenByToken,
 } from "@/app/actions/matches";
@@ -59,39 +57,13 @@ export function PublicRefereeClient({
     };
   }, [token]);
 
-  const onIncrement = async (side: "a" | "b", delta: number) => {
-    const res = await publicIncrementByToken({ token, side, delta });
-    if ("error" in res) return { error: res.error };
-    // Apply server-confirmed values immediately so the board doesn't wait for the
-    // next poll tick.
-    setMatch((m) => ({
-      ...m,
-      score_a: res.scoreA,
-      score_b: res.scoreB,
-      status: res.status,
-      winner_team_id: res.winner ?? null,
-    }));
-    return {};
-  };
-
-  const onReset = async () => {
-    const res = await publicResetByToken({ token });
+  const onFinalize = async (scoreA: number, scoreB: number) => {
+    const res = await publicFinalizeByToken({ token, scoreA, scoreB });
     if ("error" in res) return { error: res.error };
     setMatch((m) => ({
       ...m,
-      score_a: 0,
-      score_b: 0,
-      status: "pending",
-      winner_team_id: null,
-    }));
-    return {};
-  };
-
-  const onFinalize = async () => {
-    const res = await publicFinalizeByToken({ token });
-    if ("error" in res) return { error: res.error };
-    setMatch((m) => ({
-      ...m,
+      score_a: scoreA,
+      score_b: scoreB,
       status: "completed",
       winner_team_id: res.winner ?? null,
     }));
@@ -116,8 +88,6 @@ export function PublicRefereeClient({
       tournamentName={tournamentName}
       subtitle="Trọng tài (link chia sẻ)"
       exitHref={null}
-      onIncrement={onIncrement}
-      onReset={onReset}
       onFinalize={onFinalize}
       onReopen={onReopen}
       membersByTeam={membersByTeam}

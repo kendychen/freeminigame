@@ -67,70 +67,13 @@ export function PublicGroupRefereeClient({
   const active = activeId ? matches.find((m) => m.id === activeId) : null;
 
   if (active) {
-    const onIncrement = async (side: "a" | "b", delta: number) => {
-      // Direct browser → Supabase RPC (single round-trip ~200ms vs the 600-1200ms
-      // we used to spend going through a Vercel server action).
-      const sb = getSupabaseBrowser();
-      const { data, error } = await sb.rpc("score_increment_by_scoped_token", {
-        p_token: token,
-        p_match_id: active.id,
-        p_side: side,
-        p_delta: delta,
-      });
-      if (error) return { error: error.message };
-      const res = data as {
-        ok?: boolean;
-        error?: string;
-        score_a?: number;
-        score_b?: number;
-        status?: string;
-        winner_team_id?: string | null;
-      };
-      if (res?.error) return { error: res.error };
-      setMatches((prev) =>
-        prev.map((m) =>
-          m.id === active.id
-            ? {
-                ...m,
-                score_a: res.score_a ?? m.score_a,
-                score_b: res.score_b ?? m.score_b,
-                status: (res.status as DbMatch["status"]) ?? m.status,
-                winner_team_id: res.winner_team_id ?? m.winner_team_id,
-              }
-            : m,
-        ),
-      );
-      return {};
-    };
-    const onReset = async () => {
-      const sb = getSupabaseBrowser();
-      const { data, error } = await sb.rpc("score_reset_by_scoped_token", {
-        p_token: token,
-        p_match_id: active.id,
-      });
-      if (error) return { error: error.message };
-      const res = data as { ok?: boolean; error?: string };
-      if (res?.error) return { error: res.error };
-      setMatches((prev) =>
-        prev.map((m) =>
-          m.id === active.id
-            ? {
-                ...m,
-                score_a: 0,
-                score_b: 0,
-                status: "pending",
-                winner_team_id: null,
-              }
-            : m,
-        ),
-      );
-      return {};
-    };
-    const onFinalize = async () => {
+    const onFinalize = async (scoreA: number, scoreB: number) => {
       const sb = getSupabaseBrowser();
       const { data, error } = await sb.rpc("score_finalize_by_scoped_token", {
         p_token: token,
         p_match_id: active.id,
+        p_score_a: scoreA,
+        p_score_b: scoreB,
       });
       if (error) return { error: error.message };
       const res = data as {
@@ -144,6 +87,8 @@ export function PublicGroupRefereeClient({
           m.id === active.id
             ? {
                 ...m,
+                score_a: scoreA,
+                score_b: scoreB,
                 status: "completed",
                 winner_team_id: res.winner_team_id ?? null,
               }
@@ -185,8 +130,6 @@ export function PublicGroupRefereeClient({
             : "Trọng tài (link chia sẻ)"
         }
         exitHref={null}
-        onIncrement={onIncrement}
-        onReset={onReset}
         onFinalize={onFinalize}
         onReopen={onReopen}
         membersByTeam={membersByTeam}

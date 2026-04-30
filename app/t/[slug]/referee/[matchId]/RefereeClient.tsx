@@ -41,36 +41,14 @@ export function RefereeClient({
     initialMatch.referee_token,
   );
 
-  // Direct supabase.rpc — bypasses Vercel server-action chain (was 600-1000ms),
-  // single round-trip browser → Supabase ≈200ms.
-  const onIncrement = async (side: "a" | "b", delta: number) => {
-    const sb = getSupabaseBrowser();
-    const { data, error } = await sb.rpc("score_increment_by_owner", {
-      p_match_id: match.id,
-      p_side: side,
-      p_delta: delta,
-    });
-    if (error) return { error: error.message };
-    const res = data as { ok?: boolean; error?: string };
-    if (res?.error) return { error: res.error };
-    return {};
-  };
-
-  const onReset = async () => {
-    const sb = getSupabaseBrowser();
-    const { data, error } = await sb.rpc("score_reset_by_owner", {
-      p_match_id: match.id,
-    });
-    if (error) return { error: error.message };
-    const res = data as { ok?: boolean; error?: string };
-    if (res?.error) return { error: res.error };
-    return {};
-  };
-
-  const onFinalize = async () => {
+  // Local-first: scores live client-side. Server is only hit on Kết thúc /
+  // Mở lại — single RPC round-trip ≈200ms each.
+  const onFinalize = async (scoreA: number, scoreB: number) => {
     const sb = getSupabaseBrowser();
     const { data, error } = await sb.rpc("score_finalize_by_owner", {
       p_match_id: match.id,
+      p_score_a: scoreA,
+      p_score_b: scoreB,
     });
     if (error) return { error: error.message };
     const res = data as { ok?: boolean; error?: string };
@@ -144,8 +122,6 @@ export function RefereeClient({
       teams={teams}
       tournamentName={tournamentName}
       exitHref={`/t/${tournamentSlug}/admin/bracket`}
-      onIncrement={onIncrement}
-      onReset={onReset}
       onFinalize={onFinalize}
       onReopen={onReopen}
       membersByTeam={membersByTeam}

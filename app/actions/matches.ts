@@ -431,14 +431,22 @@ export async function publicResetByToken(input: { token: string }) {
   return mutateMatchByToken(input.token, () => ({ scoreA: 0, scoreB: 0 }));
 }
 
-/** Public: explicit finalize for the legacy per-match token. */
-export async function publicFinalizeByToken(input: { token: string }) {
+/** Public: explicit finalize for the legacy per-match token.
+ *  Accepts the final scores (local-first). */
+export async function publicFinalizeByToken(input: {
+  token: string;
+  scoreA: number;
+  scoreB: number;
+}) {
   if (
     !input.token ||
     input.token.length < 16 ||
     !/^[A-Za-z0-9_-]+$/.test(input.token)
   ) {
     return { error: "invalid_token" } as const;
+  }
+  if (input.scoreA < 0 || input.scoreB < 0) {
+    return { error: "negative_score" } as const;
   }
   const svc = createServiceClient();
   const { data: match } = await svc
@@ -447,14 +455,18 @@ export async function publicFinalizeByToken(input: { token: string }) {
     .eq("referee_token", input.token)
     .maybeSingle();
   if (!match) return { error: "invalid_token" } as const;
-  const a = match.score_a as number;
-  const b = match.score_b as number;
-  if (a === b) return { error: "tie_score" } as const;
-  const winner = a > b ? match.team_a_id : match.team_b_id;
+  if (input.scoreA === input.scoreB) return { error: "tie_score" } as const;
+  const winner =
+    input.scoreA > input.scoreB ? match.team_a_id : match.team_b_id;
   if (!winner) return { error: "missing_team" } as const;
   const { error } = await svc
     .from("matches")
-    .update({ status: "completed", winner_team_id: winner })
+    .update({
+      score_a: input.scoreA,
+      score_b: input.scoreB,
+      status: "completed",
+      winner_team_id: winner,
+    })
     .eq("id", match.id);
   if (error) return { error: error.message } as const;
   if (
