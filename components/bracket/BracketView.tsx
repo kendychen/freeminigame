@@ -37,15 +37,20 @@ export interface BracketViewProps {
   onMatchClick?: (matchId: string) => void;
   /** When set, renders a small ⚖️ link on each match card → referee page. */
   refereeBaseHref?: string;
+  /** Optional team-id → member display names. Shown under each team name. */
+  membersByTeam?: Record<string, string[]>;
   width?: number;
   height?: number;
 }
 
 // Approximate sizes for layout calculation. The g-loot lib uses ~270x70 per
-// match card with vertical spacing.
-const MATCH_HEIGHT = 90;
+// match card with vertical spacing. Bumped to 110 to fit a tiny member-names
+// subline under each team name.
+const MATCH_HEIGHT = 110;
 const ROUND_WIDTH = 320;
 const PADDING = 80;
+const CARD_WIDTH = 240;
+const CARD_HEIGHT = 96;
 
 function calcSize(matches: { round: number }[]): {
   width: number;
@@ -70,6 +75,7 @@ export function BracketView({
   variant,
   onMatchClick,
   refereeBaseHref,
+  membersByTeam,
   width: widthProp,
   height: heightProp,
 }: BracketViewProps) {
@@ -84,6 +90,7 @@ export function BracketView({
       {...props}
       onClick={onMatchClick}
       refereeBaseHref={refereeBaseHref}
+      membersByTeam={membersByTeam}
     />
   );
 
@@ -168,8 +175,18 @@ interface SVGWrapperProps {
 
 interface BracketMatchProps {
   match: { id: string; state: string };
-  topParty: { name?: string; isWinner?: boolean; resultText?: string | number };
-  bottomParty: { name?: string; isWinner?: boolean; resultText?: string | number };
+  topParty: {
+    id?: string;
+    name?: string;
+    isWinner?: boolean;
+    resultText?: string | number;
+  };
+  bottomParty: {
+    id?: string;
+    name?: string;
+    isWinner?: boolean;
+    resultText?: string | number;
+  };
   topWon?: boolean;
   bottomWon?: boolean;
   x?: number;
@@ -184,34 +201,56 @@ function CustomMatch({
   bottomWon,
   onClick,
   refereeBaseHref,
+  membersByTeam,
 }: BracketMatchProps & {
   onClick?: (id: string) => void;
   refereeBaseHref?: string;
+  membersByTeam?: Record<string, string[]>;
 }) {
   const hasTeams =
     !!topParty.name && !!bottomParty.name && topParty.name !== "TBD" && bottomParty.name !== "TBD";
+  const aMembers = topParty.id ? membersByTeam?.[topParty.id] ?? [] : [];
+  const bMembers = bottomParty.id ? membersByTeam?.[bottomParty.id] ?? [] : [];
   return (
     <g style={{ cursor: "pointer" }}>
-      <foreignObject x={0} y={0} width={220} height={70}>
-        <div className="relative rounded-md border bg-card p-1 text-xs hover:border-primary transition-colors">
+      <foreignObject x={0} y={0} width={CARD_WIDTH} height={CARD_HEIGHT}>
+        <div className="relative rounded-md border bg-card p-1 text-[11px] hover:border-primary transition-colors">
           <div
             onClick={() => onClick?.(match.id)}
-            className={`flex justify-between gap-2 px-2 py-1 ${
+            className={`flex justify-between gap-2 px-2 py-0.5 ${
               topWon ? "font-bold text-primary" : ""
             }`}
           >
-            <span className="truncate">{topParty.name ?? "—"}</span>
-            <span>{topParty.resultText ?? "-"}</span>
+            <span className="flex flex-1 flex-col truncate">
+              <span className="truncate font-medium">
+                {topParty.name ?? "—"}
+              </span>
+              {aMembers.length > 0 && (
+                <span className="truncate text-[9px] leading-tight text-muted-foreground">
+                  {aMembers.join(" · ")}
+                </span>
+              )}
+            </span>
+            <span className="self-start">{topParty.resultText ?? "-"}</span>
           </div>
           <div className="border-t" />
           <div
             onClick={() => onClick?.(match.id)}
-            className={`flex justify-between gap-2 px-2 py-1 ${
+            className={`flex justify-between gap-2 px-2 py-0.5 ${
               bottomWon ? "font-bold text-primary" : ""
             }`}
           >
-            <span className="truncate">{bottomParty.name ?? "—"}</span>
-            <span>{bottomParty.resultText ?? "-"}</span>
+            <span className="flex flex-1 flex-col truncate">
+              <span className="truncate font-medium">
+                {bottomParty.name ?? "—"}
+              </span>
+              {bMembers.length > 0 && (
+                <span className="truncate text-[9px] leading-tight text-muted-foreground">
+                  {bMembers.join(" · ")}
+                </span>
+              )}
+            </span>
+            <span className="self-start">{bottomParty.resultText ?? "-"}</span>
           </div>
           {refereeBaseHref && hasTeams && (
             <a

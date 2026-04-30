@@ -289,6 +289,7 @@ export function LiveTournamentView({
                       matches={gMatches}
                       tiebreakers={tiebreakers}
                       randomSeed={randomSeed}
+                      membersByTeam={membersByTeam}
                     />
                   </div>
                 );
@@ -300,6 +301,7 @@ export function LiveTournamentView({
               matches={filteredMatches}
               tiebreakers={tiebreakers}
               randomSeed={randomSeed}
+              membersByTeam={membersByTeam}
             />
           )}
         </>

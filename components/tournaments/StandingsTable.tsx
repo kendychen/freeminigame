@@ -12,6 +12,8 @@ export interface StandingsTableProps {
   groupLabel?: string;
   randomSeed?: number;
   highlight?: number; // top N
+  /** Optional team-id → member display names. Shown under each team name. */
+  membersByTeam?: Record<string, string[]>;
 }
 
 export function StandingsTable({
@@ -21,6 +23,7 @@ export function StandingsTable({
   groupLabel,
   randomSeed,
   highlight,
+  membersByTeam,
 }: StandingsTableProps) {
   const standings = useMemo(
     () =>
@@ -70,7 +73,17 @@ export function StandingsTable({
                 }
               >
                 <td className="px-3 py-2">{s.rank}</td>
-                <td className="px-3 py-2">{team?.name ?? "—"}</td>
+                <td className="px-3 py-2">
+                  <div className="flex flex-col gap-0.5">
+                    <span>{team?.name ?? "—"}</span>
+                    {membersByTeam?.[s.teamId] &&
+                      membersByTeam[s.teamId]!.length > 0 && (
+                        <span className="text-[11px] font-normal text-muted-foreground">
+                          {membersByTeam[s.teamId]!.join(" · ")}
+                        </span>
+                      )}
+                  </div>
+                </td>
                 <td className="px-2 py-2 text-center">{s.played}</td>
                 <td className="px-2 py-2 text-center">{s.wins}</td>
                 <td className="px-2 py-2 text-center">{s.draws}</td>
