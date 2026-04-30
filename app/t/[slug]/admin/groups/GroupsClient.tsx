@@ -20,8 +20,10 @@ import {
   clearTournamentGroups,
   createTournamentGroupDraw,
   ensureBracket,
+  getActiveDraw,
   manualAssignGroup,
 } from "@/app/actions/group-draw";
+import { ExternalLink } from "lucide-react";
 import { ChatBox } from "@/components/chat/ChatBox";
 
 interface TeamRow {
@@ -47,6 +49,36 @@ export function GroupsClient({
   const [teams, setTeams] = useState<TeamRow[]>(initialTeams);
   const [groupSize, setGroupSize] = useState(4);
   const [pending, startTransition] = useTransition();
+  const [activeDraw, setActiveDraw] = useState<{
+    code: string;
+    host_token: string;
+    status: string;
+  } | null>(null);
+
+  // Poll the active linked pair_session every 3s so the button locks as soon
+  // as another tab/user creates one.
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      const res = await getActiveDraw(tournamentId);
+      if (!mounted) return;
+      if ("active" in res && res.active) {
+        setActiveDraw({
+          code: res.code,
+          host_token: res.host_token,
+          status: res.status,
+        });
+      } else {
+        setActiveDraw(null);
+      }
+    };
+    void refresh();
+    const interval = setInterval(refresh, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [tournamentId]);
 
   // Realtime: refresh teams on changes
   useEffect(() => {
@@ -109,6 +141,17 @@ export function GroupsClient({
     startTransition(async () => {
       const res = await createTournamentGroupDraw({ tournamentId, groupSize });
       if ("error" in res) {
+        if (res.error === "draw_in_progress" && "existingCode" in res) {
+          window.open(
+            `/pair/${res.existingCode}?host=${res.existingHostToken}`,
+            "_blank",
+          );
+          toast({
+            title: "Đã có phiên bốc thăm",
+            description: "Mở lại phòng đang chạy",
+          });
+          return;
+        }
         toast({
           title: "Lỗi",
           description: translateError(res.error),
@@ -116,6 +159,11 @@ export function GroupsClient({
         });
         return;
       }
+      setActiveDraw({
+        code: res.code,
+        host_token: res.host_token,
+        status: "lobby",
+      });
       window.open(`/pair/${res.code}?host=${res.host_token}`, "_blank");
       toast({
         title: "Đã mở phòng bốc thăm",
@@ -217,17 +265,44 @@ export function GroupsClient({
             </div>
           </div>
 
+          {activeDraw && !hasGroups && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <p className="font-semibold text-amber-700 dark:text-amber-400">
+                🎲 Phiên bốc thăm đang chạy
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Trạng thái: <strong>{activeDraw.status}</strong> · Mã{" "}
+                <code>{activeDraw.code}</code>
+              </p>
+              <a
+                href={`/pair/${activeDraw.code}?host=${activeDraw.host_token}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline"
+              >
+                <ExternalLink className="size-3" />
+                Mở phòng host
+              </a>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={onLaunchDraw}
-              disabled={pending || teams.length < groupSize || hasGroups}
+              disabled={
+                pending ||
+                teams.length < groupSize ||
+                hasGroups ||
+                !!activeDraw
+              }
             >
               <Dice5 className="size-4" />
               {pending
                 ? "Đang tạo phòng…"
                 : hasGroups
                   ? "✅ Đã bốc thăm xong"
-                  : "🎲 Bốc thăm chia bảng realtime"}
+                  : activeDraw
+                    ? "🔒 Đang có phiên bốc thăm…"
+                    : "🎲 Bốc thăm chia bảng realtime"}
             </Button>
             {hasGroups && (
               <Button

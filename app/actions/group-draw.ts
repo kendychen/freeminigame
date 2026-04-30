@@ -30,6 +30,24 @@ export async function createTournamentGroupDraw(input: CreateGroupDrawInput) {
     .single();
   if (!tournament) return { error: "tournament_not_found" } as const;
 
+  // Lock: refuse if any alive pair_session already linked to this tournament
+  const svcCheck = createServiceClient();
+  const { data: existingSession } = await svcCheck
+    .from("pair_sessions")
+    .select("code, host_token, status")
+    .eq("linked_tournament_id", input.tournamentId)
+    .gte("expires_at", new Date().toISOString())
+    .neq("status", "closed")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (existingSession && existingSession.length > 0 && existingSession[0]) {
+    return {
+      error: "draw_in_progress",
+      existingCode: existingSession[0].code,
+      existingHostToken: existingSession[0].host_token,
+    } as const;
+  }
+
   const { data: teams } = await supabase
     .from("teams")
     .select("id, name")
@@ -110,6 +128,7 @@ export async function getActiveDraw(tournamentId: string) {
     .select("code, host_token, status, shuffle_count, created_at")
     .eq("linked_tournament_id", tournamentId)
     .gte("expires_at", new Date().toISOString())
+    .neq("status", "closed")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
