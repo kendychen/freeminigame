@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Trophy, Mail, ArrowLeft } from "lucide-react";
@@ -33,9 +33,22 @@ function LoginInner() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") ?? "/dashboard";
+  const oauthError = params.get("oauth_error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Surface OAuth callback errors so users on mobile actually see why
+  // 'Tiếp tục với Google' bounced them back here.
+  useEffect(() => {
+    if (oauthError) {
+      toast({
+        title: "Đăng nhập Google thất bại",
+        description: oauthError,
+        variant: "destructive",
+      });
+    }
+  }, [oauthError]);
 
   const supabaseConfigured =
     typeof process !== "undefined" &&
@@ -104,6 +117,17 @@ function LoginInner() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {oauthError && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                <p className="font-semibold">Đăng nhập Google thất bại</p>
+                <p className="mt-1 break-words">{oauthError}</p>
+                <p className="mt-2 opacity-90">
+                  Nếu đang ở Zalo / Messenger, bấm <strong>⋮</strong> → mở
+                  trong Chrome / Safari rồi thử lại. Nếu đang ở Chrome/Safari
+                  mà vẫn lỗi, kiểm tra Site URL trong Supabase dashboard.
+                </p>
+              </div>
+            )}
             <Button
               variant="outline"
               className="w-full"
