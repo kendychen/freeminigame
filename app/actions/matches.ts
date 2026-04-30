@@ -90,8 +90,12 @@ async function advanceTeamIntoMatch(
 
 /**
  * Atomic +/- score increment for referee mode.
- * Reads current row, applies delta, then writes — same code path as updateMatchScore.
- * Concurrent referees on the same match: last write wins (acceptable for live scoring).
+ * Reads current row, applies delta, then writes.
+ *
+ * Does NOT declare a winner from the score — completion is explicit via
+ * `finalizeMatch`. Status flips to 'live' once any score > 0, otherwise
+ * stays 'pending'. If the match was already completed, scores can still
+ * be tweaked but status remains 'completed'.
  */
 export async function incrementScore(input: {
   matchId: string;
@@ -119,13 +123,8 @@ export async function incrementScore(input: {
     (match.score_b as number) + (input.side === "b" ? input.delta : 0),
   );
 
-  const winner =
-    nextA === nextB
-      ? null
-      : nextA > nextB
-        ? match.team_a_id
-        : match.team_b_id;
-  const status = winner
+  const wasCompleted = match.status === "completed";
+  const status = wasCompleted
     ? "completed"
     : nextA + nextB > 0
       ? "live"
@@ -136,19 +135,61 @@ export async function incrementScore(input: {
     .update({
       score_a: nextA,
       score_b: nextB,
-      winner_team_id: winner,
       status,
       updated_by: user.id,
     })
     .eq("id", input.matchId);
   if (error) return { error: error.message } as const;
 
+  return {
+    ok: true,
+    scoreA: nextA,
+    scoreB: nextB,
+    status,
+    winner: match.winner_team_id ?? null,
+  } as const;
+}
+
+/**
+ * Explicit match-finalize. Picks the winner from the current scores
+ * (or rejects if tied), sets status='completed', and advances winner/loser
+ * into the next bracket slot.
+ */
+export async function finalizeMatch(input: {
+  matchId: string;
+  tournamentId: string;
+}) {
+  const { user, supabase } = await requireTournamentAdmin(input.tournamentId);
+  const { data: match } = await supabase
+    .from("matches")
+    .select("*")
+    .eq("id", input.matchId)
+    .single();
+  if (!match) return { error: "not_found" } as const;
+  if (match.tournament_id !== input.tournamentId) {
+    return { error: "tournament_mismatch" } as const;
+  }
+  const a = match.score_a as number;
+  const b = match.score_b as number;
+  if (a === b) return { error: "tie_score" } as const;
+  const winner = a > b ? match.team_a_id : match.team_b_id;
+  if (!winner) return { error: "missing_team" } as const;
+
+  const { error } = await supabase
+    .from("matches")
+    .update({
+      status: "completed",
+      winner_team_id: winner,
+      updated_by: user.id,
+    })
+    .eq("id", input.matchId);
+  if (error) return { error: error.message } as const;
+
   if (
-    winner &&
-    (match.bracket === "main" ||
-      match.bracket === "plate" ||
-      match.bracket === "winners" ||
-      match.bracket === "losers")
+    match.bracket === "main" ||
+    match.bracket === "plate" ||
+    match.bracket === "winners" ||
+    match.bracket === "losers"
   ) {
     if (match.next_win_match_id) {
       await advanceTeamIntoMatch(supabase, match.next_win_match_id, winner);
@@ -161,13 +202,38 @@ export async function incrementScore(input: {
       }
     }
   }
-  return {
-    ok: true,
-    scoreA: nextA,
-    scoreB: nextB,
-    status,
-    winner,
-  } as const;
+  return { ok: true, winner } as const;
+}
+
+/** Reopen a completed match for re-scoring (clears winner, keeps scores). */
+export async function reopenMatch(input: {
+  matchId: string;
+  tournamentId: string;
+}) {
+  const { user, supabase } = await requireTournamentAdmin(input.tournamentId);
+  const { data: match } = await supabase
+    .from("matches")
+    .select("score_a, score_b, tournament_id")
+    .eq("id", input.matchId)
+    .single();
+  if (!match) return { error: "not_found" } as const;
+  if (match.tournament_id !== input.tournamentId) {
+    return { error: "tournament_mismatch" } as const;
+  }
+  const status =
+    (match.score_a as number) + (match.score_b as number) > 0
+      ? "live"
+      : "pending";
+  const { error } = await supabase
+    .from("matches")
+    .update({
+      status,
+      winner_team_id: null,
+      updated_by: user.id,
+    })
+    .eq("id", input.matchId);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
 }
 
 export async function recordMatchSet(input: {
@@ -296,13 +362,9 @@ async function mutateMatchByToken(
   });
   if (scoreA < 0 || scoreB < 0) return { error: "negative_score" } as const;
 
-  const winner =
-    scoreA === scoreB
-      ? null
-      : scoreA > scoreB
-        ? match.team_a_id
-        : match.team_b_id;
-  const status = winner
+  // Increment never auto-completes; finalize is explicit (publicFinalizeByToken).
+  const wasCompleted = match.status === "completed";
+  const status = wasCompleted
     ? "completed"
     : scoreA + scoreB > 0
       ? "live"
@@ -313,36 +375,17 @@ async function mutateMatchByToken(
     .update({
       score_a: scoreA,
       score_b: scoreB,
-      winner_team_id: winner,
       status,
     })
     .eq("id", match.id);
   if (error) return { error: error.message } as const;
 
-  if (
-    winner &&
-    (match.bracket === "main" ||
-      match.bracket === "plate" ||
-      match.bracket === "winners" ||
-      match.bracket === "losers")
-  ) {
-    if (match.next_win_match_id) {
-      await advanceTeamIntoMatchSvc(svc, match.next_win_match_id, winner);
-    }
-    if (match.next_loss_match_id) {
-      const loser =
-        winner === match.team_a_id ? match.team_b_id : match.team_a_id;
-      if (loser) {
-        await advanceTeamIntoMatchSvc(svc, match.next_loss_match_id, loser);
-      }
-    }
-  }
   return {
     ok: true,
     scoreA,
     scoreB,
     status,
-    winner,
+    winner: match.winner_team_id ?? null,
   } as const;
 }
 
@@ -386,4 +429,313 @@ export async function publicIncrementByToken(input: {
 /** Public: reset both scores to 0-0 by referee token. */
 export async function publicResetByToken(input: { token: string }) {
   return mutateMatchByToken(input.token, () => ({ scoreA: 0, scoreB: 0 }));
+}
+
+/** Public: explicit finalize for the legacy per-match token. */
+export async function publicFinalizeByToken(input: { token: string }) {
+  if (
+    !input.token ||
+    input.token.length < 16 ||
+    !/^[A-Za-z0-9_-]+$/.test(input.token)
+  ) {
+    return { error: "invalid_token" } as const;
+  }
+  const svc = createServiceClient();
+  const { data: match } = await svc
+    .from("matches")
+    .select("*")
+    .eq("referee_token", input.token)
+    .maybeSingle();
+  if (!match) return { error: "invalid_token" } as const;
+  const a = match.score_a as number;
+  const b = match.score_b as number;
+  if (a === b) return { error: "tie_score" } as const;
+  const winner = a > b ? match.team_a_id : match.team_b_id;
+  if (!winner) return { error: "missing_team" } as const;
+  const { error } = await svc
+    .from("matches")
+    .update({ status: "completed", winner_team_id: winner })
+    .eq("id", match.id);
+  if (error) return { error: error.message } as const;
+  if (
+    match.bracket === "main" ||
+    match.bracket === "plate" ||
+    match.bracket === "winners" ||
+    match.bracket === "losers"
+  ) {
+    if (match.next_win_match_id) {
+      await advanceTeamIntoMatchSvc(svc, match.next_win_match_id, winner);
+    }
+    if (match.next_loss_match_id) {
+      const loser =
+        winner === match.team_a_id ? match.team_b_id : match.team_a_id;
+      if (loser) {
+        await advanceTeamIntoMatchSvc(svc, match.next_loss_match_id, loser);
+      }
+    }
+  }
+  return { ok: true, winner } as const;
+}
+
+/** Public: reopen completed match for legacy per-match token. */
+export async function publicReopenByToken(input: { token: string }) {
+  if (
+    !input.token ||
+    input.token.length < 16 ||
+    !/^[A-Za-z0-9_-]+$/.test(input.token)
+  ) {
+    return { error: "invalid_token" } as const;
+  }
+  const svc = createServiceClient();
+  const { data: match } = await svc
+    .from("matches")
+    .select("id, score_a, score_b")
+    .eq("referee_token", input.token)
+    .maybeSingle();
+  if (!match) return { error: "invalid_token" } as const;
+  const status =
+    (match.score_a as number) + (match.score_b as number) > 0
+      ? "live"
+      : "pending";
+  const { error } = await svc
+    .from("matches")
+    .update({ status, winner_team_id: null })
+    .eq("id", match.id);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Scoped referee tokens (per-group / per-bracket)
+// ─────────────────────────────────────────────────────────────────────
+
+/** Admin: get-or-create a referee token covering all matches in a group. */
+export async function getOrCreateGroupRefereeToken(input: {
+  tournamentId: string;
+  groupLabel: string;
+}) {
+  const { user, supabase } = await requireTournamentAdmin(input.tournamentId);
+  if (!input.groupLabel) return { error: "missing_id" } as const;
+  const { data: existing } = await supabase
+    .from("referee_tokens")
+    .select("token")
+    .eq("tournament_id", input.tournamentId)
+    .eq("scope", "group")
+    .eq("scope_value", input.groupLabel)
+    .is("revoked_at", null)
+    .maybeSingle();
+  if (existing?.token) return { ok: true, token: existing.token } as const;
+  const token = newRefereeToken();
+  const { error } = await supabase.from("referee_tokens").insert({
+    token,
+    tournament_id: input.tournamentId,
+    scope: "group",
+    scope_value: input.groupLabel,
+    created_by: user.id,
+  });
+  if (error) return { error: error.message } as const;
+  return { ok: true, token } as const;
+}
+
+/** Admin: revoke a scoped token. */
+export async function revokeScopedRefereeToken(input: {
+  tournamentId: string;
+  token: string;
+}) {
+  const { supabase } = await requireTournamentAdmin(input.tournamentId);
+  const { error } = await supabase
+    .from("referee_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("token", input.token)
+    .eq("tournament_id", input.tournamentId);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
+}
+
+/**
+ * Internal: validate a scoped token and return (tournament_id, scope, scope_value)
+ * if it's still alive. Used by the public route + score-mutation actions.
+ */
+async function lookupScopedToken(token: string) {
+  if (!token || token.length < 16 || !/^[A-Za-z0-9_-]+$/.test(token)) {
+    return null;
+  }
+  const svc = createServiceClient();
+  const { data } = await svc
+    .from("referee_tokens")
+    .select("token, tournament_id, scope, scope_value")
+    .eq("token", token)
+    .is("revoked_at", null)
+    .maybeSingle();
+  return data ?? null;
+}
+
+/** Internal: confirm `matchId` is in scope of the given alive scoped token. */
+async function matchInScope(
+  scoped: { tournament_id: string; scope: string; scope_value: string },
+  matchId: string,
+) {
+  const svc = createServiceClient();
+  const { data: m } = await svc
+    .from("matches")
+    .select("id, tournament_id, group_label, bracket")
+    .eq("id", matchId)
+    .maybeSingle();
+  if (!m || m.tournament_id !== scoped.tournament_id) return null;
+  if (scoped.scope === "group" && m.group_label === scoped.scope_value) return m;
+  if (scoped.scope === "bracket" && m.bracket === scoped.scope_value) return m;
+  if (scoped.scope === "match" && m.id === scoped.scope_value) return m;
+  return null;
+}
+
+/** Public: increment a score on a specific match using a scoped token. */
+export async function publicIncrementByScopedToken(input: {
+  token: string;
+  matchId: string;
+  side: "a" | "b";
+  delta: number;
+}) {
+  const scoped = await lookupScopedToken(input.token);
+  if (!scoped) return { error: "invalid_token" } as const;
+  const m = await matchInScope(scoped, input.matchId);
+  if (!m) return { error: "match_not_in_scope" } as const;
+
+  const svc = createServiceClient();
+  const { data: match } = await svc
+    .from("matches")
+    .select("*")
+    .eq("id", input.matchId)
+    .single();
+  if (!match) return { error: "not_found" } as const;
+
+  const nextA = Math.max(
+    0,
+    (match.score_a as number) + (input.side === "a" ? input.delta : 0),
+  );
+  const nextB = Math.max(
+    0,
+    (match.score_b as number) + (input.side === "b" ? input.delta : 0),
+  );
+  // Increment never auto-completes; finalize is explicit.
+  const wasCompleted = match.status === "completed";
+  const status = wasCompleted
+    ? "completed"
+    : nextA + nextB > 0
+      ? "live"
+      : "pending";
+
+  const { error } = await svc
+    .from("matches")
+    .update({
+      score_a: nextA,
+      score_b: nextB,
+      status,
+    })
+    .eq("id", input.matchId);
+  if (error) return { error: error.message } as const;
+
+  return {
+    ok: true,
+    scoreA: nextA,
+    scoreB: nextB,
+    status,
+    winner: match.winner_team_id ?? null,
+  } as const;
+}
+
+/** Public: explicit finalize of a match using a scoped token. */
+export async function publicFinalizeByScopedToken(input: {
+  token: string;
+  matchId: string;
+}) {
+  const scoped = await lookupScopedToken(input.token);
+  if (!scoped) return { error: "invalid_token" } as const;
+  const m = await matchInScope(scoped, input.matchId);
+  if (!m) return { error: "match_not_in_scope" } as const;
+  const svc = createServiceClient();
+  const { data: match } = await svc
+    .from("matches")
+    .select("*")
+    .eq("id", input.matchId)
+    .single();
+  if (!match) return { error: "not_found" } as const;
+  const a = match.score_a as number;
+  const b = match.score_b as number;
+  if (a === b) return { error: "tie_score" } as const;
+  const winner = a > b ? match.team_a_id : match.team_b_id;
+  if (!winner) return { error: "missing_team" } as const;
+  const { error } = await svc
+    .from("matches")
+    .update({ status: "completed", winner_team_id: winner })
+    .eq("id", input.matchId);
+  if (error) return { error: error.message } as const;
+  if (
+    match.bracket === "main" ||
+    match.bracket === "plate" ||
+    match.bracket === "winners" ||
+    match.bracket === "losers"
+  ) {
+    if (match.next_win_match_id) {
+      await advanceTeamIntoMatchSvc(svc, match.next_win_match_id, winner);
+    }
+    if (match.next_loss_match_id) {
+      const loser =
+        winner === match.team_a_id ? match.team_b_id : match.team_a_id;
+      if (loser) {
+        await advanceTeamIntoMatchSvc(svc, match.next_loss_match_id, loser);
+      }
+    }
+  }
+  return { ok: true, winner } as const;
+}
+
+/** Public: reopen completed match for a scoped token. */
+export async function publicReopenByScopedToken(input: {
+  token: string;
+  matchId: string;
+}) {
+  const scoped = await lookupScopedToken(input.token);
+  if (!scoped) return { error: "invalid_token" } as const;
+  const m = await matchInScope(scoped, input.matchId);
+  if (!m) return { error: "match_not_in_scope" } as const;
+  const svc = createServiceClient();
+  const { data: match } = await svc
+    .from("matches")
+    .select("score_a, score_b")
+    .eq("id", input.matchId)
+    .single();
+  if (!match) return { error: "not_found" } as const;
+  const status =
+    (match.score_a as number) + (match.score_b as number) > 0
+      ? "live"
+      : "pending";
+  const { error } = await svc
+    .from("matches")
+    .update({ status, winner_team_id: null })
+    .eq("id", input.matchId);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
+}
+
+/** Public: reset a specific match to 0-0 using a scoped token. */
+export async function publicResetByScopedToken(input: {
+  token: string;
+  matchId: string;
+}) {
+  const scoped = await lookupScopedToken(input.token);
+  if (!scoped) return { error: "invalid_token" } as const;
+  const m = await matchInScope(scoped, input.matchId);
+  if (!m) return { error: "match_not_in_scope" } as const;
+  const svc = createServiceClient();
+  const { error } = await svc
+    .from("matches")
+    .update({
+      score_a: 0,
+      score_b: 0,
+      winner_team_id: null,
+      status: "pending",
+    })
+    .eq("id", input.matchId);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
 }

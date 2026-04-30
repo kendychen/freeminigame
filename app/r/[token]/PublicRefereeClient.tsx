@@ -5,6 +5,8 @@ import { RefereeBoard } from "@/components/referee/RefereeBoard";
 import {
   publicIncrementByToken,
   publicResetByToken,
+  publicFinalizeByToken,
+  publicReopenByToken,
 } from "@/app/actions/matches";
 import type { DbMatch } from "@/types/database";
 
@@ -83,6 +85,28 @@ export function PublicRefereeClient({
     return {};
   };
 
+  const onFinalize = async () => {
+    const res = await publicFinalizeByToken({ token });
+    if ("error" in res) return { error: res.error };
+    setMatch((m) => ({
+      ...m,
+      status: "completed",
+      winner_team_id: res.winner ?? null,
+    }));
+    return {};
+  };
+
+  const onReopen = async () => {
+    const res = await publicReopenByToken({ token });
+    if ("error" in res) return { error: res.error };
+    setMatch((m) => ({
+      ...m,
+      status: m.score_a + m.score_b > 0 ? "live" : "pending",
+      winner_team_id: null,
+    }));
+    return {};
+  };
+
   return (
     <RefereeBoard
       match={match}
@@ -92,6 +116,8 @@ export function PublicRefereeClient({
       exitHref={null}
       onIncrement={onIncrement}
       onReset={onReset}
+      onFinalize={onFinalize}
+      onReopen={onReopen}
     />
   );
 }

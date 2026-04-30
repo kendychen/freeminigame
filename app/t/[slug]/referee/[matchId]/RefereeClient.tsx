@@ -9,6 +9,8 @@ import {
   updateMatchScore,
   getOrCreateRefereeToken,
   revokeRefereeToken,
+  finalizeMatch,
+  reopenMatch,
 } from "@/app/actions/matches";
 import { useLiveMatches } from "@/hooks/useLiveMatches";
 import { translateError } from "@/lib/error-messages";
@@ -57,6 +59,16 @@ export function RefereeClient({
       scoreA: 0,
       scoreB: 0,
     });
+    return "error" in res ? { error: res.error } : {};
+  };
+
+  const onFinalize = async () => {
+    const res = await finalizeMatch({ matchId: match.id, tournamentId });
+    return "error" in res ? { error: res.error } : {};
+  };
+
+  const onReopen = async () => {
+    const res = await reopenMatch({ matchId: match.id, tournamentId });
     return "error" in res ? { error: res.error } : {};
   };
 
@@ -117,6 +129,8 @@ export function RefereeClient({
       exitHref={`/t/${tournamentSlug}/admin/bracket`}
       onIncrement={onIncrement}
       onReset={onReset}
+      onFinalize={onFinalize}
+      onReopen={onReopen}
       headerExtra={
         <>
           <button

@@ -68,6 +68,8 @@ export function ScheduleView({
                 const b = m.teamB ? teamById.get(m.teamB) : undefined;
                 const isBye = m.status === "bye";
                 const isCompleted = m.status === "completed";
+                const isLive = m.status === "live";
+                const hasScore = isCompleted || isLive;
                 return (
                   <div key={m.id} className="flex items-stretch gap-1.5">
                   <Button
@@ -112,15 +114,20 @@ export function ScheduleView({
                       </span>
                     </span>
                     <span
-                      className={`min-w-[60px] rounded px-2 py-0.5 text-xs ${
+                      className={`flex min-w-[60px] items-center justify-center gap-1 rounded px-2 py-0.5 text-xs tabular-nums ${
                         isCompleted
-                          ? "bg-primary/10 text-primary"
-                          : isBye
-                            ? "bg-secondary text-muted-foreground"
-                            : "bg-secondary"
+                          ? "bg-primary/10 text-primary font-semibold"
+                          : isLive
+                            ? "bg-red-500/10 text-red-500 font-semibold"
+                            : isBye
+                              ? "bg-secondary text-muted-foreground"
+                              : "bg-secondary"
                       }`}
                     >
-                      {isCompleted
+                      {isLive && (
+                        <span className="size-1.5 animate-pulse rounded-full bg-red-500" />
+                      )}
+                      {hasScore
                         ? `${m.scoreA}-${m.scoreB}`
                         : isBye
                           ? "Miễn"

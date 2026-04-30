@@ -8,6 +8,8 @@ import {
   Plus,
   RotateCcw,
   Trophy,
+  CheckCircle2,
+  Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -34,6 +36,10 @@ export interface RefereeBoardProps {
   onIncrement: (side: "a" | "b", delta: number) => Promise<{ error?: string }>;
   /** Reset both scores to 0-0. */
   onReset: () => Promise<{ error?: string }>;
+  /** Finalize the match (declare winner from current scores, advance bracket). */
+  onFinalize?: () => Promise<{ error?: string }>;
+  /** Reopen a completed match for re-scoring. */
+  onReopen?: () => Promise<{ error?: string }>;
 }
 
 export function RefereeBoard({
@@ -45,6 +51,8 @@ export function RefereeBoard({
   headerExtra,
   onIncrement,
   onReset,
+  onFinalize,
+  onReopen,
 }: RefereeBoardProps) {
   const [pending, start] = useTransition();
   const [optimisticA, setOptimisticA] = useState<number | null>(null);
@@ -108,6 +116,44 @@ export function RefereeBoard({
       if (res.error) {
         setOptimisticA(null);
         setOptimisticB(null);
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+      }
+    });
+  };
+
+  const finalize = () => {
+    if (!onFinalize) return;
+    if (scoreA === scoreB) {
+      toast({
+        title: "Đang hoà",
+        description: "Cần chênh điểm trước khi kết thúc.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!confirm(`Kết thúc trận với tỉ số ${scoreA} - ${scoreB}?`)) return;
+    start(async () => {
+      const res = await onFinalize();
+      if (res.error) {
+        toast({
+          title: "Lỗi kết thúc",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+      }
+    });
+  };
+
+  const reopen = () => {
+    if (!onReopen) return;
+    if (!confirm("Mở lại trận đã kết thúc để chỉnh điểm?")) return;
+    start(async () => {
+      const res = await onReopen();
+      if (res.error) {
         toast({
           title: "Lỗi",
           description: translateError(res.error),
@@ -244,14 +290,37 @@ export function RefereeBoard({
       </div>
 
       <footer className="border-t bg-card/50 px-3 py-2.5 sm:px-4 sm:py-3">
-        <div className="mx-auto flex max-w-md items-center justify-center gap-2">
-          <Button variant="outline" size="sm" onClick={reset} disabled={pending}>
+        <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={reset}
+            disabled={pending}
+          >
             <RotateCcw className="size-4" />
             Reset 0-0
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Đội nào điểm cao hơn → tự thắng
-          </span>
+          {onFinalize && match.status !== "completed" && (
+            <Button
+              size="sm"
+              onClick={finalize}
+              disabled={pending || scoreA === scoreB}
+            >
+              <CheckCircle2 className="size-4" />
+              Kết thúc trận
+            </Button>
+          )}
+          {onReopen && match.status === "completed" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={reopen}
+              disabled={pending}
+            >
+              <Undo2 className="size-4" />
+              Mở lại
+            </Button>
+          )}
         </div>
       </footer>
     </div>

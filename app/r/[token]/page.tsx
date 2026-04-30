@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/service";
 import { PublicRefereeClient } from "./PublicRefereeClient";
+import { PublicGroupRefereeClient } from "./PublicGroupRefereeClient";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,65 @@ export default async function PublicRefereePage({
     notFound();
   }
   const svc = createServiceClient();
+
+  // Scoped token first
+  const { data: scoped } = await svc
+    .from("referee_tokens")
+    .select("token, tournament_id, scope, scope_value")
+    .eq("token", token)
+    .is("revoked_at", null)
+    .maybeSingle();
+
+  if (scoped) {
+    const { data: t } = await svc
+      .from("tournaments")
+      .select("id, slug, name, deleted_at")
+      .eq("id", scoped.tournament_id)
+      .maybeSingle();
+    if (!t || t.deleted_at) notFound();
+
+    let matchQuery = svc
+      .from("matches")
+      .select("*")
+      .eq("tournament_id", scoped.tournament_id);
+    if (scoped.scope === "group") {
+      matchQuery = matchQuery.eq("group_label", scoped.scope_value);
+    } else if (scoped.scope === "bracket") {
+      matchQuery = matchQuery.eq("bracket", scoped.scope_value);
+    } else {
+      matchQuery = matchQuery.eq("id", scoped.scope_value);
+    }
+    const { data: matches } = await matchQuery
+      .order("round")
+      .order("match_number");
+
+    const teamIds = Array.from(
+      new Set(
+        (matches ?? []).flatMap((m) =>
+          [m.team_a_id, m.team_b_id].filter((x): x is string => !!x),
+        ),
+      ),
+    );
+    const { data: teams } = teamIds.length
+      ? await svc
+          .from("teams")
+          .select("id, name, logo_url")
+          .in("id", teamIds)
+      : { data: [] };
+
+    return (
+      <PublicGroupRefereeClient
+        token={token}
+        scope={scoped.scope as "group" | "bracket" | "match"}
+        scopeValue={scoped.scope_value}
+        tournamentName={t.name}
+        initialMatches={matches ?? []}
+        teams={teams ?? []}
+      />
+    );
+  }
+
+  // Legacy: per-match referee_token column
   const { data: match } = await svc
     .from("matches")
     .select("*")
