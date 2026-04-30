@@ -173,6 +173,42 @@ export function BracketAdminClient({
     return result;
   }, [liveMatches]);
 
+  const groupLabels = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of liveMatches) {
+      if (m.bracket === "group" && m.group_label) set.add(m.group_label);
+    }
+    return Array.from(set).sort();
+  }, [liveMatches]);
+
+  const onShareGroup = (label: string) => {
+    startTransition(async () => {
+      const res = await getOrCreateScopedRefereeToken({
+        tournamentId: tournament.id,
+        scope: "group",
+        scopeValue: label,
+      });
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        return;
+      }
+      const url = `${window.location.origin}/r/${res.token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast({
+          title: `Đã copy link trọng tài bảng ${label}`,
+          description: url,
+        });
+      } catch {
+        prompt("Sao chép link trọng tài:", url);
+      }
+    });
+  };
+
   const onMatchClick = (id: string) => {
     const dbm = liveMatches.find((x) => x.id === id);
     if (!dbm) return;
@@ -230,6 +266,27 @@ export function BracketAdminClient({
           </Button>
         ))}
       </div>
+
+      {groupLabels.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-secondary/20 p-3">
+          <span className="text-xs text-muted-foreground">
+            Link trọng tài theo bảng:
+          </span>
+          {groupLabels.map((label) => (
+            <Button
+              key={label}
+              variant="outline"
+              size="sm"
+              onClick={() => onShareGroup(label)}
+              disabled={pending}
+              title={`Copy link trọng tài bảng ${label}`}
+            >
+              <Link2 className="size-4" />
+              Bảng {label}
+            </Button>
+          ))}
+        </div>
+      )}
 
       {liveMatches.length > 0 && (
         <LiveTournamentView
