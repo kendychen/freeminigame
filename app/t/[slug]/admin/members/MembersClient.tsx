@@ -317,9 +317,8 @@ export function MembersClient({
       });
       if ("error" in res) {
         if (res.error === "draw_in_progress" && "existingCode" in res) {
-          window.open(
+          openLobby(
             `/pair/${res.existingCode}?host=${res.existingHostToken}`,
-            "_blank",
           );
           toast({
             title: "Đã có phiên bốc thăm",
@@ -334,12 +333,22 @@ export function MembersClient({
         });
         return;
       }
-      window.open(`/pair/${res.code}?host=${res.host_token}`, "_blank");
-      toast({
-        title: "Đã mở phòng bốc thăm chia đội",
-        description: `Sau khi bốc thăm xong, ${Math.ceil(players.length / teamSize)} đội sẽ được tạo tự động`,
-      });
+      openLobby(`/pair/${res.code}?host=${res.host_token}`);
     });
+  };
+
+  /** Mobile-safe lobby opener — falls back to same-tab nav when popups blocked. */
+  const openLobby = (href: string) => {
+    if (typeof window === "undefined") return;
+    const isMobile =
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+      window.matchMedia("(max-width: 768px)").matches;
+    if (isMobile) {
+      window.location.href = href;
+    } else {
+      const opened = window.open(href, "_blank");
+      if (!opened) window.location.href = href;
+    }
   };
 
   const expectedTeams = Math.ceil(players.length / teamSize);

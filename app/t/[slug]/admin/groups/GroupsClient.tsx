@@ -150,9 +150,8 @@ export function GroupsClient({
       const res = await createTournamentGroupDraw({ tournamentId, groupSize });
       if ("error" in res) {
         if (res.error === "draw_in_progress" && "existingCode" in res) {
-          window.open(
+          openLobby(
             `/pair/${res.existingCode}?host=${res.existingHostToken}`,
-            "_blank",
           );
           toast({
             title: "Đã có phiên bốc thăm",
@@ -172,13 +171,31 @@ export function GroupsClient({
         host_token: res.host_token,
         status: "lobby",
       });
-      window.open(`/pair/${res.code}?host=${res.host_token}`, "_blank");
-      toast({
-        title: "Đã mở phòng bốc thăm",
-        description:
-          "Sau khi bốc thăm xong, các bảng A/B/C/D sẽ tự động hiển thị ở trang này",
-      });
+      openLobby(`/pair/${res.code}?host=${res.host_token}`);
     });
+  };
+
+  /**
+   * Open the lobby in a way that works on mobile too. Mobile browsers block
+   * window.open() with _blank when not triggered directly by a tap inside
+   * the same synchronous frame as the API call — which is always our case
+   * since we await before opening. Use same-tab navigation via location.href
+   * (admin can swipe back to keep the dashboard).
+   */
+  const openLobby = (href: string) => {
+    if (typeof window === "undefined") return;
+    const isMobile =
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+      window.matchMedia("(max-width: 768px)").matches;
+    if (isMobile) {
+      window.location.href = href;
+    } else {
+      const opened = window.open(href, "_blank");
+      if (!opened) {
+        // Popup blocked → fall back to same-tab nav
+        window.location.href = href;
+      }
+    }
   };
 
   const onClear = () => {
