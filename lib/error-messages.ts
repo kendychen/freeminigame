@@ -46,6 +46,12 @@ const ERROR_VI: Record<string, string> = {
   no_result_yet: "Chưa có kết quả bốc thăm",
   not_linked: "Phòng chưa liên kết với giải đấu",
   invalid_token: "Link không hợp lệ hoặc đã bị thu hồi",
+  invalid_email: "Email không hợp lệ",
+  user_not_registered:
+    "Email chưa đăng ký FreeMinigame — yêu cầu họ đăng ký trước rồi mời lại",
+  cannot_invite_self: "Không thể mời chính mình",
+  cannot_remove_owner: "Không thể xoá chủ giải đấu",
+  cannot_change_owner: "Không thể đổi vai trò chủ giải đấu",
 };
 
 export function translateError(code: string | undefined | null): string {

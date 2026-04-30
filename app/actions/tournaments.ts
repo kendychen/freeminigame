@@ -88,6 +88,145 @@ export async function togglePublic(id: string, isPublic: boolean) {
   return { ok: true } as const;
 }
 
+/**
+ * Owner-only: invite an existing FreeMinigame user as a co_admin / viewer
+ * by their email. The invitee must already have an account; we surface
+ * a friendly 'user_not_registered' error otherwise.
+ */
+export async function inviteCoAdmin(input: {
+  tournamentId: string;
+  email: string;
+  role: "co_admin" | "viewer";
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "unauthorized" } as const;
+
+  // Verify caller is the owner
+  const { data: t } = await supabase
+    .from("tournaments")
+    .select("id, owner_id")
+    .eq("id", input.tournamentId)
+    .maybeSingle();
+  if (!t) return { error: "tournament_not_found" } as const;
+  if (t.owner_id !== user.id) return { error: "forbidden" } as const;
+
+  const cleanEmail = input.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return { error: "invalid_email" } as const;
+  }
+
+  // Find user by email via service role (auth.users is admin-only)
+  const svc = createServiceClient();
+  const { data: list, error: listErr } = await svc.auth.admin.listUsers({
+    page: 1,
+    perPage: 200,
+  });
+  if (listErr) return { error: listErr.message } as const;
+  const target = list.users.find(
+    (u) => u.email?.toLowerCase() === cleanEmail,
+  );
+  if (!target) return { error: "user_not_registered" } as const;
+  if (target.id === user.id) return { error: "cannot_invite_self" } as const;
+
+  // Upsert tournament_admins row
+  const { error } = await svc.from("tournament_admins").upsert(
+    {
+      tournament_id: input.tournamentId,
+      admin_id: target.id,
+      role: input.role,
+    },
+    { onConflict: "tournament_id,admin_id" },
+  );
+  if (error) return { error: error.message } as const;
+  // Make sure their profile row exists for display
+  await svc.from("profiles").upsert(
+    {
+      id: target.id,
+      display_name:
+        (target.user_metadata?.full_name as string | undefined) ??
+        target.email?.split("@")[0] ??
+        "User",
+    },
+    { onConflict: "id", ignoreDuplicates: true },
+  );
+  revalidatePath(`/t`, "layout");
+  return {
+    ok: true,
+    invitedUserId: target.id,
+    invitedEmail: target.email ?? cleanEmail,
+  } as const;
+}
+
+/**
+ * Owner-only: remove a co_admin / viewer from a tournament.
+ * Refuses to remove the owner row itself.
+ */
+export async function removeCoAdmin(input: {
+  tournamentId: string;
+  adminId: string;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "unauthorized" } as const;
+
+  const { data: t } = await supabase
+    .from("tournaments")
+    .select("id, owner_id")
+    .eq("id", input.tournamentId)
+    .maybeSingle();
+  if (!t) return { error: "tournament_not_found" } as const;
+  if (t.owner_id !== user.id) return { error: "forbidden" } as const;
+  if (t.owner_id === input.adminId) {
+    return { error: "cannot_remove_owner" } as const;
+  }
+
+  const svc = createServiceClient();
+  const { error } = await svc
+    .from("tournament_admins")
+    .delete()
+    .eq("tournament_id", input.tournamentId)
+    .eq("admin_id", input.adminId);
+  if (error) return { error: error.message } as const;
+  revalidatePath(`/t`, "layout");
+  return { ok: true } as const;
+}
+
+/** Owner-only: change role of an existing admin. */
+export async function setCoAdminRole(input: {
+  tournamentId: string;
+  adminId: string;
+  role: "co_admin" | "viewer";
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "unauthorized" } as const;
+  const { data: t } = await supabase
+    .from("tournaments")
+    .select("id, owner_id")
+    .eq("id", input.tournamentId)
+    .maybeSingle();
+  if (!t) return { error: "tournament_not_found" } as const;
+  if (t.owner_id !== user.id) return { error: "forbidden" } as const;
+  if (t.owner_id === input.adminId) {
+    return { error: "cannot_change_owner" } as const;
+  }
+  const svc = createServiceClient();
+  const { error } = await svc
+    .from("tournament_admins")
+    .update({ role: input.role })
+    .eq("tournament_id", input.tournamentId)
+    .eq("admin_id", input.adminId);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
+}
+
 export async function updatePlateConfig(input: {
   tournamentId: string;
   plateEnabled: boolean;
