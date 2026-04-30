@@ -5,14 +5,11 @@ import { Link2, Trash2 } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { RefereeBoard } from "@/components/referee/RefereeBoard";
 import {
-  incrementScore,
-  updateMatchScore,
   getOrCreateRefereeToken,
   revokeRefereeToken,
-  finalizeMatch,
-  reopenMatch,
 } from "@/app/actions/matches";
 import { useLiveMatches } from "@/hooks/useLiveMatches";
+import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { translateError } from "@/lib/error-messages";
 import type { DbMatch } from "@/types/database";
 
@@ -44,34 +41,52 @@ export function RefereeClient({
     initialMatch.referee_token,
   );
 
+  // Direct supabase.rpc — bypasses Vercel server-action chain (was 600-1000ms),
+  // single round-trip browser → Supabase ≈200ms.
   const onIncrement = async (side: "a" | "b", delta: number) => {
-    const res = await incrementScore({
-      matchId: match.id,
-      tournamentId,
-      side,
-      delta,
+    const sb = getSupabaseBrowser();
+    const { data, error } = await sb.rpc("score_increment_by_owner", {
+      p_match_id: match.id,
+      p_side: side,
+      p_delta: delta,
     });
-    return "error" in res ? { error: res.error } : {};
+    if (error) return { error: error.message };
+    const res = data as { ok?: boolean; error?: string };
+    if (res?.error) return { error: res.error };
+    return {};
   };
 
   const onReset = async () => {
-    const res = await updateMatchScore({
-      matchId: match.id,
-      tournamentId,
-      scoreA: 0,
-      scoreB: 0,
+    const sb = getSupabaseBrowser();
+    const { data, error } = await sb.rpc("score_reset_by_owner", {
+      p_match_id: match.id,
     });
-    return "error" in res ? { error: res.error } : {};
+    if (error) return { error: error.message };
+    const res = data as { ok?: boolean; error?: string };
+    if (res?.error) return { error: res.error };
+    return {};
   };
 
   const onFinalize = async () => {
-    const res = await finalizeMatch({ matchId: match.id, tournamentId });
-    return "error" in res ? { error: res.error } : {};
+    const sb = getSupabaseBrowser();
+    const { data, error } = await sb.rpc("score_finalize_by_owner", {
+      p_match_id: match.id,
+    });
+    if (error) return { error: error.message };
+    const res = data as { ok?: boolean; error?: string };
+    if (res?.error) return { error: res.error };
+    return {};
   };
 
   const onReopen = async () => {
-    const res = await reopenMatch({ matchId: match.id, tournamentId });
-    return "error" in res ? { error: res.error } : {};
+    const sb = getSupabaseBrowser();
+    const { data, error } = await sb.rpc("score_reopen_by_owner", {
+      p_match_id: match.id,
+    });
+    if (error) return { error: error.message };
+    const res = data as { ok?: boolean; error?: string };
+    if (res?.error) return { error: res.error };
+    return {};
   };
 
   const onShare = () => {
