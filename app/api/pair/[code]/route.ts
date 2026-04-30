@@ -28,7 +28,39 @@ export async function GET(
   if (new Date(data.expires_at).getTime() < Date.now()) {
     return NextResponse.json({ error: "expired" }, { status: 410 });
   }
-  return NextResponse.json(data, {
-    headers: { "Cache-Control": "no-store" },
-  });
+
+  // For group-draw lobbies, attach the underlying members of each team so the
+  // viewer can see "Đội 1 — Nguyễn A · Trần B" instead of just "Đội 1".
+  let participantMembers: Record<string, string[]> = {};
+  const teamIdMap = data.team_id_map as Record<string, string> | null;
+  if (teamIdMap && Object.keys(teamIdMap).length > 0) {
+    const teamIds = Array.from(new Set(Object.values(teamIdMap)));
+    const { data: rows } = await sb
+      .from("team_members")
+      .select("team_id, players(id, name)")
+      .in("team_id", teamIds);
+    type R = {
+      team_id: string;
+      players:
+        | { id: string; name: string }
+        | { id: string; name: string }[]
+        | null;
+    };
+    const namesByTeam: Record<string, string[]> = {};
+    for (const r of (rows ?? []) as R[]) {
+      const arr = namesByTeam[r.team_id] ?? [];
+      const p = Array.isArray(r.players) ? r.players[0] : r.players;
+      if (p) arr.push(p.name);
+      namesByTeam[r.team_id] = arr;
+    }
+    for (const [participantId, teamId] of Object.entries(teamIdMap)) {
+      const names = namesByTeam[teamId];
+      if (names && names.length > 0) participantMembers[participantId] = names;
+    }
+  }
+
+  return NextResponse.json(
+    { ...data, participantMembers },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

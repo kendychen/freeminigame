@@ -19,6 +19,8 @@ export interface PairSessionState {
   linked_tournament_id: string | null;
   team_id_map: Record<string, string> | null;
   player_id_map: Record<string, string> | null;
+  /** participantId -> member display names. Only populated for group-draw lobbies. */
+  participantMembers?: Record<string, string[]>;
 }
 
 export interface PresenceState {

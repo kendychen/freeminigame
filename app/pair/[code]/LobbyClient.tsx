@@ -460,22 +460,32 @@ export function LobbyClient({
             </p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {session.participants.map((p, i) => (
-                <div
-                  key={p.id}
-                  className={`flex items-center gap-2 rounded-md border p-2 ${
-                    p.id === myId ? "bg-primary/10 border-primary/30" : ""
-                  } ${isShuffling ? "animate-pulse" : ""}`}
-                >
-                  <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
-                    {i + 1}
-                  </span>
-                  <span className="truncate">{p.name}</span>
-                  {p.id === myId && (
-                    <span className="ml-auto text-xs text-primary">(bạn)</span>
-                  )}
-                </div>
-              ))}
+              {session.participants.map((p, i) => {
+                const members = session.participantMembers?.[p.id] ?? [];
+                return (
+                  <div
+                    key={p.id}
+                    className={`flex items-start gap-2 rounded-md border p-2 ${
+                      p.id === myId ? "bg-primary/10 border-primary/30" : ""
+                    } ${isShuffling ? "animate-pulse" : ""}`}
+                  >
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+                      {i + 1}
+                    </span>
+                    <span className="flex flex-1 flex-col gap-0.5 truncate">
+                      <span className="truncate font-medium">{p.name}</span>
+                      {members.length > 0 && (
+                        <span className="truncate text-[11px] text-muted-foreground">
+                          {members.join(" · ")}
+                        </span>
+                      )}
+                    </span>
+                    {p.id === myId && (
+                      <span className="ml-auto text-xs text-primary">(bạn)</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -509,19 +519,27 @@ export function LobbyClient({
                     <div className="text-xs text-muted-foreground mb-2">
                       {session.group_size === 2 ? "Cặp" : "Nhóm"} #{i + 1}
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       {groupIds.map((id) => {
                         const p = session.participants.find((x) => x.id === id);
+                        const members = session.participantMembers?.[id] ?? [];
                         return (
                           <div
                             key={id}
-                            className={`text-sm font-medium ${
+                            className={`text-sm ${
                               id === myId ? "text-primary" : ""
                             }`}
                           >
-                            {p?.name ?? "—"}
-                            {id === myId && (
-                              <span className="ml-1 text-xs">(bạn)</span>
+                            <div className="font-medium">
+                              {p?.name ?? "—"}
+                              {id === myId && (
+                                <span className="ml-1 text-xs">(bạn)</span>
+                              )}
+                            </div>
+                            {members.length > 0 && (
+                              <div className="text-[11px] text-muted-foreground">
+                                {members.join(" · ")}
+                              </div>
                             )}
                           </div>
                         );
