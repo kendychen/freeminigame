@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   ArrowLeft,
   Maximize2,
@@ -60,6 +60,20 @@ export function RefereeBoard({
   const [pending, start] = useTransition();
   const [optimisticA, setOptimisticA] = useState<number | null>(null);
   const [optimisticB, setOptimisticB] = useState<number | null>(null);
+  // Brief flash after a successful save so the user knows it landed without
+  // the "Đang lưu…" indicator lingering through useTransition's pending state.
+  const [savedFlash, setSavedFlash] = useState(false);
+  const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashSaved = () => {
+    if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+    setSavedFlash(true);
+    savedFlashTimer.current = setTimeout(() => setSavedFlash(false), 700);
+  };
+  useEffect(() => {
+    return () => {
+      if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+    };
+  }, []);
 
   const teamA = teams.find((t) => t.id === match.team_a_id);
   const teamB = teams.find((t) => t.id === match.team_b_id);
@@ -96,7 +110,10 @@ export function RefereeBoard({
     const next = Math.max(0, cur + delta);
     if (side === "a") setOptimisticA(next);
     else setOptimisticB(next);
-    start(async () => {
+    // Fire-and-forget — don't gate on useTransition. Optimistic UI already
+    // updated; we just need to either flash a tick on success or roll back
+    // + toast on error. Avoids "Đang lưu…" sticking around between rapid taps.
+    void (async () => {
       const res = await onIncrement(side, delta);
       if (res.error) {
         if (side === "a") setOptimisticA(null);
@@ -106,8 +123,10 @@ export function RefereeBoard({
           description: translateError(res.error),
           variant: "destructive",
         });
+      } else {
+        flashSaved();
       }
-    });
+    })();
   };
 
   const reset = () => {
@@ -291,7 +310,14 @@ export function RefereeBoard({
             Chưa bắt đầu
           </span>
         )}
-        {pending && <span className="text-muted-foreground">Đang lưu…</span>}
+        {savedFlash && (
+          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-600 dark:text-emerald-400">
+            ✓ Đã lưu
+          </span>
+        )}
+        {pending && !savedFlash && (
+          <span className="text-muted-foreground">Đang lưu…</span>
+        )}
       </div>
 
       <div className="grid flex-1 grid-cols-1 sm:grid-cols-2">
