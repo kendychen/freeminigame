@@ -125,6 +125,15 @@ export function RefereeBoard({
     });
   };
 
+  // Two-tap confirm: first tap arms the button (visual), second tap finalizes.
+  // Avoids native confirm() which is silently dismissed in some mobile webviews.
+  const [armedFinalize, setArmedFinalize] = useState(false);
+  useEffect(() => {
+    if (!armedFinalize) return;
+    const t = setTimeout(() => setArmedFinalize(false), 4000);
+    return () => clearTimeout(t);
+  }, [armedFinalize]);
+
   const finalize = () => {
     if (!onFinalize) return;
     if (scoreA === scoreB) {
@@ -135,7 +144,15 @@ export function RefereeBoard({
       });
       return;
     }
-    if (!confirm(`Kết thúc trận với tỉ số ${scoreA} - ${scoreB}?`)) return;
+    if (!armedFinalize) {
+      setArmedFinalize(true);
+      toast({
+        title: "Bấm lần nữa để xác nhận",
+        description: `Kết thúc trận với tỉ số ${scoreA} - ${scoreB}`,
+      });
+      return;
+    }
+    setArmedFinalize(false);
     start(async () => {
       const res = await onFinalize();
       if (res.error) {
@@ -144,13 +161,14 @@ export function RefereeBoard({
           description: translateError(res.error),
           variant: "destructive",
         });
+      } else {
+        toast({ title: "Đã kết thúc trận" });
       }
     });
   };
 
   const reopen = () => {
     if (!onReopen) return;
-    if (!confirm("Mở lại trận đã kết thúc để chỉnh điểm?")) return;
     start(async () => {
       const res = await onReopen();
       if (res.error) {
@@ -159,6 +177,8 @@ export function RefereeBoard({
           description: translateError(res.error),
           variant: "destructive",
         });
+      } else {
+        toast({ title: "Đã mở lại trận" });
       }
     });
   };
@@ -303,11 +323,12 @@ export function RefereeBoard({
           {onFinalize && match.status !== "completed" && (
             <Button
               size="sm"
+              variant={armedFinalize ? "destructive" : "default"}
               onClick={finalize}
               disabled={pending || scoreA === scoreB}
             >
               <CheckCircle2 className="size-4" />
-              Kết thúc trận
+              {armedFinalize ? "Bấm lần nữa để xác nhận" : "Kết thúc trận"}
             </Button>
           )}
           {onReopen && match.status === "completed" && (
