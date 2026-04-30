@@ -8,6 +8,12 @@ import {
   Crown,
   ArrowRight,
   Radio,
+  Gavel,
+  Link2,
+  Smartphone,
+  Wifi,
+  Plus,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -63,8 +69,9 @@ export default async function HomePage() {
               </h1>
 
               <p className="mt-4 max-w-2xl text-base text-muted-foreground sm:mt-6 sm:text-lg">
-                Chia cặp · Bốc thăm chia bảng realtime · Sơ đồ thi đấu tự động.
-                Hoạt động trên điện thoại — share link là mọi người cùng xem.
+                Chia cặp · Bốc thăm chia bảng realtime · Sơ đồ thi đấu tự động ·
+                Trọng tài chấm điểm live qua link share. Hoạt động trên điện
+                thoại — mọi người cùng xem realtime.
               </p>
 
               <div className="mt-8 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:gap-3">
@@ -136,6 +143,129 @@ export default async function HomePage() {
           </div>
         </section>
 
+        {/* Trọng tài + realtime score */}
+        <section className="border-t">
+          <div className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
+            <div className="text-center">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                <Gavel className="size-3.5" />
+                Mới · Trọng tài realtime
+              </span>
+              <h2 className="mt-4 text-2xl font-bold sm:text-3xl">
+                Trọng tài chấm điểm cực gọn
+              </h2>
+              <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
+                Mỗi bảng / cúp có 1 link riêng — gửi qua Zalo, trọng tài mở
+                điện thoại bấm <strong>+1</strong> là điểm số nhảy live cho
+                tất cả viewer, không cần F5.
+              </p>
+            </div>
+
+            <div className="mt-8 grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-xl border bg-card p-4 sm:p-5">
+                <div className="inline-flex size-9 items-center justify-center rounded-lg bg-primary/10">
+                  <Link2 className="size-5 text-primary" />
+                </div>
+                <h3 className="mt-3 text-sm font-semibold sm:text-base">
+                  Link share — không cần đăng nhập
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                  Admin tạo URL trọng tài 1 click. Trọng tài chỉ cần mở link là
+                  chấm được, ko đăng ký.
+                </p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 sm:p-5">
+                <div className="inline-flex size-9 items-center justify-center rounded-lg bg-primary/10">
+                  <Smartphone className="size-5 text-primary" />
+                </div>
+                <h3 className="mt-3 text-sm font-semibold sm:text-base">
+                  Fullscreen +1 / −1
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                  Giao diện 2 cột to bự, nút +1 chiếm gần nửa màn hình. Wake-lock
+                  chống tắt màn khi đang trận.
+                </p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 sm:p-5">
+                <div className="inline-flex size-9 items-center justify-center rounded-lg bg-primary/10">
+                  <Wifi className="size-5 text-primary" />
+                </div>
+                <h3 className="mt-3 text-sm font-semibold sm:text-base">
+                  Sync realtime mọi thiết bị
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                  Trọng tài bấm là viewer + admin thấy tỉ số ngay. Lịch + bảng
+                  điểm tự update không cần reload.
+                </p>
+              </div>
+              <div className="rounded-xl border bg-card p-4 sm:p-5">
+                <div className="inline-flex size-9 items-center justify-center rounded-lg bg-primary/10">
+                  <ShieldCheck className="size-5 text-primary" />
+                </div>
+                <h3 className="mt-3 text-sm font-semibold sm:text-base">
+                  Kết thúc thủ công, có thể mở lại
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                  Bấm 2 lần để xác nhận kết thúc — chống nhầm. Đội thắng tự
+                  advance vào vòng KO tiếp theo.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8 grid gap-4 lg:grid-cols-3">
+              <div className="rounded-2xl border bg-secondary/30 p-5 sm:p-6 lg:col-span-2">
+                <h3 className="text-base font-bold sm:text-lg">
+                  Workflow gửi link cho trọng tài
+                </h3>
+                <ol className="mt-3 space-y-2 text-sm text-muted-foreground">
+                  <li>
+                    <strong className="text-foreground">1.</strong> Vào trang
+                    bảng đấu / sơ đồ → bấm{" "}
+                    <strong className="text-foreground">⚖️ Link trọng tài</strong>{" "}
+                    cho bảng A / B / C / Cúp chính / Cúp phụ
+                  </li>
+                  <li>
+                    <strong className="text-foreground">2.</strong> URL tự
+                    copy clipboard — paste vào Zalo / Messenger gửi trọng tài
+                  </li>
+                  <li>
+                    <strong className="text-foreground">3.</strong> Trọng tài
+                    mở link → thấy danh sách trận → bấm 1 trận → màn hình +/-
+                    điểm
+                  </li>
+                  <li>
+                    <strong className="text-foreground">4.</strong> Bấm{" "}
+                    <strong className="text-foreground">Kết thúc trận</strong>{" "}
+                    khi xong — đội thắng tự đẩy vào vòng tiếp
+                  </li>
+                  <li>
+                    <strong className="text-foreground">5.</strong> Cần thu
+                    hồi link? Admin bấm 1 phát là vô hiệu hoá
+                  </li>
+                </ol>
+              </div>
+              <div className="rounded-2xl border bg-card p-5 sm:p-6">
+                <div className="inline-flex size-10 items-center justify-center rounded-xl bg-primary/15">
+                  <Plus className="size-5 text-primary" />
+                </div>
+                <h3 className="mt-3 text-base font-bold sm:text-lg">
+                  Mặc định ai cũng dùng được
+                </h3>
+                <ul className="mt-3 space-y-1.5 text-sm">
+                  <li>✓ Pickleball, cầu lông, ping pong</li>
+                  <li>✓ Bóng bàn, bóng đá mini, futsal</li>
+                  <li>✓ Boardgame, esport, minigame văn phòng</li>
+                  <li>✓ BO1 / BO3 / BO5 đều OK</li>
+                </ul>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Hoạt động cả khi trọng tài offline tạm thời — kết nối lại tự
+                  đồng bộ.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* 2 modes */}
         <section className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
@@ -171,9 +301,9 @@ export default async function HomePage() {
               </p>
               <ul className="mt-3 space-y-1.5 text-sm">
                 <li>✓ Đa admin realtime</li>
-                <li>✓ Public viewer link</li>
-                <li>✓ BO3/BO5, tie-breakers</li>
-                <li>✓ Stats & MVP</li>
+                <li>✓ Link trọng tài per-bảng / per-cúp</li>
+                <li>✓ Public viewer link · điểm số live</li>
+                <li>✓ BO3/BO5, tie-breakers, stats MVP</li>
               </ul>
               <Link
                 href={user ? "/dashboard" : "/login"}
