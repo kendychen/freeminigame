@@ -25,7 +25,8 @@ export type BracketSection =
   | "winners"
   | "losers"
   | "grand_final"
-  | "group";
+  | "group"
+  | "plate";
 
 export interface DbProfile {
   id: string;
@@ -107,6 +108,7 @@ export interface DbMatch {
   scheduled_at: string | null;
   updated_at: string;
   updated_by: string | null;
+  referee_token: string | null;
 }
 
 export interface DbMatchSet {

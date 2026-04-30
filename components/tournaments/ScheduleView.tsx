@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { Gavel } from "lucide-react";
 import type { Match, Team } from "@/lib/pairing/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +14,8 @@ export interface ScheduleViewProps {
   filterGroup?: string;
   /** Show "Bảng X" column inline on each match. Auto when matches have mixed group_labels. */
   showGroupColumn?: boolean;
+  /** When set, show a "Trọng tài" button per match linking to the fullscreen referee page. */
+  refereeBaseHref?: string;
 }
 
 export function ScheduleView({
@@ -20,6 +24,7 @@ export function ScheduleView({
   onMatchClick,
   filterGroup,
   showGroupColumn,
+  refereeBaseHref,
 }: ScheduleViewProps) {
   const teamById = useMemo(() => {
     const m = new Map<string, Team>();
@@ -64,11 +69,11 @@ export function ScheduleView({
                 const isBye = m.status === "bye";
                 const isCompleted = m.status === "completed";
                 return (
+                  <div key={m.id} className="flex items-stretch gap-1.5">
                   <Button
-                    key={m.id}
                     variant="ghost"
                     onClick={() => !isBye && onMatchClick?.(m.id)}
-                    className="w-full justify-between font-normal"
+                    className="flex-1 justify-between font-normal"
                     disabled={isBye}
                   >
                     <span className="flex flex-1 items-center gap-3">
@@ -122,6 +127,17 @@ export function ScheduleView({
                           : "Chưa đấu"}
                     </span>
                   </Button>
+                  {refereeBaseHref && !isBye && m.teamA && m.teamB && (
+                    <Link
+                      href={`${refereeBaseHref}/${m.id}`}
+                      className="inline-flex shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/10 px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                      aria-label="Mở chế độ trọng tài"
+                      title="Trọng tài"
+                    >
+                      <Gavel className="size-4" />
+                    </Link>
+                  )}
+                  </div>
                 );
               })}
             </div>

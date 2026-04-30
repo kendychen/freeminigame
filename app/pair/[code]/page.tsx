@@ -30,6 +30,7 @@ export default async function PairLobbyPage({
   const sp = await searchParams;
   const session = await fetchSession(code);
   if (!session) notFound();
+  if ((session.status as string) === "closed") notFound();
 
   return (
     <div className="flex flex-col flex-1">

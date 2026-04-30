@@ -22,6 +22,7 @@ import {
   ensureBracket,
   manualAssignGroup,
 } from "@/app/actions/group-draw";
+import { ChatBox } from "@/components/chat/ChatBox";
 
 interface TeamRow {
   id: string;
@@ -342,6 +343,8 @@ export function GroupsClient({
           </CardContent>
         </Card>
       )}
+
+      <ChatBox channelKey={`tournament:${tournamentId}`} title="Chat ban điều hành" />
     </div>
   );
 }

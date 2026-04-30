@@ -12,6 +12,7 @@ import {
   LogOut,
   Eye,
   Wifi,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import { usePairLobby, type PairSessionState } from "@/hooks/usePairLobby";
 import { SpinningWheel } from "@/components/pair/SpinningWheel";
+import { ChatBox } from "@/components/chat/ChatBox";
 
 export interface LobbyClientProps {
   code: string;
@@ -175,6 +177,33 @@ export function LobbyClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hostToken, locked: !isLocked }),
     });
+  };
+
+  const onClose = async () => {
+    if (!hostToken) return;
+    if (
+      !confirm(
+        "Đóng phòng? Sau khi đóng, link sẽ ko vào được nữa và mọi người sẽ thấy 404.",
+      )
+    )
+      return;
+    const res = await fetch(`/api/pair/${code}/close`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostToken }),
+    });
+    if (res.ok) {
+      localStorage.removeItem(`pair-host-${code}`);
+      localStorage.removeItem(`pair-me-${code}`);
+      window.location.href = "/";
+    } else {
+      const json = (await res.json()) as { error?: string };
+      toast({
+        title: "Lỗi đóng phòng",
+        description: json.error ?? "",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -368,6 +397,10 @@ export function LobbyClient({
                   </>
                 )}
               </Button>
+              <Button onClick={onClose} variant="destructive" size="sm">
+                <X className="size-4" />
+                Đóng phòng
+              </Button>
             </div>
           )}
         </CardHeader>
@@ -476,6 +509,8 @@ export function LobbyClient({
           </CardContent>
         </Card>
       )}
+
+      <ChatBox channelKey={`pair:${code}`} defaultName={myName} title="Chat phòng bốc thăm" />
     </div>
   );
 }

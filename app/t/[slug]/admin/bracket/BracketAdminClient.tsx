@@ -182,6 +182,7 @@ export function BracketAdminClient({
           initialMatches={liveMatches}
           onMatchClick={onMatchClick}
           subscribe={false}
+          refereeBaseHref={`/t/${tournament.slug}/referee`}
         />
       )}
 
