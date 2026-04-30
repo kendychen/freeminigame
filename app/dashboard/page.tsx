@@ -31,7 +31,7 @@ export default async function DashboardPage() {
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <Trophy className="size-5 text-primary" />
-            FreeMinigame
+            Hội Nhóm Pickleball
           </Link>
           <div className="flex items-center gap-4">
             <span className="hidden text-sm text-muted-foreground sm:block">

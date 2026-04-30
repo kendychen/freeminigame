@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "FreeMinigame",
-    short_name: "FreeMinigame",
+    name: "Hội Nhóm Pickleball",
+    short_name: "HN Pickleball",
     description: "Tạo bảng đấu minigame miễn phí",
     start_url: "/",
     display: "standalone",

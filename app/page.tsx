@@ -38,7 +38,7 @@ export default async function HomePage() {
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:h-16">
           <Link href="/" className="flex items-center gap-2 font-bold">
             <PickleballLogo size={28} />
-            <span>FreeMinigame</span>
+            <span>Hội Nhóm Pickleball</span>
           </Link>
           <div className="flex items-center gap-2">
             <AuthNavLink />
@@ -366,7 +366,7 @@ export default async function HomePage() {
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 text-xs text-muted-foreground sm:h-16 sm:text-sm">
           <span className="flex items-center gap-1.5">
             <PickleballLogo size={16} /> © {new Date().getFullYear()}{" "}
-            FreeMinigame
+            Hội Nhóm Pickleball
           </span>
           <Link href="/quick/new" className="hover:text-foreground">
             Tạo cặp nhanh

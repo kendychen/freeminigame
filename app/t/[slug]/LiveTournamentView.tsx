@@ -21,6 +21,8 @@ interface LiveProps {
   subscribe?: boolean;
   /** When set, render a "Trọng tài" link per match in the schedule. */
   refereeBaseHref?: string;
+  /** Optional team-id → member display names so schedule can show them. */
+  membersByTeam?: Record<string, string[]>;
 }
 
 export function LiveTournamentView({
@@ -30,6 +32,7 @@ export function LiveTournamentView({
   onMatchClick,
   subscribe = true,
   refereeBaseHref,
+  membersByTeam,
 }: LiveProps) {
   const subscribed = useLiveMatches(
     subscribe ? tournament.id : "",
@@ -256,6 +259,7 @@ export function LiveTournamentView({
           matches={filteredMatches}
           onMatchClick={onMatchClick}
           refereeBaseHref={refereeBaseHref}
+          membersByTeam={membersByTeam}
         />
       )}
 

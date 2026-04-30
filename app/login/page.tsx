@@ -102,7 +102,7 @@ function LoginInner() {
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <Trophy className="size-5 text-primary" />
-            FreeMinigame
+            Hội Nhóm Pickleball
           </Link>
           <ThemeToggle />
         </div>

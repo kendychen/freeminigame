@@ -89,7 +89,7 @@ export async function togglePublic(id: string, isPublic: boolean) {
 }
 
 /**
- * Owner-only: invite an existing FreeMinigame user as a co_admin / viewer
+ * Owner-only: invite an existing Hội Nhóm Pickleball user as a co_admin / viewer
  * by their email. The invitee must already have an account; we surface
  * a friendly 'user_not_registered' error otherwise.
  */

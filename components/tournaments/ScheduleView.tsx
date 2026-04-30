@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Gavel } from "lucide-react";
 import type { Match, Team } from "@/lib/pairing/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { useMemo } from "react";
 
 export interface ScheduleViewProps {
@@ -16,6 +15,8 @@ export interface ScheduleViewProps {
   showGroupColumn?: boolean;
   /** When set, show a "Trọng tài" button per match linking to the fullscreen referee page. */
   refereeBaseHref?: string;
+  /** Optional team-id → member display names for showing inline under each team. */
+  membersByTeam?: Record<string, string[]>;
 }
 
 export function ScheduleView({
@@ -25,6 +26,7 @@ export function ScheduleView({
   filterGroup,
   showGroupColumn,
   refereeBaseHref,
+  membersByTeam,
 }: ScheduleViewProps) {
   const teamById = useMemo(() => {
     const m = new Map<string, Team>();
@@ -70,15 +72,17 @@ export function ScheduleView({
                 const isCompleted = m.status === "completed";
                 const isLive = m.status === "live";
                 const hasScore = isCompleted || isLive;
+                const aMembers = a ? membersByTeam?.[a.id] ?? [] : [];
+                const bMembers = b ? membersByTeam?.[b.id] ?? [] : [];
                 return (
                   <div key={m.id} className="flex items-stretch gap-1.5">
-                  <Button
-                    variant="ghost"
+                  <button
+                    type="button"
                     onClick={() => !isBye && onMatchClick?.(m.id)}
-                    className="flex-1 justify-between font-normal"
                     disabled={isBye}
+                    className="flex flex-1 flex-col gap-2 rounded-md border bg-background p-2.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/30 disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-background sm:flex-row sm:items-center sm:gap-3"
                   >
-                    <span className="flex flex-1 items-center gap-3">
+                    <div className="flex flex-1 items-start gap-3">
                       {showGroupCol && (
                         <span
                           className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
@@ -93,28 +97,44 @@ export function ScheduleView({
                           {m.groupLabel ?? "—"}
                         </span>
                       )}
-                      <span
-                        className={`flex-1 text-left ${
-                          isCompleted && m.winner === m.teamA
-                            ? "font-semibold text-primary"
-                            : ""
-                        }`}
-                      >
-                        {a?.name ?? (isBye ? "—" : "TBD")}
+                      <div className="flex flex-1 flex-col gap-0.5">
+                        <span
+                          className={`break-words ${
+                            isCompleted && m.winner === m.teamA
+                              ? "font-semibold text-primary"
+                              : "font-medium"
+                          }`}
+                        >
+                          {a?.name ?? (isBye ? "—" : "TBD")}
+                        </span>
+                        {aMembers.length > 0 && (
+                          <span className="text-[11px] leading-tight text-muted-foreground">
+                            {aMembers.join(" · ")}
+                          </span>
+                        )}
+                      </div>
+                      <span className="self-center text-xs text-muted-foreground">
+                        vs
                       </span>
-                      <span className="text-muted-foreground">vs</span>
-                      <span
-                        className={`flex-1 text-left ${
-                          isCompleted && m.winner === m.teamB
-                            ? "font-semibold text-primary"
-                            : ""
-                        }`}
-                      >
-                        {b?.name ?? (isBye ? "BYE" : "TBD")}
-                      </span>
-                    </span>
+                      <div className="flex flex-1 flex-col gap-0.5 text-right sm:text-left">
+                        <span
+                          className={`break-words ${
+                            isCompleted && m.winner === m.teamB
+                              ? "font-semibold text-primary"
+                              : "font-medium"
+                          }`}
+                        >
+                          {b?.name ?? (isBye ? "BYE" : "TBD")}
+                        </span>
+                        {bMembers.length > 0 && (
+                          <span className="text-[11px] leading-tight text-muted-foreground">
+                            {bMembers.join(" · ")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <span
-                      className={`flex min-w-[60px] items-center justify-center gap-1 rounded px-2 py-0.5 text-xs tabular-nums ${
+                      className={`flex shrink-0 items-center justify-center gap-1 self-end rounded px-2 py-0.5 text-xs tabular-nums sm:self-center sm:min-w-[60px] ${
                         isCompleted
                           ? "bg-primary/10 text-primary font-semibold"
                           : isLive
@@ -133,7 +153,7 @@ export function ScheduleView({
                           ? "Miễn"
                           : "Chưa đấu"}
                     </span>
-                  </Button>
+                  </button>
                   {refereeBaseHref && !isBye && m.teamA && m.teamB && (
                     <Link
                       href={`${refereeBaseHref}/${m.id}`}

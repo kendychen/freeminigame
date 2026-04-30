@@ -24,10 +24,12 @@ export function BracketAdminClient({
   tournament,
   teams,
   initialMatches,
+  membersByTeam,
 }: {
   tournament: DbTournament;
   teams: DbTeam[];
   initialMatches: DbMatch[];
+  membersByTeam?: Record<string, string[]>;
 }) {
   const liveMatches = useLiveMatches(tournament.id, initialMatches);
   const [selected, setSelected] = useState<Match | null>(null);
@@ -296,6 +298,7 @@ export function BracketAdminClient({
           onMatchClick={onMatchClick}
           subscribe={false}
           refereeBaseHref={`/t/${tournament.slug}/referee`}
+          membersByTeam={membersByTeam}
         />
       )}
 

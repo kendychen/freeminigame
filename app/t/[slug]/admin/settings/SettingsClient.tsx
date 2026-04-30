@@ -257,7 +257,7 @@ export function SettingsClient({
             Đồng quản trị viên
           </CardTitle>
           <CardDescription>
-            Mời người dùng FreeMinigame khác cùng quản lý giải. Đồng admin có
+            Mời người dùng Hội Nhóm Pickleball khác cùng quản lý giải. Đồng admin có
             thể bốc thăm + chấm điểm; Người xem chỉ xem.
           </CardDescription>
         </CardHeader>

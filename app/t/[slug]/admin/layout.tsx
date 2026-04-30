@@ -61,7 +61,7 @@ export default async function AdminLayout({
             className="flex items-center gap-2 font-semibold"
           >
             <PickleballLogo size={26} />
-            <span className="hidden sm:inline">FreeMinigame</span>
+            <span className="hidden sm:inline">Hội Nhóm Pickleball</span>
           </Link>
           <ThemeToggle />
         </div>

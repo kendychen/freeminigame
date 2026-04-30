@@ -12,7 +12,7 @@ export function PickleballLogo({ size = 28, className }: PickleballLogoProps) {
       viewBox="0 0 32 32"
       fill="none"
       className={className}
-      aria-label="FreeMinigame"
+      aria-label="Hội Nhóm Pickleball"
     >
       <defs>
         <radialGradient id="pb-ball" cx="35%" cy="30%" r="75%">

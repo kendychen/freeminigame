@@ -34,7 +34,7 @@ export default async function AdminLayout({
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4">
           <Link href="/admin" className="flex items-center gap-2 font-semibold">
             <Trophy className="size-5 text-primary" />
-            FreeMinigame · Admin
+            Hội Nhóm Pickleball · Admin
           </Link>
           <div className="flex items-center gap-3">
             <span className="rounded-full border bg-secondary px-2 py-0.5 text-xs">

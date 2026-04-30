@@ -34,13 +34,32 @@ export default async function PublicTournamentPage({
     .order("round")
     .order("match_number");
 
+  const teamIds = (teams ?? []).map((x) => x.id);
+  const { data: memberRows } = teamIds.length
+    ? await supabase
+        .from("team_members")
+        .select("team_id, players(name)")
+        .in("team_id", teamIds)
+    : { data: [] };
+  type MR = {
+    team_id: string;
+    players: { name: string } | { name: string }[] | null;
+  };
+  const membersByTeam: Record<string, string[]> = {};
+  for (const r of (memberRows ?? []) as MR[]) {
+    const arr = membersByTeam[r.team_id] ?? [];
+    const p = Array.isArray(r.players) ? r.players[0] : r.players;
+    if (p?.name) arr.push(p.name);
+    membersByTeam[r.team_id] = arr;
+  }
+
   return (
     <div className="flex flex-col flex-1">
       <header className="border-b">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <Trophy className="size-5 text-primary" />
-            FreeMinigame
+            Hội Nhóm Pickleball
           </Link>
           <div className="flex items-center gap-2">
             <Link href={`/display/${t.slug}`}>
@@ -64,6 +83,7 @@ export default async function PublicTournamentPage({
           tournament={t}
           teams={teams ?? []}
           initialMatches={matches ?? []}
+          membersByTeam={membersByTeam}
         />
       </main>
     </div>

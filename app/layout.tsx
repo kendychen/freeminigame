@@ -9,14 +9,14 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "FreeMinigame — Chia cặp & bảng đấu miễn phí",
+  title: "Hội Nhóm Pickleball — Chia cặp & bảng đấu miễn phí",
   description:
     "Tạo bảng đấu, chia cặp, và quản lý giải đấu minigame miễn phí. Hỗ trợ Single Elim, Double Elim, Round Robin, Swiss và Group + Knockout.",
   metadataBase: new URL("https://hoinhompick.team"),
-  applicationName: "FreeMinigame",
+  applicationName: "Hội Nhóm Pickleball",
   appleWebApp: {
     capable: true,
-    title: "FreeMinigame",
+    title: "Hội Nhóm Pickleball",
     statusBarStyle: "black-translucent",
   },
   formatDetection: { telephone: false },
