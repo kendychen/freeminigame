@@ -60,6 +60,23 @@ export default async function PublicRefereePage({
           .select("id, name, logo_url")
           .in("id", teamIds)
       : { data: [] };
+    const { data: memberRows } = teamIds.length
+      ? await svc
+          .from("team_members")
+          .select("team_id, players(name)")
+          .in("team_id", teamIds)
+      : { data: [] };
+    type MR = {
+      team_id: string;
+      players: { name: string } | { name: string }[] | null;
+    };
+    const membersByTeam: Record<string, string[]> = {};
+    for (const r of (memberRows ?? []) as MR[]) {
+      const arr = membersByTeam[r.team_id] ?? [];
+      const p = Array.isArray(r.players) ? r.players[0] : r.players;
+      if (p?.name) arr.push(p.name);
+      membersByTeam[r.team_id] = arr;
+    }
 
     return (
       <PublicGroupRefereeClient
@@ -69,6 +86,7 @@ export default async function PublicRefereePage({
         tournamentName={t.name}
         initialMatches={matches ?? []}
         teams={teams ?? []}
+        membersByTeam={membersByTeam}
       />
     );
   }
@@ -100,6 +118,23 @@ export default async function PublicRefereePage({
         ? teamIds
         : ["00000000-0000-0000-0000-000000000000"],
     );
+  const { data: legacyMemberRows } = teamIds.length
+    ? await svc
+        .from("team_members")
+        .select("team_id, players(name)")
+        .in("team_id", teamIds)
+    : { data: [] };
+  type MR2 = {
+    team_id: string;
+    players: { name: string } | { name: string }[] | null;
+  };
+  const legacyMembers: Record<string, string[]> = {};
+  for (const r of (legacyMemberRows ?? []) as MR2[]) {
+    const arr = legacyMembers[r.team_id] ?? [];
+    const p = Array.isArray(r.players) ? r.players[0] : r.players;
+    if (p?.name) arr.push(p.name);
+    legacyMembers[r.team_id] = arr;
+  }
 
   return (
     <PublicRefereeClient
@@ -107,6 +142,7 @@ export default async function PublicRefereePage({
       tournamentName={t.name}
       initialMatch={match}
       teams={teams ?? []}
+      membersByTeam={legacyMembers}
     />
   );
 }

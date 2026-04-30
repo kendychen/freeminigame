@@ -3,12 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, ArrowLeft, Trophy } from "lucide-react";
 import { RefereeBoard } from "@/components/referee/RefereeBoard";
-import {
-  publicIncrementByScopedToken,
-  publicResetByScopedToken,
-  publicFinalizeByScopedToken,
-  publicReopenByScopedToken,
-} from "@/app/actions/matches";
+import { getSupabaseBrowser } from "@/lib/supabase/client";
 import type { DbMatch } from "@/types/database";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
@@ -27,6 +22,7 @@ export function PublicGroupRefereeClient({
   tournamentName,
   initialMatches,
   teams: initialTeams,
+  membersByTeam,
 }: {
   token: string;
   scope: "group" | "bracket" | "match";
@@ -34,6 +30,7 @@ export function PublicGroupRefereeClient({
   tournamentName: string;
   initialMatches: DbMatch[];
   teams: TeamLite[];
+  membersByTeam?: Record<string, string[]>;
 }) {
   const [matches, setMatches] = useState<DbMatch[]>(initialMatches);
   const [teams, setTeams] = useState<TeamLite[]>(initialTeams);
@@ -71,22 +68,34 @@ export function PublicGroupRefereeClient({
 
   if (active) {
     const onIncrement = async (side: "a" | "b", delta: number) => {
-      const res = await publicIncrementByScopedToken({
-        token,
-        matchId: active.id,
-        side,
-        delta,
+      // Direct browser → Supabase RPC (single round-trip ~200ms vs the 600-1200ms
+      // we used to spend going through a Vercel server action).
+      const sb = getSupabaseBrowser();
+      const { data, error } = await sb.rpc("score_increment_by_scoped_token", {
+        p_token: token,
+        p_match_id: active.id,
+        p_side: side,
+        p_delta: delta,
       });
-      if ("error" in res) return { error: res.error };
+      if (error) return { error: error.message };
+      const res = data as {
+        ok?: boolean;
+        error?: string;
+        score_a?: number;
+        score_b?: number;
+        status?: string;
+        winner_team_id?: string | null;
+      };
+      if (res?.error) return { error: res.error };
       setMatches((prev) =>
         prev.map((m) =>
           m.id === active.id
             ? {
                 ...m,
-                score_a: res.scoreA,
-                score_b: res.scoreB,
-                status: res.status,
-                winner_team_id: res.winner ?? null,
+                score_a: res.score_a ?? m.score_a,
+                score_b: res.score_b ?? m.score_b,
+                status: (res.status as DbMatch["status"]) ?? m.status,
+                winner_team_id: res.winner_team_id ?? m.winner_team_id,
               }
             : m,
         ),
@@ -94,11 +103,14 @@ export function PublicGroupRefereeClient({
       return {};
     };
     const onReset = async () => {
-      const res = await publicResetByScopedToken({
-        token,
-        matchId: active.id,
+      const sb = getSupabaseBrowser();
+      const { data, error } = await sb.rpc("score_reset_by_scoped_token", {
+        p_token: token,
+        p_match_id: active.id,
       });
-      if ("error" in res) return { error: res.error };
+      if (error) return { error: error.message };
+      const res = data as { ok?: boolean; error?: string };
+      if (res?.error) return { error: res.error };
       setMatches((prev) =>
         prev.map((m) =>
           m.id === active.id
@@ -115,18 +127,25 @@ export function PublicGroupRefereeClient({
       return {};
     };
     const onFinalize = async () => {
-      const res = await publicFinalizeByScopedToken({
-        token,
-        matchId: active.id,
+      const sb = getSupabaseBrowser();
+      const { data, error } = await sb.rpc("score_finalize_by_scoped_token", {
+        p_token: token,
+        p_match_id: active.id,
       });
-      if ("error" in res) return { error: res.error };
+      if (error) return { error: error.message };
+      const res = data as {
+        ok?: boolean;
+        error?: string;
+        winner_team_id?: string | null;
+      };
+      if (res?.error) return { error: res.error };
       setMatches((prev) =>
         prev.map((m) =>
           m.id === active.id
             ? {
                 ...m,
                 status: "completed",
-                winner_team_id: res.winner ?? null,
+                winner_team_id: res.winner_team_id ?? null,
               }
             : m,
         ),
@@ -134,11 +153,14 @@ export function PublicGroupRefereeClient({
       return {};
     };
     const onReopen = async () => {
-      const res = await publicReopenByScopedToken({
-        token,
-        matchId: active.id,
+      const sb = getSupabaseBrowser();
+      const { data, error } = await sb.rpc("score_reopen_by_scoped_token", {
+        p_token: token,
+        p_match_id: active.id,
       });
-      if ("error" in res) return { error: res.error };
+      if (error) return { error: error.message };
+      const res = data as { ok?: boolean; error?: string };
+      if (res?.error) return { error: res.error };
       setMatches((prev) =>
         prev.map((m) =>
           m.id === active.id
@@ -167,6 +189,7 @@ export function PublicGroupRefereeClient({
         onReset={onReset}
         onFinalize={onFinalize}
         onReopen={onReopen}
+        membersByTeam={membersByTeam}
         headerExtra={
           <button
             onClick={() => setActiveId(null)}

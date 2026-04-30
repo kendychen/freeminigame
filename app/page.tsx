@@ -75,19 +75,28 @@ export default async function HomePage() {
                 thoại — mọi người cùng xem realtime.
               </p>
 
-              <div className="mt-8 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:gap-3">
+              <div className="mt-8 grid w-full gap-2.5 sm:w-auto sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                 <Link href="/pair/new" className="w-full sm:w-auto">
-                  <Button size="lg" className="w-full sm:min-w-[220px]">
+                  <Button size="lg" className="w-full sm:min-w-[200px]">
                     <Radio className="size-4" />
                     Bốc thăm realtime
-                    <ArrowRight className="size-4" />
+                  </Button>
+                </Link>
+                <Link href="/score/new" className="w-full sm:w-auto">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full sm:min-w-[200px]"
+                  >
+                    <Gavel className="size-4" />
+                    Tỷ số nhanh
                   </Button>
                 </Link>
                 <Link href="/quick/new" className="w-full sm:w-auto">
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full sm:min-w-[220px]"
+                    className="w-full sm:min-w-[200px]"
                   >
                     <Zap className="size-4" />
                     Chia cặp nhanh
@@ -100,7 +109,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="ghost"
-                    className="w-full sm:min-w-[220px]"
+                    className="w-full sm:min-w-[200px]"
                   >
                     <Trophy className="size-4" />
                     {user ? "Bảng điều khiển" : "Giải đấu Live"}

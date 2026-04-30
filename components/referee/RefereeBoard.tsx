@@ -40,6 +40,8 @@ export interface RefereeBoardProps {
   onFinalize?: () => Promise<{ error?: string }>;
   /** Reopen a completed match for re-scoring. */
   onReopen?: () => Promise<{ error?: string }>;
+  /** Optional team-id → member display names. Shown under each team name. */
+  membersByTeam?: Record<string, string[]>;
 }
 
 export function RefereeBoard({
@@ -53,6 +55,7 @@ export function RefereeBoard({
   onReset,
   onFinalize,
   onReopen,
+  membersByTeam,
 }: RefereeBoardProps) {
   const [pending, start] = useTransition();
   const [optimisticA, setOptimisticA] = useState<number | null>(null);
@@ -295,6 +298,7 @@ export function RefereeBoard({
         <ScorePane
           side="a"
           name={teamA?.name ?? "TBD"}
+          members={teamA ? membersByTeam?.[teamA.id] ?? [] : []}
           score={scoreA}
           isWinner={winnerSide === "a"}
           disabled={!match.team_a_id || !match.team_b_id}
@@ -304,6 +308,7 @@ export function RefereeBoard({
         <ScorePane
           side="b"
           name={teamB?.name ?? "TBD"}
+          members={teamB ? membersByTeam?.[teamB.id] ?? [] : []}
           score={scoreB}
           isWinner={winnerSide === "b"}
           disabled={!match.team_a_id || !match.team_b_id}
@@ -357,6 +362,7 @@ export function RefereeBoard({
 function ScorePane({
   side,
   name,
+  members,
   score,
   isWinner,
   disabled,
@@ -365,6 +371,7 @@ function ScorePane({
 }: {
   side: "a" | "b";
   name: string;
+  members: string[];
   score: number;
   isWinner: boolean;
   disabled: boolean;
@@ -377,20 +384,27 @@ function ScorePane({
         side === "a" ? "sm:border-r" : ""
       } ${isWinner ? "bg-primary/5" : ""}`}
     >
-      <div className="flex w-full items-center justify-center gap-2 text-center">
-        <span
-          className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-            side === "a"
-              ? "bg-blue-500/15 text-blue-500"
-              : "bg-orange-500/15 text-orange-500"
-          }`}
-        >
-          {side.toUpperCase()}
-        </span>
-        <span className="line-clamp-2 break-words text-base font-bold sm:text-xl">
-          {name}
-        </span>
-        {isWinner && <Trophy className="size-5 shrink-0 text-primary" />}
+      <div className="flex w-full flex-col items-center gap-1 text-center">
+        <div className="flex w-full items-center justify-center gap-2">
+          <span
+            className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+              side === "a"
+                ? "bg-blue-500/15 text-blue-500"
+                : "bg-orange-500/15 text-orange-500"
+            }`}
+          >
+            {side.toUpperCase()}
+          </span>
+          <span className="line-clamp-2 break-words text-base font-bold sm:text-xl">
+            {name}
+          </span>
+          {isWinner && <Trophy className="size-5 shrink-0 text-primary" />}
+        </div>
+        {members.length > 0 && (
+          <p className="line-clamp-2 break-words text-[11px] text-muted-foreground sm:text-xs">
+            {members.join(" · ")}
+          </p>
+        )}
       </div>
       <div
         className={`flex-1 select-none text-center font-mono font-black tabular-nums ${

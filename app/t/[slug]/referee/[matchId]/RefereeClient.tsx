@@ -28,12 +28,14 @@ export function RefereeClient({
   tournamentName,
   initialMatch,
   teams,
+  membersByTeam,
 }: {
   tournamentId: string;
   tournamentSlug: string;
   tournamentName: string;
   initialMatch: DbMatch;
   teams: TeamLite[];
+  membersByTeam?: Record<string, string[]>;
 }) {
   const live = useLiveMatches(tournamentId, [initialMatch]);
   const match = live.find((m) => m.id === initialMatch.id) ?? initialMatch;
@@ -131,6 +133,7 @@ export function RefereeClient({
       onReset={onReset}
       onFinalize={onFinalize}
       onReopen={onReopen}
+      membersByTeam={membersByTeam}
       headerExtra={
         <>
           <button

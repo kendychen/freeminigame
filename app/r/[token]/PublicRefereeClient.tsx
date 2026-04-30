@@ -23,11 +23,13 @@ export function PublicRefereeClient({
   tournamentName,
   initialMatch,
   teams: initialTeams,
+  membersByTeam,
 }: {
   token: string;
   tournamentName: string;
   initialMatch: DbMatch;
   teams: TeamLite[];
+  membersByTeam?: Record<string, string[]>;
 }) {
   const [match, setMatch] = useState<DbMatch>(initialMatch);
   const [teams, setTeams] = useState<TeamLite[]>(initialTeams);
@@ -118,6 +120,7 @@ export function PublicRefereeClient({
       onReset={onReset}
       onFinalize={onFinalize}
       onReopen={onReopen}
+      membersByTeam={membersByTeam}
     />
   );
 }

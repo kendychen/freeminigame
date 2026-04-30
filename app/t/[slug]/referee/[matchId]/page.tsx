@@ -49,6 +49,23 @@ export default async function RefereePage({
         ? teamIds
         : ["00000000-0000-0000-0000-000000000000"],
     );
+  const { data: memberRows } = teamIds.length
+    ? await supabase
+        .from("team_members")
+        .select("team_id, players(name)")
+        .in("team_id", teamIds)
+    : { data: [] };
+  type MR = {
+    team_id: string;
+    players: { name: string } | { name: string }[] | null;
+  };
+  const membersByTeam: Record<string, string[]> = {};
+  for (const r of (memberRows ?? []) as MR[]) {
+    const arr = membersByTeam[r.team_id] ?? [];
+    const p = Array.isArray(r.players) ? r.players[0] : r.players;
+    if (p?.name) arr.push(p.name);
+    membersByTeam[r.team_id] = arr;
+  }
 
   return (
     <RefereeClient
@@ -57,6 +74,7 @@ export default async function RefereePage({
       tournamentName={t.name}
       initialMatch={match}
       teams={teams ?? []}
+      membersByTeam={membersByTeam}
     />
   );
 }
