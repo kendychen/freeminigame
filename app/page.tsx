@@ -71,8 +71,8 @@ export default async function HomePage() {
 
               <p className="mt-4 max-w-2xl text-base text-muted-foreground sm:mt-6 sm:text-lg">
                 Chia cặp · Bốc thăm chia bảng realtime · Sơ đồ thi đấu tự động ·
-                Trọng tài chấm điểm live qua link share. Hoạt động trên điện
-                thoại — mọi người cùng xem realtime.
+                Trọng tài chấm điểm qua link share, lưu khi kết thúc trận. Hoạt
+                động trên điện thoại — kết quả tự cập nhật cho viewer.
               </p>
 
               <div className="mt-8 grid w-full gap-2.5 sm:w-auto sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
@@ -153,21 +153,21 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Trọng tài + realtime score */}
+        {/* Trọng tài chấm điểm */}
         <section className="border-t">
           <div className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
             <div className="text-center">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                 <Gavel className="size-3.5" />
-                Mới · Trọng tài realtime
+                Mới · Trọng tài chấm điểm
               </span>
               <h2 className="mt-4 text-2xl font-bold sm:text-3xl">
                 Trọng tài chấm điểm cực gọn
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
                 Mỗi bảng / cúp có 1 link riêng — gửi qua Zalo, trọng tài mở
-                điện thoại bấm <strong>+1</strong> là điểm số nhảy live cho
-                tất cả viewer, không cần F5.
+                điện thoại bấm <strong>+1 / −1</strong> giữ điểm trên máy,
+                bấm <strong>Kết thúc</strong> là tỉ số lưu ngay vào giải.
               </p>
             </div>
 
@@ -201,11 +201,11 @@ export default async function HomePage() {
                   <Wifi className="size-5 text-primary" />
                 </div>
                 <h3 className="mt-3 text-sm font-semibold sm:text-base">
-                  Sync realtime mọi thiết bị
+                  Lưu 1 phát khi Kết thúc
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
-                  Trọng tài bấm là viewer + admin thấy tỉ số ngay. Lịch + bảng
-                  điểm tự update không cần reload.
+                  Trọng tài đếm điểm trên máy, không lo chậm. Bấm Kết thúc →
+                  tỉ số đẩy lên giải, viewer thấy kết quả.
                 </p>
               </div>
               <div className="rounded-xl border bg-card p-4 sm:p-5">
@@ -353,7 +353,7 @@ export default async function HomePage() {
               <ul className="mt-3 space-y-1.5 text-sm">
                 <li>✓ Đa admin realtime</li>
                 <li>✓ Link trọng tài per-bảng / per-cúp</li>
-                <li>✓ Public viewer link · điểm số live</li>
+                <li>✓ Public viewer link · cập nhật khi kết thúc trận</li>
                 <li>✓ BO3/BO5, tie-breakers, stats MVP</li>
               </ul>
               <Link
