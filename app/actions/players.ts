@@ -140,6 +140,7 @@ export async function createPlayerTeamDraw(input: {
     .eq("linked_tournament_id", input.tournamentId)
     .gte("expires_at", new Date().toISOString())
     .neq("status", "closed")
+    .not("player_id_map", "is", null)
     .order("created_at", { ascending: false })
     .limit(1);
   if (existingSession && existingSession.length > 0 && existingSession[0]) {

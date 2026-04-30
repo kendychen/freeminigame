@@ -41,10 +41,12 @@ export function GroupsClient({
   tournamentId,
   tournamentName,
   initialTeams,
+  membersByTeam,
 }: {
   tournamentId: string;
   tournamentName: string;
   initialTeams: TeamRow[];
+  membersByTeam: Record<string, { id: string; name: string }[]>;
 }) {
   const [teams, setTeams] = useState<TeamRow[]>(initialTeams);
   const [groupSize, setGroupSize] = useState(4);
@@ -60,7 +62,7 @@ export function GroupsClient({
   useEffect(() => {
     let mounted = true;
     const refresh = async () => {
-      const res = await getActiveDraw(tournamentId);
+      const res = await getActiveDraw(tournamentId, "group");
       if (!mounted) return;
       if ("active" in res && res.active) {
         setActiveDraw({
@@ -342,28 +344,38 @@ export function GroupsClient({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-1 text-sm">
-                  {list.map((t) => (
-                    <li
-                      key={t.id}
-                      className="flex items-center justify-between gap-2 rounded px-1 hover:bg-accent"
-                    >
-                      <span className="truncate">{t.name}</span>
-                      <Select
-                        value={t.group_label ?? "—"}
-                        onChange={(e) => onChangeLabel(t.id, e.target.value)}
-                        disabled={pending}
-                        className="h-7 w-16 text-xs"
+                <ul className="space-y-1.5 text-sm">
+                  {list.map((t) => {
+                    const members = membersByTeam[t.id] ?? [];
+                    return (
+                      <li
+                        key={t.id}
+                        className="flex items-start justify-between gap-2 rounded px-1 py-1 hover:bg-accent"
                       >
-                        <option value="—">—</option>
-                        {GROUP_LABELS.slice(0, groupCount).map((lbl) => (
-                          <option key={lbl} value={lbl}>
-                            {lbl}
-                          </option>
-                        ))}
-                      </Select>
-                    </li>
-                  ))}
+                        <span className="flex flex-1 flex-col gap-0.5 truncate">
+                          <span className="truncate font-medium">{t.name}</span>
+                          {members.length > 0 && (
+                            <span className="truncate text-[11px] text-muted-foreground">
+                              {members.map((m) => m.name).join(" · ")}
+                            </span>
+                          )}
+                        </span>
+                        <Select
+                          value={t.group_label ?? "—"}
+                          onChange={(e) => onChangeLabel(t.id, e.target.value)}
+                          disabled={pending}
+                          className="h-7 w-16 text-xs"
+                        >
+                          <option value="—">—</option>
+                          {GROUP_LABELS.slice(0, groupCount).map((lbl) => (
+                            <option key={lbl} value={lbl}>
+                              {lbl}
+                            </option>
+                          ))}
+                        </Select>
+                      </li>
+                    );
+                  })}
                 </ul>
               </CardContent>
             </Card>
@@ -391,12 +403,21 @@ export function GroupsClient({
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {groupedTeams.unassigned.map((t) => (
+              {groupedTeams.unassigned.map((t) => {
+                const members = membersByTeam[t.id] ?? [];
+                return (
                 <div
                   key={t.id}
-                  className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                  className="flex items-start justify-between gap-2 rounded-md border p-2 text-sm"
                 >
-                  <span className="truncate">{t.name}</span>
+                  <span className="flex flex-1 flex-col gap-0.5 truncate">
+                    <span className="truncate font-medium">{t.name}</span>
+                    {members.length > 0 && (
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {members.map((m) => m.name).join(" · ")}
+                      </span>
+                    )}
+                  </span>
                   <Select
                     value="—"
                     onChange={(e) => onChangeLabel(t.id, e.target.value)}
@@ -413,7 +434,8 @@ export function GroupsClient({
                     )}
                   </Select>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

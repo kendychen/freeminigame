@@ -144,7 +144,7 @@ export function MembersClient({
   useEffect(() => {
     let mounted = true;
     const refresh = async () => {
-      const res = await getActiveDraw(tournamentId);
+      const res = await getActiveDraw(tournamentId, "team");
       if (!mounted) return;
       if ("active" in res && res.active) {
         setActiveDraw({

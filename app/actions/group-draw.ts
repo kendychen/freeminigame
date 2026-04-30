@@ -30,7 +30,9 @@ export async function createTournamentGroupDraw(input: CreateGroupDrawInput) {
     .single();
   if (!tournament) return { error: "tournament_not_found" } as const;
 
-  // Lock: refuse if any alive pair_session already linked to this tournament
+  // Lock: refuse only if a GROUP-draw session is already alive for this
+  // tournament. A team-draw session (player_id_map) is unrelated and must
+  // not block group-draw creation.
   const svcCheck = createServiceClient();
   const { data: existingSession } = await svcCheck
     .from("pair_sessions")
@@ -38,6 +40,7 @@ export async function createTournamentGroupDraw(input: CreateGroupDrawInput) {
     .eq("linked_tournament_id", input.tournamentId)
     .gte("expires_at", new Date().toISOString())
     .neq("status", "closed")
+    .not("team_id_map", "is", null)
     .order("created_at", { ascending: false })
     .limit(1);
   if (existingSession && existingSession.length > 0 && existingSession[0]) {
@@ -119,16 +122,27 @@ export async function manualAssignGroup(input: {
 
 /**
  * Get the active pair_session for a tournament (used to detect ongoing draw).
+ * `kind` filters by session type so a team-draw session doesn't block the
+ * group-draw page and vice-versa:
+ *  - 'team'  → only sessions with player_id_map  (chia đội từ thành viên)
+ *  - 'group' → only sessions with team_id_map    (chia bảng đấu)
+ *  - 'any'   → either (default, used by callers that don't care)
  */
-export async function getActiveDraw(tournamentId: string) {
+export async function getActiveDraw(
+  tournamentId: string,
+  kind: "team" | "group" | "any" = "any",
+) {
   await requireTournamentAdmin(tournamentId);
   const svc = createServiceClient();
-  const { data } = await svc
+  let query = svc
     .from("pair_sessions")
-    .select("code, host_token, status, shuffle_count, created_at")
+    .select("code, host_token, status, shuffle_count, created_at, team_id_map, player_id_map")
     .eq("linked_tournament_id", tournamentId)
     .gte("expires_at", new Date().toISOString())
-    .neq("status", "closed")
+    .neq("status", "closed");
+  if (kind === "team") query = query.not("player_id_map", "is", null);
+  else if (kind === "group") query = query.not("team_id_map", "is", null);
+  const { data } = await query
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
