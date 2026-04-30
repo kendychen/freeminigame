@@ -372,10 +372,16 @@ export default async function HomePage() {
       <InstallPrompt />
 
       <footer className="border-t">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 text-xs text-muted-foreground sm:h-16 sm:text-sm">
+        <div className="mx-auto flex flex-col gap-1 px-4 py-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:py-4 sm:text-sm md:max-w-6xl md:mx-auto">
           <span className="flex items-center gap-1.5">
             <PickleballLogo size={16} /> © {new Date().getFullYear()}{" "}
             Hội Nhóm Pickleball
+          </span>
+          <span className="text-[11px] sm:text-xs">
+            Bản quyền thuộc{" "}
+            <strong className="font-semibold text-foreground">
+              Nguyễn Đắc Linh
+            </strong>
           </span>
           <Link href="/quick/new" className="hover:text-foreground">
             Tạo cặp nhanh
