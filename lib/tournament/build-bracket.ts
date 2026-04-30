@@ -195,6 +195,11 @@ export async function buildBracket(
     const key = matchKey(r.bracket, r.round, r.match_number, r.group_label);
     idMap.set(key, r.id);
   }
+  const pendingNextLinks: Array<{
+    id: string;
+    nextWinUuid: string | null;
+    nextLossUuid: string | null;
+  }> = [];
   for (const m of matches) {
     const id = idMap.get(
       matchKey(m.bracket, m.round, m.matchNumber, m.groupLabel ?? null),
@@ -205,14 +210,27 @@ export async function buildBracket(
     const nextWinUuid = m.nextWinId ? (idMap.get(m.nextWinId) ?? null) : null;
     const nextLossUuid = m.nextLossId ? (idMap.get(m.nextLossId) ?? null) : null;
     if (nextWinUuid || nextLossUuid) {
-      await supabase
-        .from("matches")
-        .update({
-          next_win_match_id: nextWinUuid,
-          next_loss_match_id: nextLossUuid,
-        })
-        .eq("id", id);
+      pendingNextLinks.push({
+        id,
+        nextWinUuid,
+        nextLossUuid,
+      });
     }
+  }
+  // Phase B writes were sequential (32+ updates for a 32-team bracket → 6-10s
+  // on Vercel→Supabase Singapore). Run them in parallel.
+  if (pendingNextLinks.length > 0) {
+    await Promise.all(
+      pendingNextLinks.map((p) =>
+        supabase
+          .from("matches")
+          .update({
+            next_win_match_id: p.nextWinUuid,
+            next_loss_match_id: p.nextLossUuid,
+          })
+          .eq("id", p.id),
+      ),
+    );
   }
 
   await supabase

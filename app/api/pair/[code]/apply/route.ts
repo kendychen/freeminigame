@@ -67,29 +67,31 @@ export async function POST(
   if (teamIdMap) {
     mode = "group";
     const labels = "ABCDEFGHIJKLMNOP";
+    const updatesByLabel = new Map<string | null, string[]>();
     for (let gi = 0; gi < result.groups.length; gi++) {
       const label = labels[gi] ?? String(gi + 1);
-      const groupIds = result.groups[gi]!;
-      for (const pid of groupIds) {
+      const ids: string[] = [];
+      for (const pid of result.groups[gi]!) {
         const teamId = teamIdMap[pid];
-        if (teamId) {
-          const { error } = await sb
-            .from("teams")
-            .update({ group_label: label })
-            .eq("id", teamId);
-          if (!error) groupsAssigned += 1;
-        }
+        if (teamId) ids.push(teamId);
       }
+      if (ids.length > 0) updatesByLabel.set(label, ids);
     }
+    const byeIds: string[] = [];
     for (const pid of result.byes) {
       const teamId = teamIdMap[pid];
-      if (teamId) {
-        await sb
-          .from("teams")
-          .update({ group_label: null })
-          .eq("id", teamId);
-      }
+      if (teamId) byeIds.push(teamId);
     }
+    if (byeIds.length > 0) updatesByLabel.set(null, byeIds);
+    await Promise.all(
+      Array.from(updatesByLabel.entries()).map(async ([label, ids]) => {
+        const { error } = await sb
+          .from("teams")
+          .update({ group_label: label })
+          .in("id", ids);
+        if (!error && label !== null) groupsAssigned += ids.length;
+      }),
+    );
     // Idempotent bracket build (skips if matches already exist)
     try {
       const { data: t } = await sb

@@ -170,10 +170,10 @@ export function PublicGroupRefereeClient({
         headerExtra={
           <button
             onClick={() => setActiveId(null)}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs hover:bg-accent"
+            className="flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20"
           >
-            <ArrowLeft className="size-3" />
-            <span className="hidden sm:inline">Danh sách</span>
+            <ArrowLeft className="size-3.5" />
+            Danh sách
           </button>
         }
       />

@@ -127,26 +127,32 @@ export async function POST(
 
   if (linkedId && teamIdMap) {
     // Mode A: GROUP DRAW (chia bảng) — set teams.group_label + auto-generate bracket
+    // Bucket teams by target label, then issue ONE UPDATE per label using
+    // .in("id", teamIds). For 32 teams across 4 groups this drops 32 sequential
+    // round-trips to 5 (4 groups + byes), each ~200ms instead of ~6s total.
     const labels = "ABCDEFGHIJKLMNOP";
+    const updatesByLabel = new Map<string | null, string[]>();
     for (let gi = 0; gi < result.groups.length; gi++) {
       const label = labels[gi] ?? String(gi + 1);
-      const groupIds = result.groups[gi]!;
-      for (const pid of groupIds) {
+      const ids: string[] = [];
+      for (const pid of result.groups[gi]!) {
         const teamId = teamIdMap[pid];
-        if (teamId) {
-          await sb
-            .from("teams")
-            .update({ group_label: label })
-            .eq("id", teamId);
-        }
+        if (teamId) ids.push(teamId);
       }
+      if (ids.length > 0) updatesByLabel.set(label, ids);
     }
+    const byeIds: string[] = [];
     for (const pid of result.byes) {
       const teamId = teamIdMap[pid];
-      if (teamId) {
-        await sb.from("teams").update({ group_label: null }).eq("id", teamId);
-      }
+      if (teamId) byeIds.push(teamId);
     }
+    if (byeIds.length > 0) updatesByLabel.set(null, byeIds);
+
+    await Promise.all(
+      Array.from(updatesByLabel.entries()).map(([label, ids]) =>
+        sb.from("teams").update({ group_label: label }).in("id", ids),
+      ),
+    );
     // Auto-generate bracket ONLY after group draw
     try {
       const { data: t } = await sb

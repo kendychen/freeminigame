@@ -238,14 +238,17 @@ export function RefereeBoard({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <header className="flex items-center justify-between border-b px-3 py-2 sm:px-4 sm:py-3">
+      <header
+        className="flex items-center justify-between border-b px-3 py-2 sm:px-4 sm:py-3"
+        style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
+      >
         {exitHref ? (
           <a
             href={exitHref}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
           >
-            <ArrowLeft className="size-4" />
-            <span className="hidden sm:inline">Thoát</span>
+            <ArrowLeft className="size-3.5" />
+            Thoát
           </a>
         ) : (
           <span className="size-8" />
@@ -309,7 +312,10 @@ export function RefereeBoard({
         />
       </div>
 
-      <footer className="border-t bg-card/50 px-3 py-2.5 sm:px-4 sm:py-3">
+      <footer
+        className="border-t bg-card/50 px-3 py-2.5 sm:px-4 sm:py-3"
+        style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}
+      >
         <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2">
           <Button
             variant="outline"
