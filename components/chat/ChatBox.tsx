@@ -6,11 +6,12 @@ import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { toast } from "@/components/ui/toast";
 
 const PRESET_EMOJI = ["👏", "🔥", "😂", "💪", "🍀", "🎉", "🥲", "👍"];
-const MAX_MESSAGES = 80;
-const MAX_LEN = 200;
+const HISTORY_LIMIT = 100;
+const MAX_LEN = 500;
 const MIN_INTERVAL_MS = 1500; // ~1 msg / 1.5s per user
 const STORAGE_KEY_NAME = "freeminigame:chat-name";
 const STORAGE_KEY_OPEN = "freeminigame:chat-open";
+const STORAGE_KEY_CLIENT = "freeminigame:chat-client-id";
 
 export interface ChatMessage {
   id: string;
@@ -19,6 +20,14 @@ export interface ChatMessage {
   ts: number;
   /** Local own-message echo: true if this client sent it */
   mine?: boolean;
+}
+
+interface ChatRow {
+  id: string;
+  channel_key: string;
+  display_name: string;
+  text: string;
+  created_at: string;
 }
 
 export interface ChatBoxProps {
@@ -43,12 +52,10 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
   const [name, setName] = useState<string>("");
   const [unread, setUnread] = useState(0);
   const lastSentRef = useRef(0);
-  const channelRef = useRef<ReturnType<
-    ReturnType<typeof getSupabaseBrowser>["channel"]
-  > | null>(null);
+  const clientIdRef = useRef<string>("");
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Load name + open state from storage
+  // Load name + open state + stable client id from storage
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = localStorage.getItem(STORAGE_KEY_NAME);
@@ -56,6 +63,16 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
     else if (defaultName) setName(defaultName);
     const storedOpen = localStorage.getItem(STORAGE_KEY_OPEN);
     if (storedOpen === "0") setOpen(false);
+    let cid = localStorage.getItem(STORAGE_KEY_CLIENT);
+    if (!cid) {
+      cid = genId();
+      try {
+        localStorage.setItem(STORAGE_KEY_CLIENT, cid);
+      } catch {
+        /* ignore */
+      }
+    }
+    clientIdRef.current = cid;
   }, [defaultName]);
 
   const setOpenPersist = (v: boolean) => {
@@ -67,29 +84,75 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
     }
   };
 
-  // Subscribe to broadcast channel
+  // Track which DB rows we authored locally so the postgres_changes event
+  // can mark them as "mine" without an extra echo path.
+  const myRowIdsRef = useRef<Set<string>>(new Set());
+
+  // Load history + subscribe to live INSERTs
   useEffect(() => {
     if (!channelKey) return;
     const sb = getSupabaseBrowser();
-    const ch = sb.channel(`chat:${channelKey}`, {
-      config: { broadcast: { self: false } },
-    });
-    ch.on("broadcast", { event: "msg" }, (payload: { payload: ChatMessage }) => {
-      const m = payload.payload;
-      if (!m || !m.id || !m.text) return;
-      setMessages((prev) => {
-        if (prev.some((x) => x.id === m.id)) return prev;
-        return [...prev, m].slice(-MAX_MESSAGES);
-      });
-      if (!open) setUnread((u) => u + 1);
-    });
-    ch.subscribe();
-    channelRef.current = ch;
-    return () => {
-      sb.removeChannel(ch);
-      channelRef.current = null;
+    let active = true;
+
+    const fetchHistory = async () => {
+      const { data, error } = await sb
+        .from("chat_messages")
+        .select("id, channel_key, display_name, text, created_at")
+        .eq("channel_key", channelKey)
+        .order("created_at", { ascending: false })
+        .limit(HISTORY_LIMIT);
+      if (error || !active || !data) return;
+      const rows = data as ChatRow[];
+      const list: ChatMessage[] = rows
+        .map((r) => ({
+          id: r.id,
+          name: r.display_name,
+          text: r.text,
+          ts: new Date(r.created_at).getTime(),
+          mine: myRowIdsRef.current.has(r.id),
+        }))
+        .reverse();
+      setMessages(list);
     };
-  }, [channelKey, open]);
+
+    void fetchHistory();
+
+    const channel = sb
+      .channel(
+        `chat:${channelKey}:${Math.random().toString(36).slice(2, 8)}`,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `channel_key=eq.${channelKey}`,
+        },
+        (payload: { new: ChatRow }) => {
+          if (!active) return;
+          const r = payload.new;
+          const m: ChatMessage = {
+            id: r.id,
+            name: r.display_name,
+            text: r.text,
+            ts: new Date(r.created_at).getTime(),
+            mine: myRowIdsRef.current.has(r.id),
+          };
+          setMessages((prev) => {
+            if (prev.some((x) => x.id === m.id)) return prev;
+            return [...prev, m].slice(-HISTORY_LIMIT);
+          });
+          if (!m.mine) setUnread((u) => u + 1);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      sb.removeChannel(channel);
+    };
+  }, [channelKey]);
 
   // Reset unread when opening
   useEffect(() => {
@@ -103,16 +166,17 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, open]);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     const cleaned = text.trim().slice(0, MAX_LEN);
     if (!cleaned) return;
-    if (!name.trim()) {
+    let myName = name.trim();
+    if (!myName) {
       const ask = prompt("Nhập tên hiển thị trong chat:");
       if (!ask?.trim()) return;
-      const trimmed = ask.trim().slice(0, 24);
-      setName(trimmed);
+      myName = ask.trim().slice(0, 24);
+      setName(myName);
       try {
-        localStorage.setItem(STORAGE_KEY_NAME, trimmed);
+        localStorage.setItem(STORAGE_KEY_NAME, myName);
       } catch {
         /* ignore */
       }
@@ -126,27 +190,45 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
       return;
     }
     lastSentRef.current = now;
-    const myName = name.trim() || "Khách";
-    const msg: ChatMessage = {
-      id: genId(),
-      name: myName.slice(0, 24),
-      text: cleaned,
-      ts: now,
-    };
-    // Local echo
-    setMessages((prev) => [...prev, { ...msg, mine: true }].slice(-MAX_MESSAGES));
-    // Broadcast
-    channelRef.current?.send({
-      type: "broadcast",
-      event: "msg",
-      payload: msg,
-    });
     setInput("");
+    const sb = getSupabaseBrowser();
+    const { data, error } = await sb
+      .from("chat_messages")
+      .insert({
+        channel_key: channelKey,
+        display_name: myName.slice(0, 24),
+        text: cleaned,
+      })
+      .select("id, created_at")
+      .single();
+    if (error || !data) {
+      toast({
+        title: "Gửi thất bại",
+        description: error?.message ?? "Mạng yếu, thử lại sau.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Mark as mine so the realtime echo paints it on the right side
+    myRowIdsRef.current.add(data.id);
+    setMessages((prev) => {
+      if (prev.some((x) => x.id === data.id)) return prev;
+      return [
+        ...prev,
+        {
+          id: data.id,
+          name: myName.slice(0, 24),
+          text: cleaned,
+          ts: new Date(data.created_at).getTime(),
+          mine: true,
+        },
+      ].slice(-HISTORY_LIMIT);
+    });
   };
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    send(input);
+    void send(input);
   };
 
   const renamePrompt = () => {
@@ -250,7 +332,7 @@ export function ChatBox({ channelKey, defaultName, title = "Chat phòng" }: Chat
             <button
               key={em}
               type="button"
-              onClick={() => send(em)}
+              onClick={() => void send(em)}
               className="flex size-8 shrink-0 items-center justify-center rounded-md text-lg transition-transform hover:bg-accent active:scale-90"
               aria-label={`Gửi ${em}`}
             >
