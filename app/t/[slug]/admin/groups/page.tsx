@@ -41,12 +41,19 @@ export default async function GroupsPage({
     membersByTeam[r.team_id] = arr;
   }
 
+  // Has any bracket already been generated? (group + main + plate matches)
+  const { count: matchCount } = await supabase
+    .from("matches")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", t.id);
+
   return (
     <GroupsClient
       tournamentId={t.id}
       tournamentName={t.name}
       initialTeams={teams ?? []}
       membersByTeam={membersByTeam}
+      bracketAlreadyGenerated={(matchCount ?? 0) > 0}
     />
   );
 }

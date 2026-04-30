@@ -43,14 +43,19 @@ export function GroupsClient({
   tournamentName,
   initialTeams,
   membersByTeam,
+  bracketAlreadyGenerated = false,
 }: {
   tournamentId: string;
   tournamentName: string;
   initialTeams: TeamRow[];
   membersByTeam: Record<string, { id: string; name: string }[]>;
+  bracketAlreadyGenerated?: boolean;
 }) {
   const [teams, setTeams] = useState<TeamRow[]>(initialTeams);
   const [groupSize, setGroupSize] = useState(4);
+  const [bracketGenerated, setBracketGenerated] = useState(
+    bracketAlreadyGenerated,
+  );
   const [pending, startTransition] = useTransition();
   const [activeDraw, setActiveDraw] = useState<{
     code: string;
@@ -239,6 +244,7 @@ export function GroupsClient({
         });
         return;
       }
+      setBracketGenerated(true);
       if (res.alreadyGenerated) {
         toast({
           title: "Sơ đồ đã có sẵn",
@@ -335,7 +341,7 @@ export function GroupsClient({
                     ? "🔒 Đang có phiên bốc thăm…"
                     : "🎲 Bốc thăm chia bảng realtime"}
             </Button>
-            {hasGroups && (
+            {hasGroups && !bracketGenerated && (
               <Button
                 variant="outline"
                 onClick={onEnsureBracket}
@@ -344,6 +350,11 @@ export function GroupsClient({
                 <Wand2 className="size-4" />
                 Sinh sơ đồ thi đấu
               </Button>
+            )}
+            {hasGroups && bracketGenerated && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs text-primary">
+                ✅ Sơ đồ đã được sinh
+              </span>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
@@ -356,7 +367,7 @@ export function GroupsClient({
 
       {/* Current groups */}
       {hasGroups ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {groupedTeams.groups.map(([label, list]) => (
             <Card key={label}>
               <CardHeader className="space-y-2 pb-3">
@@ -381,7 +392,7 @@ export function GroupsClient({
                 </button>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-1.5 text-sm">
+                <ul className="space-y-2 text-sm">
                   {list.map((t) => {
                     const members = membersByTeam[t.id] ?? [];
                     return (
@@ -389,19 +400,25 @@ export function GroupsClient({
                         key={t.id}
                         className="flex items-start justify-between gap-2 rounded px-1 py-1 hover:bg-accent"
                       >
-                        <span className="flex flex-1 flex-col gap-0.5 truncate">
-                          <span className="truncate font-medium">{t.name}</span>
+                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="break-words font-medium">
+                            {t.name}
+                          </span>
                           {members.length > 0 && (
-                            <span className="truncate text-[11px] text-muted-foreground">
-                              {members.map((m) => m.name).join(" · ")}
-                            </span>
+                            <ul className="space-y-0.5 text-[11px] leading-tight text-muted-foreground">
+                              {members.map((m) => (
+                                <li key={m.id} className="break-words">
+                                  • {m.name}
+                                </li>
+                              ))}
+                            </ul>
                           )}
-                        </span>
+                        </div>
                         <Select
                           value={t.group_label ?? "—"}
                           onChange={(e) => onChangeLabel(t.id, e.target.value)}
                           disabled={pending}
-                          className="h-7 w-16 text-xs"
+                          className="h-7 w-16 shrink-0 text-xs"
                         >
                           <option value="—">—</option>
                           {GROUP_LABELS.slice(0, groupCount).map((lbl) => (
@@ -447,14 +464,18 @@ export function GroupsClient({
                   key={t.id}
                   className="flex items-start justify-between gap-2 rounded-md border p-2 text-sm"
                 >
-                  <span className="flex flex-1 flex-col gap-0.5 truncate">
-                    <span className="truncate font-medium">{t.name}</span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="break-words font-medium">{t.name}</span>
                     {members.length > 0 && (
-                      <span className="truncate text-[11px] text-muted-foreground">
-                        {members.map((m) => m.name).join(" · ")}
-                      </span>
+                      <ul className="space-y-0.5 text-[11px] leading-tight text-muted-foreground">
+                        {members.map((m) => (
+                          <li key={m.id} className="break-words">
+                            • {m.name}
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </span>
+                  </div>
                   <Select
                     value="—"
                     onChange={(e) => onChangeLabel(t.id, e.target.value)}
