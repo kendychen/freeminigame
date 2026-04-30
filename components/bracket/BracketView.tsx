@@ -85,12 +85,23 @@ export function BracketView({
     return map;
   }, [teams]);
 
+  // Lookup teamA/teamB by matchId so CustomMatch can resolve members regardless
+  // of whether the bracket lib propagates participant.id to topParty.id.
+  const teamsByMatchId = useMemo(() => {
+    const m = new Map<string, { a: string | null; b: string | null }>();
+    for (const x of matches) {
+      m.set(x.id, { a: x.teamA, b: x.teamB });
+    }
+    return m;
+  }, [matches]);
+
   const matchComponentFactory = (props: BracketMatchProps) => (
     <CustomMatch
       {...props}
       onClick={onMatchClick}
       refereeBaseHref={refereeBaseHref}
       membersByTeam={membersByTeam}
+      teamsByMatchId={teamsByMatchId}
     />
   );
 
@@ -202,15 +213,20 @@ function CustomMatch({
   onClick,
   refereeBaseHref,
   membersByTeam,
+  teamsByMatchId,
 }: BracketMatchProps & {
   onClick?: (id: string) => void;
   refereeBaseHref?: string;
   membersByTeam?: Record<string, string[]>;
+  teamsByMatchId?: Map<string, { a: string | null; b: string | null }>;
 }) {
   const hasTeams =
     !!topParty.name && !!bottomParty.name && topParty.name !== "TBD" && bottomParty.name !== "TBD";
-  const aMembers = topParty.id ? membersByTeam?.[topParty.id] ?? [] : [];
-  const bMembers = bottomParty.id ? membersByTeam?.[bottomParty.id] ?? [] : [];
+  const teams = teamsByMatchId?.get(match.id);
+  const aTeamId = topParty.id ?? teams?.a ?? null;
+  const bTeamId = bottomParty.id ?? teams?.b ?? null;
+  const aMembers = aTeamId ? membersByTeam?.[aTeamId] ?? [] : [];
+  const bMembers = bTeamId ? membersByTeam?.[bTeamId] ?? [] : [];
   return (
     <g style={{ cursor: "pointer" }}>
       <foreignObject x={0} y={0} width={CARD_WIDTH} height={CARD_HEIGHT}>
