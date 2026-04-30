@@ -17,7 +17,7 @@ export default async function MembersPage({
   if (!t) notFound();
   const { data: players } = await supabase
     .from("players")
-    .select("id, name, handle, rating, created_at")
+    .select("id, name, handle, rating, seed_tag, created_at")
     .eq("tournament_id", t.id)
     .order("created_at");
   const { data: teamCount } = await supabase

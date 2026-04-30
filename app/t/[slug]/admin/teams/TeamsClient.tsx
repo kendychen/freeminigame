@@ -26,9 +26,11 @@ interface TeamRow {
 export function TeamsClient({
   tournamentId,
   initial,
+  membersByTeam,
 }: {
   tournamentId: string;
   initial: TeamRow[];
+  membersByTeam: Record<string, { id: string; name: string }[]>;
 }) {
   const [teams, setTeams] = useState<TeamRow[]>(initial);
   const [name, setName] = useState("");
@@ -169,29 +171,49 @@ export function TeamsClient({
                   <tr>
                     <th className="px-3 py-2 text-left">#</th>
                     <th className="px-3 py-2 text-left">Tên</th>
+                    <th className="px-3 py-2 text-left">Thành viên</th>
                     <th className="px-3 py-2">Khu vực</th>
                     <th className="px-3 py-2">Rating</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {teams.map((t, i) => (
-                    <tr key={t.id} className="border-t">
-                      <td className="px-3 py-2">{i + 1}</td>
-                      <td className="px-3 py-2 font-medium">{t.name}</td>
-                      <td className="px-3 py-2 text-center">{t.region ?? "—"}</td>
-                      <td className="px-3 py-2 text-center">{t.rating ?? "—"}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => onDelete(t.id)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                  {teams.map((t, i) => {
+                    const members = membersByTeam[t.id] ?? [];
+                    return (
+                      <tr key={t.id} className="border-t">
+                        <td className="px-3 py-2">{i + 1}</td>
+                        <td className="px-3 py-2 font-medium">{t.name}</td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                          {members.length === 0 ? (
+                            <span className="opacity-50">—</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {members.map((m) => (
+                                <span
+                                  key={m.id}
+                                  className="rounded-full bg-secondary px-2 py-0.5"
+                                >
+                                  {m.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center">{t.region ?? "—"}</td>
+                        <td className="px-3 py-2 text-center">{t.rating ?? "—"}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onDelete(t.id)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

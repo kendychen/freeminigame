@@ -20,5 +20,31 @@ export default async function TeamsPage({
     .select("id, name, region, rating, seed, logo_url")
     .eq("tournament_id", t.id)
     .order("seed", { ascending: true, nullsFirst: false });
-  return <TeamsClient tournamentId={t.id} initial={teams ?? []} />;
+
+  const teamIds = (teams ?? []).map((x) => x.id);
+  const { data: memberRows } = teamIds.length
+    ? await supabase
+        .from("team_members")
+        .select("team_id, players(id, name)")
+        .in("team_id", teamIds)
+    : { data: [] };
+  type MemberRow = {
+    team_id: string;
+    players: { id: string; name: string } | { id: string; name: string }[] | null;
+  };
+  const membersByTeam: Record<string, { id: string; name: string }[]> = {};
+  for (const r of (memberRows ?? []) as MemberRow[]) {
+    const arr = membersByTeam[r.team_id] ?? [];
+    const p = Array.isArray(r.players) ? r.players[0] : r.players;
+    if (p) arr.push(p);
+    membersByTeam[r.team_id] = arr;
+  }
+
+  return (
+    <TeamsClient
+      tournamentId={t.id}
+      initial={teams ?? []}
+      membersByTeam={membersByTeam}
+    />
+  );
 }

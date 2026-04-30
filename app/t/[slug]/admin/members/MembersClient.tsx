@@ -18,9 +18,11 @@ import { getSupabaseBrowser } from "@/lib/supabase/client";
 import {
   addPlayer,
   bulkImportPlayers,
+  bulkSetPlayerTags,
   clearTeamsAndMembers,
   createPlayerTeamDraw,
   deletePlayer,
+  setPlayerTag,
 } from "@/app/actions/players";
 import { getActiveDraw } from "@/app/actions/group-draw";
 import { ExternalLink } from "lucide-react";
@@ -30,7 +32,51 @@ interface Player {
   name: string;
   handle: string | null;
   rating: number | null;
+  seed_tag: string | null;
   created_at: string;
+}
+
+function BulkTagBar({
+  disabled,
+  onApply,
+  onClear,
+}: {
+  disabled: boolean;
+  onApply: (preset: "AB" | "MF") => void | Promise<void>;
+  onClear: () => void | Promise<void>;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-secondary/20 p-3 text-xs">
+      <span className="text-muted-foreground">Chia tag nhanh:</span>
+      <Button
+        size="sm"
+        variant="outline"
+        type="button"
+        disabled={disabled}
+        onClick={() => onApply("AB")}
+      >
+        Chia A / B (50:50)
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        type="button"
+        disabled={disabled}
+        onClick={() => onApply("MF")}
+      >
+        Chia Nam / Nữ (50:50)
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        type="button"
+        disabled={disabled}
+        onClick={() => onClear()}
+      >
+        Xoá tất cả tag
+      </Button>
+    </div>
+  );
 }
 
 export function MembersClient({
@@ -47,6 +93,9 @@ export function MembersClient({
   const [csvText, setCsvText] = useState("");
   const [teamSize, setTeamSize] = useState(2);
   const [teamCount, setTeamCount] = useState(0);
+  const [drawMode, setDrawMode] = useState<"random_all" | "balanced_by_tag">(
+    "random_all",
+  );
   const [pending, startTransition] = useTransition();
   const [activeDraw, setActiveDraw] = useState<{
     code: string;
@@ -92,7 +141,7 @@ export function MembersClient({
         async () => {
           const { data } = await sb
             .from("players")
-            .select("id, name, handle, rating, created_at")
+            .select("id, name, handle, rating, seed_tag, created_at")
             .eq("tournament_id", tournamentId)
             .order("created_at");
           if (data) setPlayers(data as Player[]);
@@ -223,7 +272,11 @@ export function MembersClient({
       return;
     }
     startTransition(async () => {
-      const res = await createPlayerTeamDraw({ tournamentId, teamSize });
+      const res = await createPlayerTeamDraw({
+        tournamentId,
+        teamSize,
+        drawMode,
+      });
       if ("error" in res) {
         if (res.error === "draw_in_progress" && "existingCode" in res) {
           window.open(
@@ -362,6 +415,76 @@ export function MembersClient({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="drawMode">Cách bốc thăm</Label>
+            <select
+              id="drawMode"
+              value={drawMode}
+              onChange={(e) =>
+                setDrawMode(
+                  e.target.value as "random_all" | "balanced_by_tag",
+                )
+              }
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="random_all">Random toàn bộ</option>
+              <option value="balanced_by_tag">
+                Cân bằng theo Tag (A vs B, Nam vs Nữ…)
+              </option>
+            </select>
+            {drawMode === "balanced_by_tag" && (
+              <p className="text-xs text-muted-foreground">
+                Mỗi đội sẽ có 1 người mỗi nhóm Tag. Nhập Tag bên dưới (vd:{" "}
+                <code>A</code> / <code>B</code>, <code>Nam</code> /{" "}
+                <code>Nữ</code>).
+              </p>
+            )}
+          </div>
+
+          <BulkTagBar
+            disabled={pending}
+            onApply={async (tag) => {
+              const ids = players.map((p) => p.id);
+              const half = Math.floor(ids.length / 2);
+              const assignments = ids.map((id, i) => ({
+                playerId: id,
+                tag: i < half ? "A" : tag === "AB" ? "B" : "Nữ",
+              }));
+              const res = await bulkSetPlayerTags({
+                tournamentId,
+                assignments,
+              });
+              if ("error" in res) {
+                toast({
+                  title: "Lỗi",
+                  description: translateError(res.error),
+                  variant: "destructive",
+                });
+                return;
+              }
+              setPlayers((prev) =>
+                prev.map((p, i) => ({
+                  ...p,
+                  seed_tag: i < half ? "A" : tag === "AB" ? "B" : "Nữ",
+                })),
+              );
+              toast({ title: "Đã chia tag tự động" });
+            }}
+            onClear={async () => {
+              const res = await bulkSetPlayerTags({
+                tournamentId,
+                assignments: players.map((p) => ({
+                  playerId: p.id,
+                  tag: null,
+                })),
+              });
+              if ("error" in res) return;
+              setPlayers((prev) =>
+                prev.map((p) => ({ ...p, seed_tag: null })),
+              );
+            }}
+          />
+
           {activeDraw && teamCount === 0 && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
               <p className="font-semibold text-amber-700 dark:text-amber-400">
@@ -432,14 +555,47 @@ export function MembersClient({
                     </span>
                     <span className="truncate">{p.name}</span>
                   </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onDelete(p.id)}
-                    disabled={pending}
-                  >
-                    <Trash2 className="size-3" />
-                  </Button>
+                  <span className="flex items-center gap-1">
+                    <input
+                      defaultValue={p.seed_tag ?? ""}
+                      placeholder="Tag"
+                      maxLength={12}
+                      onBlur={async (e) => {
+                        const next = e.target.value.trim();
+                        if ((p.seed_tag ?? "") === next) return;
+                        const res = await setPlayerTag({
+                          tournamentId,
+                          playerId: p.id,
+                          tag: next || null,
+                        });
+                        if ("error" in res) {
+                          toast({
+                            title: "Lỗi tag",
+                            description: translateError(res.error),
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        setPlayers((prev) =>
+                          prev.map((x) =>
+                            x.id === p.id
+                              ? { ...x, seed_tag: next || null }
+                              : x,
+                          ),
+                        );
+                      }}
+                      className="h-7 w-16 rounded-md border bg-background px-2 text-xs"
+                      title="Hạt giống / nhãn (A, B, Nam, Nữ…)"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onDelete(p.id)}
+                      disabled={pending}
+                    >
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </span>
                 </div>
               ))}
             </div>

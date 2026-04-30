@@ -46,6 +46,39 @@ export async function deletePlayer(input: {
   return { ok: true } as const;
 }
 
+export async function setPlayerTag(input: {
+  tournamentId: string;
+  playerId: string;
+  tag: string | null;
+}) {
+  const { supabase } = await requireTournamentAdmin(input.tournamentId);
+  const cleaned = input.tag?.trim() ? input.tag.trim().slice(0, 24) : null;
+  const { error } = await supabase
+    .from("players")
+    .update({ seed_tag: cleaned })
+    .eq("id", input.playerId)
+    .eq("tournament_id", input.tournamentId);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
+}
+
+export async function bulkSetPlayerTags(input: {
+  tournamentId: string;
+  assignments: Array<{ playerId: string; tag: string | null }>;
+}) {
+  const { supabase } = await requireTournamentAdmin(input.tournamentId);
+  for (const a of input.assignments) {
+    const cleaned = a.tag?.trim() ? a.tag.trim().slice(0, 24) : null;
+    const { error } = await supabase
+      .from("players")
+      .update({ seed_tag: cleaned })
+      .eq("id", a.playerId)
+      .eq("tournament_id", input.tournamentId);
+    if (error) return { error: error.message } as const;
+  }
+  return { ok: true } as const;
+}
+
 export async function bulkImportPlayers(input: {
   tournamentId: string;
   names: string[];
@@ -87,6 +120,7 @@ export async function createPlayerTeamDraw(input: {
   tournamentId: string;
   teamSize: number;
   teamNamePattern?: string;
+  drawMode?: "random_all" | "balanced_by_tag";
 }) {
   const teamSize = Math.max(2, Math.min(20, input.teamSize));
   const { supabase } = await requireTournamentAdmin(input.tournamentId);
@@ -118,7 +152,7 @@ export async function createPlayerTeamDraw(input: {
 
   const { data: players } = await supabase
     .from("players")
-    .select("id, name")
+    .select("id, name, seed_tag")
     .eq("tournament_id", input.tournamentId);
   if (!players || players.length < teamSize) {
     return { error: "not_enough_players" } as const;
@@ -137,8 +171,14 @@ export async function createPlayerTeamDraw(input: {
   const participants = players.map((p) => {
     const pid = idGen();
     playerIdMap[pid] = p.id;
-    return { id: pid, name: p.name, joinedAt: Date.now() };
+    return {
+      id: pid,
+      name: p.name,
+      joinedAt: Date.now(),
+      tag: (p as { seed_tag?: string | null }).seed_tag ?? null,
+    };
   });
+  const drawMode = input.drawMode ?? "random_all";
 
   const svc = createServiceClient();
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -155,6 +195,7 @@ export async function createPlayerTeamDraw(input: {
       team_name_pattern: input.teamNamePattern ?? "Đội {n}",
       linked_tournament_id: input.tournamentId,
       status: "lobby",
+      draw_mode: drawMode,
       expires_at: expiresAt.toISOString(),
     });
     if (!error) {

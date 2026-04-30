@@ -36,7 +36,7 @@ export async function POST(
   const { data: session, error } = await sb
     .from("pair_sessions")
     .select(
-      "host_token, status, group_size, participants, shuffle_count, expires_at, linked_tournament_id, team_id_map, player_id_map, team_name_pattern",
+      "host_token, status, group_size, participants, shuffle_count, expires_at, linked_tournament_id, team_id_map, player_id_map, team_name_pattern, draw_mode",
     )
     .eq("code", code)
     .maybeSingle();
@@ -71,11 +71,15 @@ export async function POST(
 
   const round = session.shuffle_count + 1;
   const seed = Date.now() & 0xffffffff;
+  const drawMode = ((session as { draw_mode?: string }).draw_mode ?? "random_all") as
+    | "random_all"
+    | "balanced_by_tag";
   const result = shuffleParticipants(
     participants,
     session.group_size,
     seed,
     round,
+    drawMode,
   );
 
   // Phase 1: broadcast "shuffling" state — all clients show spinner.
