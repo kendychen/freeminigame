@@ -240,6 +240,7 @@ export function LiveTournamentView({
                   variant="single"
                   onMatchClick={onMatchClick}
                   refereeBaseHref={refereeBaseHref}
+                  membersByTeam={membersByTeam}
                 />
               </div>
             );
@@ -251,6 +252,7 @@ export function LiveTournamentView({
               variant={tournament.format === "double_elim" ? "double" : "single"}
               onMatchClick={onMatchClick}
               refereeBaseHref={refereeBaseHref}
+              membersByTeam={membersByTeam}
             />
           );
         })()}
