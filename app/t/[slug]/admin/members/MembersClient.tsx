@@ -36,45 +36,82 @@ interface Player {
   created_at: string;
 }
 
-function BulkTagBar({
+type TagPreset = "AB" | "MF" | "custom";
+
+const PRESET_LABELS: Record<Exclude<TagPreset, "custom">, [string, string]> = {
+  AB: ["A", "B"],
+  MF: ["Nam", "Nữ"],
+};
+
+function presetLabelsOf(preset: TagPreset): [string, string] | null {
+  return preset === "custom" ? null : PRESET_LABELS[preset];
+}
+
+/** Tag-picker toolbar: choose preset + bulk actions. */
+function TagPickerToolbar({
+  preset,
+  setPreset,
   disabled,
-  onApply,
+  counts,
+  onRandomSplit,
   onClear,
 }: {
+  preset: TagPreset;
+  setPreset: (p: TagPreset) => void;
   disabled: boolean;
-  onApply: (preset: "AB" | "MF") => void | Promise<void>;
+  counts: { left: number; right: number; untagged: number };
+  onRandomSplit: () => void | Promise<void>;
   onClear: () => void | Promise<void>;
 }) {
+  const labels = presetLabelsOf(preset);
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-secondary/20 p-3 text-xs">
-      <span className="text-muted-foreground">Chia tag nhanh:</span>
-      <Button
-        size="sm"
-        variant="outline"
-        type="button"
-        disabled={disabled}
-        onClick={() => onApply("AB")}
-      >
-        Chia A / B (50:50)
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        type="button"
-        disabled={disabled}
-        onClick={() => onApply("MF")}
-      >
-        Chia Nam / Nữ (50:50)
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        type="button"
-        disabled={disabled}
-        onClick={() => onClear()}
-      >
-        Xoá tất cả tag
-      </Button>
+    <div className="space-y-2 rounded-lg border border-dashed bg-secondary/20 p-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground">Phân tag thủ công:</span>
+        <select
+          value={preset}
+          onChange={(e) => setPreset(e.target.value as TagPreset)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          disabled={disabled}
+        >
+          <option value="AB">A vs B</option>
+          <option value="MF">Nam vs Nữ</option>
+          <option value="custom">Tuỳ chỉnh (gõ tay)</option>
+        </select>
+        {labels && (
+          <Button
+            size="sm"
+            variant="outline"
+            type="button"
+            disabled={disabled}
+            onClick={() => onRandomSplit()}
+          >
+            🎲 Random 50:50
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          type="button"
+          disabled={disabled}
+          onClick={() => onClear()}
+        >
+          Xoá tất cả tag
+        </Button>
+      </div>
+      {labels && (
+        <div className="flex flex-wrap gap-3 text-[11px]">
+          <span className="rounded-full bg-blue-500/15 px-2 py-0.5 font-semibold text-blue-600 dark:text-blue-400">
+            {labels[0]}: {counts.left}
+          </span>
+          <span className="rounded-full bg-orange-500/15 px-2 py-0.5 font-semibold text-orange-600 dark:text-orange-400">
+            {labels[1]}: {counts.right}
+          </span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+            Chưa gán: {counts.untagged}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -96,6 +133,7 @@ export function MembersClient({
   const [drawMode, setDrawMode] = useState<"random_all" | "balanced_by_tag">(
     "random_all",
   );
+  const [tagPreset, setTagPreset] = useState<TagPreset>("AB");
   const [pending, startTransition] = useTransition();
   const [activeDraw, setActiveDraw] = useState<{
     code: string;
@@ -441,14 +479,36 @@ export function MembersClient({
             )}
           </div>
 
-          <BulkTagBar
+          <TagPickerToolbar
+            preset={tagPreset}
+            setPreset={setTagPreset}
             disabled={pending}
-            onApply={async (tag) => {
-              const ids = players.map((p) => p.id);
-              const half = Math.floor(ids.length / 2);
-              const assignments = ids.map((id, i) => ({
-                playerId: id,
-                tag: i < half ? "A" : tag === "AB" ? "B" : "Nữ",
+            counts={(() => {
+              const labels = presetLabelsOf(tagPreset);
+              if (!labels) {
+                return {
+                  left: 0,
+                  right: 0,
+                  untagged: players.filter((p) => !p.seed_tag).length,
+                };
+              }
+              const left = players.filter((p) => p.seed_tag === labels[0]).length;
+              const right = players.filter((p) => p.seed_tag === labels[1]).length;
+              return {
+                left,
+                right,
+                untagged: players.length - left - right,
+              };
+            })()}
+            onRandomSplit={async () => {
+              const labels = presetLabelsOf(tagPreset);
+              if (!labels) return;
+              // Shuffle a copy so the split is random, not by row order
+              const shuffled = [...players].sort(() => Math.random() - 0.5);
+              const half = Math.ceil(shuffled.length / 2);
+              const assignments = shuffled.map((p, i) => ({
+                playerId: p.id,
+                tag: i < half ? labels[0] : labels[1],
               }));
               const res = await bulkSetPlayerTags({
                 tournamentId,
@@ -462,13 +522,21 @@ export function MembersClient({
                 });
                 return;
               }
+              const tagById = new Map(
+                assignments.map((a) => [a.playerId, a.tag]),
+              );
               setPlayers((prev) =>
-                prev.map((p, i) => ({
+                prev.map((p) => ({
                   ...p,
-                  seed_tag: i < half ? "A" : tag === "AB" ? "B" : "Nữ",
+                  seed_tag: tagById.get(p.id) ?? p.seed_tag,
                 })),
               );
-              toast({ title: "Đã chia tag tự động" });
+              toast({
+                title: "Đã chia 50:50",
+                description: `${labels[0]}: ${half} người · ${labels[1]}: ${
+                  shuffled.length - half
+                } người`,
+              });
             }}
             onClear={async () => {
               const res = await bulkSetPlayerTags({
@@ -544,60 +612,105 @@ export function MembersClient({
             </p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {players.map((p, i) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                      {i + 1}
+              {(() => {
+                const labels = presetLabelsOf(tagPreset);
+                const quickSet = async (
+                  playerId: string,
+                  next: string | null,
+                ) => {
+                  const cur =
+                    players.find((x) => x.id === playerId)?.seed_tag ?? null;
+                  const cleaned = next?.trim() ? next.trim() : null;
+                  if (cur === cleaned) {
+                    // Toggle off if clicking same tag
+                    setPlayers((prev) =>
+                      prev.map((x) =>
+                        x.id === playerId ? { ...x, seed_tag: null } : x,
+                      ),
+                    );
+                    await setPlayerTag({
+                      tournamentId,
+                      playerId,
+                      tag: null,
+                    });
+                    return;
+                  }
+                  setPlayers((prev) =>
+                    prev.map((x) =>
+                      x.id === playerId ? { ...x, seed_tag: cleaned } : x,
+                    ),
+                  );
+                  await setPlayerTag({
+                    tournamentId,
+                    playerId,
+                    tag: cleaned,
+                  });
+                };
+                return players.map((p, i) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                  >
+                    <span className="flex flex-1 items-center gap-2 truncate">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                        {i + 1}
+                      </span>
+                      <span className="truncate">{p.name}</span>
                     </span>
-                    <span className="truncate">{p.name}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <input
-                      defaultValue={p.seed_tag ?? ""}
-                      placeholder="Tag"
-                      maxLength={12}
-                      onBlur={async (e) => {
-                        const next = e.target.value.trim();
-                        if ((p.seed_tag ?? "") === next) return;
-                        const res = await setPlayerTag({
-                          tournamentId,
-                          playerId: p.id,
-                          tag: next || null,
-                        });
-                        if ("error" in res) {
-                          toast({
-                            title: "Lỗi tag",
-                            description: translateError(res.error),
-                            variant: "destructive",
-                          });
-                          return;
-                        }
-                        setPlayers((prev) =>
-                          prev.map((x) =>
-                            x.id === p.id
-                              ? { ...x, seed_tag: next || null }
-                              : x,
-                          ),
-                        );
-                      }}
-                      className="h-7 w-16 rounded-md border bg-background px-2 text-xs"
-                      title="Hạt giống / nhãn (A, B, Nam, Nữ…)"
-                    />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onDelete(p.id)}
-                      disabled={pending}
-                    >
-                      <Trash2 className="size-3" />
-                    </Button>
-                  </span>
-                </div>
-              ))}
+                    <span className="flex shrink-0 items-center gap-1">
+                      {labels && (
+                        <span className="flex overflow-hidden rounded-md border">
+                          {labels.map((lbl, idx) => {
+                            const active = p.seed_tag === lbl;
+                            const colorActive =
+                              idx === 0
+                                ? "bg-blue-500 text-white"
+                                : "bg-orange-500 text-white";
+                            return (
+                              <button
+                                key={lbl}
+                                type="button"
+                                onClick={() => quickSet(p.id, lbl)}
+                                className={`px-2 py-0.5 text-xs font-medium transition-colors ${
+                                  active
+                                    ? colorActive
+                                    : "bg-secondary text-muted-foreground hover:bg-accent"
+                                } ${idx === 0 ? "border-r" : ""}`}
+                                aria-pressed={active}
+                                title={`Đặt tag ${lbl}${active ? " (bấm lại để bỏ)" : ""}`}
+                              >
+                                {lbl}
+                              </button>
+                            );
+                          })}
+                        </span>
+                      )}
+                      {tagPreset === "custom" && (
+                        <input
+                          defaultValue={p.seed_tag ?? ""}
+                          placeholder="Tag"
+                          maxLength={12}
+                          onBlur={async (e) => {
+                            const next = e.target.value.trim();
+                            if ((p.seed_tag ?? "") === next) return;
+                            await quickSet(p.id, next || null);
+                          }}
+                          className="h-7 w-16 rounded-md border bg-background px-2 text-xs"
+                          title="Hạt giống / nhãn"
+                        />
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onDelete(p.id)}
+                        disabled={pending}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </span>
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </CardContent>
