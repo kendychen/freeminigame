@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { PickleballLogo } from "@/components/brand/PickleballLogo";
 import { AuthNavLink } from "@/components/nav/AuthNavLink";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { getOptionalUser } from "@/lib/auth";
 
 const FORMATS = [
@@ -266,6 +267,47 @@ export default async function HomePage() {
           </div>
         </section>
 
+        {/* Install as app */}
+        <section className="border-t bg-secondary/30">
+          <div className="mx-auto max-w-6xl px-4 py-10 sm:py-12">
+            <div className="grid gap-6 lg:grid-cols-3 lg:items-center">
+              <div className="lg:col-span-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  📱 PWA
+                </span>
+                <h2 className="mt-3 text-2xl font-bold sm:text-3xl">
+                  Cài như app trên điện thoại
+                </h2>
+                <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+                  Mở mỗi lần là toàn màn hình, không URL bar — y hệt một app native.
+                  Không cần Play Store, không tốn dung lượng.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-background p-3 text-sm">
+                    <p className="font-semibold">📱 Android (Chrome / Edge)</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Bấm <strong>⋮</strong> góc phải → <strong>Cài đặt ứng
+                      dụng</strong> (hoặc đợi banner "Cài đặt" hiện ra ở dưới).
+                    </p>
+                  </div>
+                  <div className="rounded-lg border bg-background p-3 text-sm">
+                    <p className="font-semibold">🍎 iPhone / iPad (Safari)</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Bấm <strong>Share ⬆</strong> → <strong>Thêm vào Màn hình
+                      chính</strong>. Mở từ home screen sẽ ko có URL bar.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-center lg:justify-end">
+                <div className="flex size-48 items-center justify-center rounded-3xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-2xl">
+                  <PickleballLogo size={120} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* 2 modes */}
         <section className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
           <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
@@ -317,6 +359,8 @@ export default async function HomePage() {
           </div>
         </section>
       </main>
+
+      <InstallPrompt />
 
       <footer className="border-t">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 text-xs text-muted-foreground sm:h-16 sm:text-sm">
