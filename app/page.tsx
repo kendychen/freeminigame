@@ -15,6 +15,19 @@ import {
   Plus,
   ShieldCheck,
 } from "lucide-react";
+
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073c0 6.026 4.388 11.022 10.125 11.927v-8.437H7.078v-3.49h3.047V9.412c0-3.014 1.792-4.678 4.532-4.678 1.313 0 2.686.236 2.686.236v2.965h-1.514c-1.491 0-1.956.93-1.956 1.886v2.252h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
+    </svg>
+  );
+}
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { PickleballLogo } from "@/components/brand/PickleballLogo";
@@ -41,6 +54,16 @@ export default async function HomePage() {
             <span>Hội Nhóm Pickleball</span>
           </Link>
           <div className="flex items-center gap-2">
+            <a
+              href="https://www.facebook.com/linhnguyendac93"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex size-9 items-center justify-center rounded-full text-[#1877F2] transition-colors hover:bg-[#1877F2]/10"
+              aria-label="Facebook admin Nguyễn Đắc Linh"
+              title="Facebook admin"
+            >
+              <FacebookIcon className="size-5" />
+            </a>
             <AuthNavLink />
             <ThemeToggle />
           </div>
@@ -377,11 +400,17 @@ export default async function HomePage() {
             <PickleballLogo size={16} /> © {new Date().getFullYear()}{" "}
             Hội Nhóm Pickleball
           </span>
-          <span className="text-[11px] sm:text-xs">
+          <span className="flex items-center gap-1.5 text-[11px] sm:text-xs">
             Bản quyền thuộc{" "}
-            <strong className="font-semibold text-foreground">
+            <a
+              href="https://www.facebook.com/linhnguyendac93"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-semibold text-foreground hover:text-[#1877F2]"
+            >
               Nguyễn Đắc Linh
-            </strong>
+              <FacebookIcon className="size-3.5" />
+            </a>
           </span>
           <Link href="/quick/new" className="hover:text-foreground">
             Tạo cặp nhanh
