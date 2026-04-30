@@ -222,9 +222,12 @@ function CustomMatch({
 }) {
   const hasTeams =
     !!topParty.name && !!bottomParty.name && topParty.name !== "TBD" && bottomParty.name !== "TBD";
-  const teams = teamsByMatchId?.get(match.id);
-  const aTeamId = topParty.id ?? teams?.a ?? null;
-  const bTeamId = bottomParty.id ?? teams?.b ?? null;
+  // Always resolve via the match.id → {teamA,teamB} map. The g-loot lib
+  // doesn't reliably propagate participant.id onto topParty/bottomParty,
+  // so we ignore those and look up authoritatively via the original DB row.
+  const matchTeams = teamsByMatchId?.get(match.id);
+  const aTeamId = matchTeams?.a ?? null;
+  const bTeamId = matchTeams?.b ?? null;
   const aMembers = aTeamId ? membersByTeam?.[aTeamId] ?? [] : [];
   const bMembers = bTeamId ? membersByTeam?.[bTeamId] ?? [] : [];
   return (
