@@ -35,6 +35,7 @@ export function LiveTournamentView({
   const liveMatches = subscribe ? subscribed : initialMatches;
   const [activeTab, setActiveTab] = useState<Tab>("bracket");
   const [groupFilter, setGroupFilter] = useState<string>("ALL");
+  const [bracketSeries, setBracketSeries] = useState<"main" | "plate">("main");
 
   const isElim =
     tournament.format === "single_elim" || tournament.format === "double_elim";
@@ -173,10 +174,17 @@ export function LiveTournamentView({
             const mainMatches = matchesTyped.filter(
               (m) => m.bracket === "main",
             );
+            const plateMatches = matchesTyped.filter(
+              (m) => m.bracket === "plate",
+            );
             const groupMatches = matchesTyped.filter(
               (m) => m.bracket === "group",
             );
-            if (mainMatches.length === 0 && groupMatches.length > 0) {
+            if (
+              mainMatches.length === 0 &&
+              plateMatches.length === 0 &&
+              groupMatches.length > 0
+            ) {
               return (
                 <div className="rounded-lg border bg-card p-6 text-center text-sm">
                   <p className="font-medium">
@@ -191,13 +199,42 @@ export function LiveTournamentView({
                 </div>
               );
             }
+            const hasPlate = plateMatches.length > 0;
+            const shown =
+              hasPlate && bracketSeries === "plate" ? plateMatches : mainMatches;
             return (
-              <BracketView
-                matches={mainMatches}
-                teams={teamsTyped}
-                variant="single"
-                onMatchClick={onMatchClick}
-              />
+              <div className="space-y-3">
+                {hasPlate && (
+                  <div className="flex gap-1 rounded-lg border bg-secondary p-1 text-sm w-fit">
+                    <button
+                      onClick={() => setBracketSeries("main")}
+                      className={`rounded px-3 py-1.5 transition-colors ${
+                        bracketSeries === "main"
+                          ? "bg-background font-medium shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      🏆 Cúp chính
+                    </button>
+                    <button
+                      onClick={() => setBracketSeries("plate")}
+                      className={`rounded px-3 py-1.5 transition-colors ${
+                        bracketSeries === "plate"
+                          ? "bg-background font-medium shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      🥈 Cúp phụ
+                    </button>
+                  </div>
+                )}
+                <BracketView
+                  matches={shown}
+                  teams={teamsTyped}
+                  variant="single"
+                  onMatchClick={onMatchClick}
+                />
+              </div>
             );
           }
           return (

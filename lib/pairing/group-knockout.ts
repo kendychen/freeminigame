@@ -70,9 +70,11 @@ export function generateGroupKnockout(
 /**
  * Once group stage completes, call this with the per-group ranked teams to produce knockout matches.
  * Snake re-pair: A1 vs B2, B1 vs A2 (so group winners avoid each other early).
+ * `bracket` defaults to "main"; pass "plate" for Series B (Cúp phụ).
  */
 export function promoteToKnockout(
   qualifiedByGroup: Map<string, Team[]>,
+  bracket: "main" | "plate" = "main",
 ): Match[] {
   const labels = Array.from(qualifiedByGroup.keys()).sort();
   const seedOrder: Team[] = [];
@@ -91,5 +93,6 @@ export function promoteToKnockout(
     }
     row++;
   }
-  return generateSingleElim(seedOrder, { bracket: "main" });
+  if (seedOrder.length < 2) return [];
+  return generateSingleElim(seedOrder, { bracket });
 }

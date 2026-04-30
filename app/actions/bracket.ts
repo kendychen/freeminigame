@@ -122,8 +122,16 @@ export async function promoteGroupQualifiers(input: { tournamentId: string }) {
     .select("config")
     .eq("id", input.tournamentId)
     .single();
-  const cfg = (t?.config ?? {}) as { qualifyPerGroup?: number };
+  const cfg = (t?.config ?? {}) as {
+    qualifyPerGroup?: number;
+    qualifyPlatePerGroup?: number;
+    plateEnabled?: boolean;
+  };
   const qualifyPerGroup = cfg.qualifyPerGroup ?? 2;
+  const plateEnabled = !!cfg.plateEnabled;
+  const qualifyPlatePerGroup = plateEnabled
+    ? Math.max(0, cfg.qualifyPlatePerGroup ?? 1)
+    : 0;
 
   const { data: teamRows } = await supabase
     .from("teams")
@@ -148,12 +156,12 @@ export async function promoteGroupQualifiers(input: { tournamentId: string }) {
   );
   if (!allCompleted) return { error: "groups_incomplete" } as const;
 
-  // Already promoted?
+  // Already promoted? (check main OR plate)
   const { count } = await supabase
     .from("matches")
     .select("id", { count: "exact", head: true })
     .eq("tournament_id", input.tournamentId)
-    .eq("bracket", "main");
+    .in("bracket", ["main", "plate"]);
   if ((count ?? 0) > 0) return { error: "already_promoted" } as const;
 
   const groups = new Map<string, Team[]>();
@@ -172,7 +180,8 @@ export async function promoteGroupQualifiers(input: { tournamentId: string }) {
       groups.set(m.groupLabel, involved);
     }
   }
-  const qualifiedByGroup = new Map<string, Team[]>();
+  const mainByGroup = new Map<string, Team[]>();
+  const plateByGroup = new Map<string, Team[]>();
   for (const [label, gTeams] of groups.entries()) {
     const standings = computeStandings({
       teams: gTeams,
@@ -180,15 +189,30 @@ export async function promoteGroupQualifiers(input: { tournamentId: string }) {
       groupLabel: label,
       randomSeed: 42,
     });
-    const top = standings.slice(0, qualifyPerGroup).map((s) => {
-      const t = teams.find((x) => x.id === s.teamId);
-      return t!;
-    });
-    qualifiedByGroup.set(label, top);
+    const ordered = standings
+      .map((s) => teams.find((x) => x.id === s.teamId))
+      .filter((x): x is Team => !!x);
+    mainByGroup.set(label, ordered.slice(0, qualifyPerGroup));
+    if (qualifyPlatePerGroup > 0) {
+      plateByGroup.set(
+        label,
+        ordered.slice(
+          qualifyPerGroup,
+          qualifyPerGroup + qualifyPlatePerGroup,
+        ),
+      );
+    }
   }
 
-  const knockout = promoteToKnockout(qualifiedByGroup);
-  const rows = toDbRows(input.tournamentId, knockout, "bo1");
+  const mainKO = promoteToKnockout(mainByGroup, "main");
+  const plateKO = qualifyPlatePerGroup > 0
+    ? promoteToKnockout(plateByGroup, "plate")
+    : [];
+  const allKO = [...mainKO, ...plateKO];
+
+  if (allKO.length === 0) return { error: "not_enough_teams" } as const;
+
+  const rows = toDbRows(input.tournamentId, allKO, "bo1");
 
   // Phase A: insert without next_*_match_id (UUIDs not yet known).
   const { data: inserted, error } = await supabase
@@ -211,7 +235,7 @@ export async function promoteGroupQualifiers(input: { tournamentId: string }) {
       : `${r.bracket}:r${r.round}:m${r.match_number}`;
     idMap.set(key, r.id);
   }
-  for (const m of knockout) {
+  for (const m of allKO) {
     const selfKey = m.groupLabel
       ? `${m.bracket}:${m.groupLabel}:r${m.round}:m${m.matchNumber}`
       : `${m.bracket}:r${m.round}:m${m.matchNumber}`;

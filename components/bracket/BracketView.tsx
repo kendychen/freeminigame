@@ -81,7 +81,10 @@ export function BracketView({
   );
 
   if (variant === "single") {
-    const main = matches.filter((m) => m.bracket === "main");
+    // Accept main OR plate as the single-elim tree (caller pre-filters by series)
+    const main = matches.filter(
+      (m) => m.bracket === "main" || m.bracket === "plate",
+    );
     if (main.length === 0) {
       return <BracketEmpty />;
     }

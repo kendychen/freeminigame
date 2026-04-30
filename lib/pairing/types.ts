@@ -12,7 +12,8 @@ export type BracketSection =
   | "winners"
   | "losers"
   | "grand_final"
-  | "group";
+  | "group"
+  | "plate";
 
 export interface Team {
   id: string;

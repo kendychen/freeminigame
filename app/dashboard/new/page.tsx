@@ -29,6 +29,8 @@ export default function NewTournamentPage() {
   const [isPublic, setPublic] = useState(true);
   const [groupSize, setGroupSize] = useState(4);
   const [qualifyPerGroup, setQualifyPerGroup] = useState(2);
+  const [plateEnabled, setPlateEnabled] = useState(false);
+  const [qualifyPlatePerGroup, setQualifyPlatePerGroup] = useState(1);
   const [doubleRound, setDoubleRound] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -45,6 +47,11 @@ export default function NewTournamentPage() {
         groupSize: format === "group_knockout" ? groupSize : undefined,
         qualifyPerGroup:
           format === "group_knockout" ? qualifyPerGroup : undefined,
+        plateEnabled: format === "group_knockout" ? plateEnabled : undefined,
+        qualifyPlatePerGroup:
+          format === "group_knockout" && plateEnabled
+            ? qualifyPlatePerGroup
+            : undefined,
       },
     });
     setSubmitting(false);
@@ -125,27 +132,61 @@ export default function NewTournamentPage() {
                 </label>
               )}
               {format === "group_knockout" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Số đội/bảng</Label>
-                    <Input
-                      type="number"
-                      value={groupSize}
-                      onChange={(e) => setGroupSize(Number(e.target.value) || 4)}
-                      min={2}
-                      max={8}
-                    />
+                <div className="space-y-3 rounded-lg border bg-secondary/30 p-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Số đội/bảng</Label>
+                      <Input
+                        type="number"
+                        value={groupSize}
+                        onChange={(e) =>
+                          setGroupSize(Number(e.target.value) || 4)
+                        }
+                        min={2}
+                        max={8}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Vào Cúp chính/bảng</Label>
+                      <Input
+                        type="number"
+                        value={qualifyPerGroup}
+                        onChange={(e) =>
+                          setQualifyPerGroup(Number(e.target.value) || 2)
+                        }
+                        min={1}
+                        max={4}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Đi tiếp/bảng</Label>
-                    <Input
-                      type="number"
-                      value={qualifyPerGroup}
-                      onChange={(e) => setQualifyPerGroup(Number(e.target.value) || 2)}
-                      min={1}
-                      max={4}
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={plateEnabled}
+                      onChange={(e) => setPlateEnabled(e.target.checked)}
+                      className="size-4 accent-primary"
                     />
-                  </div>
+                    Bật Cúp phụ (Series B) — đội không vào Cúp chính sẽ đấu nhánh phụ
+                  </label>
+                  {plateEnabled && (
+                    <div className="space-y-2">
+                      <Label>Vào Cúp phụ/bảng</Label>
+                      <Input
+                        type="number"
+                        value={qualifyPlatePerGroup}
+                        onChange={(e) =>
+                          setQualifyPlatePerGroup(
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                        min={1}
+                        max={4}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Vd: top 2 vào Cúp chính, hạng 3 vào Cúp phụ.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
               <label className="flex items-center gap-2 text-sm">

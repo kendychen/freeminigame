@@ -87,3 +87,41 @@ export async function togglePublic(id: string, isPublic: boolean) {
   if (error) return { error: error.message } as const;
   return { ok: true } as const;
 }
+
+export async function updatePlateConfig(input: {
+  tournamentId: string;
+  plateEnabled: boolean;
+  qualifyPerGroup: number;
+  qualifyPlatePerGroup: number;
+}) {
+  const supabase = await createClient();
+  const { data: t, error: readErr } = await supabase
+    .from("tournaments")
+    .select("config")
+    .eq("id", input.tournamentId)
+    .single();
+  if (readErr) return { error: readErr.message } as const;
+
+  // Refuse if knockout already promoted (config change would mismatch existing matches)
+  const { count } = await supabase
+    .from("matches")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", input.tournamentId)
+    .in("bracket", ["main", "plate"]);
+  if ((count ?? 0) > 0) return { error: "already_promoted" } as const;
+
+  const cfg = ((t?.config as Record<string, unknown> | null) ?? {});
+  const next = {
+    ...cfg,
+    plateEnabled: input.plateEnabled,
+    qualifyPerGroup: Math.max(1, input.qualifyPerGroup),
+    qualifyPlatePerGroup: Math.max(0, input.qualifyPlatePerGroup),
+  };
+  const { error } = await supabase
+    .from("tournaments")
+    .update({ config: next })
+    .eq("id", input.tournamentId);
+  if (error) return { error: error.message } as const;
+  revalidatePath(`/t`, "layout");
+  return { ok: true } as const;
+}
