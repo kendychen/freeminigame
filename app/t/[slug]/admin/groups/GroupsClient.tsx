@@ -359,30 +359,26 @@ export function GroupsClient({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {groupedTeams.groups.map(([label, list]) => (
             <Card key={label}>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between gap-2 text-base">
-                  <span className="flex items-center gap-2">
-                    <span className="flex size-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                      {label}
-                    </span>
-                    Bảng {label}
+              <CardHeader className="space-y-2 pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                    {label}
                   </span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs font-normal text-muted-foreground">
-                      {list.length} đội
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onShareGroup(label)}
-                      disabled={pending}
-                      className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-                      title={`Copy link trọng tài bảng ${label}`}
-                    >
-                      <Link2 className="size-3" />
-                      Trọng tài
-                    </button>
+                  <span className="flex-1 truncate">Bảng {label}</span>
+                  <span className="shrink-0 whitespace-nowrap text-xs font-normal text-muted-foreground">
+                    {list.length} đội
                   </span>
                 </CardTitle>
+                <button
+                  type="button"
+                  onClick={() => onShareGroup(label)}
+                  disabled={pending}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                  title={`Copy link trọng tài bảng ${label}`}
+                >
+                  <Link2 className="size-3.5" />
+                  Link trọng tài bảng {label}
+                </button>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-1.5 text-sm">
