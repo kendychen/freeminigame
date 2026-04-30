@@ -18,7 +18,7 @@ export async function GET(
   const { data, error } = await sb
     .from("pair_sessions")
     .select(
-      "code, title, status, group_size, participants, result, shuffle_count, created_at, expires_at, shuffled_at, shuffling_until",
+      "code, title, status, group_size, participants, result, shuffle_count, created_at, expires_at, shuffled_at, shuffling_until, linked_tournament_id, team_id_map, player_id_map",
     )
     .eq("code", code)
     .maybeSingle();

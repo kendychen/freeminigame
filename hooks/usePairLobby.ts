@@ -7,7 +7,7 @@ import type { PairResult, PairParticipant } from "@/lib/pair/shuffle";
 export interface PairSessionState {
   code: string;
   title: string;
-  status: "lobby" | "shuffling" | "shuffled" | "locked";
+  status: "lobby" | "shuffling" | "shuffled" | "locked" | "closed";
   group_size: number;
   participants: PairParticipant[];
   result: PairResult | null;
@@ -16,6 +16,9 @@ export interface PairSessionState {
   expires_at: string;
   shuffled_at: string | null;
   shuffling_until: string | null;
+  linked_tournament_id: string | null;
+  team_id_map: Record<string, string> | null;
+  player_id_map: Record<string, string> | null;
 }
 
 export interface PresenceState {

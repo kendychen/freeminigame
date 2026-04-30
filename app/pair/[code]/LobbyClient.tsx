@@ -206,6 +206,55 @@ export function LobbyClient({
     }
   };
 
+  const [applying, setApplying] = useState(false);
+  const onApplyToTournament = async () => {
+    if (!hostToken) return;
+    setApplying(true);
+    try {
+      const res = await fetch(`/api/pair/${code}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostToken }),
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        mode?: "group" | "team" | "none";
+        teamsCreated?: number;
+        groupsAssigned?: number;
+        already?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !json.ok) {
+        toast({
+          title: "Áp dụng thất bại",
+          description: json.error ?? "Lỗi không xác định",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (json.already) {
+        toast({
+          title: "Đã có đội trong giải",
+          description: "Kết quả đã được áp dụng từ trước.",
+        });
+      } else if (json.mode === "team") {
+        toast({
+          title: "Đã tạo đội",
+          description: `${json.teamsCreated ?? 0} đội đã được tạo trong giải đấu.`,
+        });
+      } else if (json.mode === "group") {
+        toast({
+          title: "Đã chia bảng",
+          description: `${json.groupsAssigned ?? 0} đội đã được gán bảng + sơ đồ thi đấu.`,
+        });
+      } else {
+        toast({ title: "Đã áp dụng" });
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -491,6 +540,29 @@ export function LobbyClient({
                         "—",
                     )
                     .join(", ")}
+                </div>
+              )}
+              {isHost && session.linked_tournament_id && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
+                  <div className="flex-1">
+                    <p className="font-medium">
+                      {session.player_id_map
+                        ? "Tạo đội từ kết quả"
+                        : "Áp dụng chia bảng vào giải"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {session.player_id_map
+                        ? "Mỗi nhóm sẽ thành 1 đội, thành viên tự gán."
+                        : "Cập nhật bảng A/B/C/D + sinh sơ đồ thi đấu."}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={onApplyToTournament}
+                    disabled={applying}
+                    size="sm"
+                  >
+                    {applying ? "Đang áp dụng…" : "Áp dụng vào giải"}
+                  </Button>
                 </div>
               )}
             </div>
