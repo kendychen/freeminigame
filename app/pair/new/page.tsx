@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AuthNavLinkClient } from "@/components/nav/AuthNavLinkClient";
 import { toast } from "@/components/ui/toast";
 
 type Mode = "lobby" | "preset";
@@ -91,7 +92,10 @@ export default function NewPairLobbyPage() {
             <Trophy className="size-5 text-primary" />
             FreeMinigame
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <AuthNavLinkClient />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">

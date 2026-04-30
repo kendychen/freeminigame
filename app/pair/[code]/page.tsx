@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Trophy } from "lucide-react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AuthNavLink } from "@/components/nav/AuthNavLink";
 import { LobbyClient } from "./LobbyClient";
 import { headers } from "next/headers";
 import type { PairSessionState } from "@/hooks/usePairLobby";
@@ -40,7 +41,10 @@ export default async function PairLobbyPage({
             <Trophy className="size-5 text-primary" />
             FreeMinigame
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <AuthNavLink />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AuthNavLink } from "@/components/nav/AuthNavLink";
 import { SharedBracketView } from "./SharedBracketView";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export default async function SharedQuickBracket({
                 Tạo bảng đấu của bạn
               </Button>
             </Link>
+            <AuthNavLink />
             <ThemeToggle />
           </div>
         </div>

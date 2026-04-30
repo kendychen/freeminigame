@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AuthNavLink } from "@/components/nav/AuthNavLink";
 import { Button } from "@/components/ui/button";
 import { LiveTournamentView } from "./LiveTournamentView";
 
@@ -47,6 +48,7 @@ export default async function PublicTournamentPage({
                 Display Mode
               </Button>
             </Link>
+            <AuthNavLink />
             <ThemeToggle />
           </div>
         </div>

@@ -12,6 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { PickleballLogo } from "@/components/brand/PickleballLogo";
+import { AuthNavLink } from "@/components/nav/AuthNavLink";
+import { getOptionalUser } from "@/lib/auth";
 
 const FORMATS = [
   { icon: Trophy, name: "Single Elim", desc: "Loại trực tiếp 1 lần thua" },
@@ -21,7 +23,8 @@ const FORMATS = [
   { icon: Users, name: "Group + KO", desc: "Bảng đấu + loại trực tiếp" },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const { user } = await getOptionalUser();
   return (
     <div className="flex flex-col flex-1">
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
@@ -30,7 +33,10 @@ export default function HomePage() {
             <PickleballLogo size={28} />
             <span>FreeMinigame</span>
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <AuthNavLink />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -79,14 +85,17 @@ export default function HomePage() {
                     Chia cặp nhanh
                   </Button>
                 </Link>
-                <Link href="/login" className="w-full sm:w-auto">
+                <Link
+                  href={user ? "/dashboard" : "/login"}
+                  className="w-full sm:w-auto"
+                >
                   <Button
                     size="lg"
                     variant="ghost"
                     className="w-full sm:min-w-[220px]"
                   >
                     <Trophy className="size-4" />
-                    Giải đấu Live
+                    {user ? "Bảng điều khiển" : "Giải đấu Live"}
                   </Button>
                 </Link>
               </div>
@@ -166,9 +175,12 @@ export default function HomePage() {
                 <li>✓ BO3/BO5, tie-breakers</li>
                 <li>✓ Stats & MVP</li>
               </ul>
-              <Link href="/login" className="mt-5 block">
+              <Link
+                href={user ? "/dashboard" : "/login"}
+                className="mt-5 block"
+              >
                 <Button variant="outline" className="w-full sm:w-auto">
-                  Đăng nhập
+                  {user ? "Bảng điều khiển" : "Đăng nhập"}
                 </Button>
               </Link>
             </div>

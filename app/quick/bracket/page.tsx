@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Trophy, ArrowLeft, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AuthNavLinkClient } from "@/components/nav/AuthNavLinkClient";
 import { useQuickStore } from "@/stores/quick-tournament";
 import { BracketView } from "@/components/bracket/BracketView";
 import { MatchScoreDialog } from "@/components/tournaments/MatchScoreDialog";
@@ -94,6 +95,7 @@ export default function QuickBracketPage() {
                 Tạo mới
               </Button>
             </Link>
+            <AuthNavLinkClient />
             <ThemeToggle />
           </div>
         </div>

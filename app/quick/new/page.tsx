@@ -18,6 +18,7 @@ import { Select } from "@/components/ui/select";
 import { useQuickStore } from "@/stores/quick-tournament";
 import type { Team, TournamentFormat, SeedingOptions } from "@/lib/pairing/types";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { AuthNavLinkClient } from "@/components/nav/AuthNavLinkClient";
 
 const FORMATS: Array<{ value: TournamentFormat; label: string }> = [
   { value: "random_pairs", label: "Chia cặp ngẫu nhiên — 2 người 1 cặp" },
@@ -104,7 +105,10 @@ export default function QuickNewPage() {
             <Trophy className="size-5 text-primary" />
             FreeMinigame
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <AuthNavLinkClient />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
