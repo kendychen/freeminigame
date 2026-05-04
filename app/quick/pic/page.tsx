@@ -540,10 +540,36 @@ export default function PicPage() {
             <KoRow match={finalMatch} label="Chung kết" />
           </div>
 
-          {/* Group standings */}
-          <div className="space-y-2">
+          {/* Group standings + match results */}
+          <div className="space-y-4">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
-            {groups.map((g) => <GroupStandings key={g.id} g={g} />)}
+            {groups.map((g) => (
+              <div key={g.id} className="space-y-2">
+                <GroupStandings g={g} />
+                <div className="overflow-hidden rounded-xl border bg-card">
+                  <div className="border-b bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground">
+                    Kết quả trận — Bảng {g.label}
+                  </div>
+                  {g.matches.filter((m) => m.status === "completed").map((m) => {
+                    const mAWon = m.scoreA > m.scoreB;
+                    return (
+                      <div key={m.id} className="flex items-center gap-2 border-b px-3 py-2 last:border-0 text-xs">
+                        <span className="w-12 shrink-0 text-muted-foreground">Vòng {m.round}</span>
+                        <span className={`flex-1 truncate ${mAWon ? "font-semibold" : "text-muted-foreground"}`}>
+                          {[m.a1, m.a2].map((id) => byId(id)?.name).join(" & ")}
+                        </span>
+                        <span className="shrink-0 font-mono font-bold tabular-nums">
+                          {m.scoreA} – {m.scoreB}
+                        </span>
+                        <span className={`flex-1 truncate text-right ${!mAWon ? "font-semibold" : "text-muted-foreground"}`}>
+                          {[m.b1, m.b2].map((id) => byId(id)?.name).join(" & ")}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           <Button variant="outline" className="w-full"
