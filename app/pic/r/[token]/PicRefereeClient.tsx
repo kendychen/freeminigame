@@ -282,6 +282,7 @@ export default function PicRefereeClient({
     ? groups.filter((g) => g.label === groupFilter)
     : groups;
 
+  const quarterMatches = knockoutMatches.filter((m) => m.stage === "quarterfinal");
   const semiMatches = knockoutMatches.filter((m) => m.stage === "semifinal");
   const finalMatch = knockoutMatches.find((m) => m.stage === "final");
   const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
@@ -361,6 +362,20 @@ export default function PicRefereeClient({
 
         {stage === "knockout" && (
           <>
+            {quarterMatches.length > 0 && (
+              <div className="space-y-2">
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tứ kết — chạm <TireInput type="knockout" />
+                </h2>
+                {quarterMatches.map((m, i) => (
+                  <MatchRow key={m.id} match={m} players={players}
+                    groupLabel={`TK${i + 1}`}
+                    onClick={() => setActiveMatch(m)}
+                    onDirectScore={handleDirectScore(m.id)}
+                  />
+                ))}
+              </div>
+            )}
             {semiMatches.length > 0 && (
               <div className="space-y-2">
                 <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">

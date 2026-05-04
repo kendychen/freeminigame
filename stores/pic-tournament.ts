@@ -12,7 +12,7 @@ export interface PicPlayer {
 export interface PicMatch {
   id: string;
   round: number;
-  stage: "group" | "semifinal" | "final" | "third";
+  stage: "group" | "quarterfinal" | "semifinal" | "final" | "third";
   a1: string; a2: string;
   b1: string; b2: string;
   scoreA: number;
@@ -145,8 +145,8 @@ function distributeToGroups(players: PicPlayer[], groupCount: number): PicGroup[
   // Generate matches per group
   for (const g of groups) {
     const n = g.playerIds.length;
-    if (n < 4) continue;
-    const schedule = generateGroupSchedule(Math.min(n, 6));
+    if (n < 4 || n > 8) continue;
+    const schedule = generateGroupSchedule(n);
     g.matches = schedule.map((slot, i) => ({
       id: uid(), round: i + 1, stage: "group",
       a1: g.playerIds[slot.a[0]]!, a2: g.playerIds[slot.a[1]]!,
@@ -214,12 +214,23 @@ export const usePicStore = create<PicStore>()(
           if (pairs.length === 2) {
             // Direct final (4 advancing)
             matches.push({ id: uid(), round: 1, stage: "final", a1: pairs[0]![0], a2: pairs[0]![1], b1: pairs[1]![0], b2: pairs[1]![1], scoreA: 0, scoreB: 0, status: "pending" });
-          } else {
+          } else if (pairs.length <= 4) {
             // Semis (pairs 0v1, 2v3) + final + optional 3rd
             for (let i = 0; i < pairs.length - 1; i += 2) {
               matches.push({ id: uid(), round: i / 2 + 1, stage: "semifinal", a1: pairs[i]![0], a2: pairs[i]![1], b1: pairs[i + 1]![0], b2: pairs[i + 1]![1], scoreA: 0, scoreB: 0, status: "pending" });
             }
-            // Final and 3rd-place slots — players filled after semis complete
+            matches.push({ id: uid(), round: 99, stage: "final", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            if (hasThirdPlace) {
+              matches.push({ id: uid(), round: 98, stage: "third", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            }
+          } else {
+            // Quarters (pairs 0v1, 2v3, 4v5, 6v7) + semis + final + optional 3rd
+            for (let i = 0; i < pairs.length - 1; i += 2) {
+              matches.push({ id: uid(), round: i / 2 + 1, stage: "quarterfinal", a1: pairs[i]![0], a2: pairs[i]![1], b1: pairs[i + 1]![0], b2: pairs[i + 1]![1], scoreA: 0, scoreB: 0, status: "pending" });
+            }
+            // Semis filled after QF; final/3rd filled after semis
+            matches.push({ id: uid(), round: 1, stage: "semifinal", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            matches.push({ id: uid(), round: 2, stage: "semifinal", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
             matches.push({ id: uid(), round: 99, stage: "final", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
             if (hasThirdPlace) {
               matches.push({ id: uid(), round: 98, stage: "third", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
@@ -239,17 +250,31 @@ export const usePicStore = create<PicStore>()(
               m.id === matchId ? { ...m, scoreA, scoreB, status: "completed" as const } : m,
             );
 
+            // Auto-advance QF winners → semis
+            const qfs = ko.filter((m) => m.stage === "quarterfinal").sort((a, b) => a.round - b.round);
+            if (qfs.length >= 4 && qfs.every((m) => m.status === "completed")) {
+              const semis = ko.filter((m) => m.stage === "semifinal").sort((a, b) => a.round - b.round);
+              if (semis.length >= 2 && !semis[0]!.a1) {
+                // Semi1: QF1W vs QF2W; Semi2: QF3W vs QF4W
+                const qfW = qfs.map((m) => m.scoreA > m.scoreB ? [m.a1, m.a2] : [m.b1, m.b2]);
+                ko = ko.map((m) => {
+                  if (m.id === semis[0]!.id) return { ...m, a1: qfW[0]![0]!, a2: qfW[0]![1]!, b1: qfW[1]![0]!, b2: qfW[1]![1]! };
+                  if (m.id === semis[1]!.id) return { ...m, a1: qfW[2]![0]!, a2: qfW[2]![1]!, b1: qfW[3]![0]!, b2: qfW[3]![1]! };
+                  return m;
+                });
+              }
+            }
+
             // Auto-advance semi winners → final/3rd
             const semis = ko.filter((m) => m.stage === "semifinal");
             if (semis.length >= 2 && semis.every((m) => m.status === "completed")) {
               const finalM = ko.find((m) => m.stage === "final");
-              const thirdM = ko.find((m) => m.stage === "third");
-              if (finalM && (!finalM.a1)) {
+              if (finalM && !finalM.a1) {
                 const winners = semis.map((m) =>
-                  m.scoreA > m.scoreB ? [m.a1, m.a2] as [string,string] : [m.b1, m.b2] as [string,string]
+                  m.scoreA > m.scoreB ? [m.a1, m.a2] as [string, string] : [m.b1, m.b2] as [string, string]
                 );
                 const losers = semis.map((m) =>
-                  m.scoreA > m.scoreB ? [m.b1, m.b2] as [string,string] : [m.a1, m.a2] as [string,string]
+                  m.scoreA > m.scoreB ? [m.b1, m.b2] as [string, string] : [m.a1, m.a2] as [string, string]
                 );
                 ko = ko.map((m) => {
                   if (m.stage === "final") return { ...m, a1: winners[0]![0], a2: winners[0]![1], b1: winners[1]![0], b2: winners[1]![1] };

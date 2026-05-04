@@ -493,6 +493,7 @@ export default function PicPage() {
   if (stage === "done") {
     const finalMatch = knockoutMatches.find((m) => m.stage === "final");
     const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
+    const doneKoQF = knockoutMatches.filter((m) => m.stage === "quarterfinal");
     const doneKoSemis = knockoutMatches.filter((m) => m.stage === "semifinal");
     if (!finalMatch) return null;
 
@@ -602,6 +603,7 @@ export default function PicPage() {
           {/* Knockout results */}
           <div className="space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vòng trung kết</h2>
+            {doneKoQF.map((m, i) => <KoRow key={m.id} match={m} label={`Tứ kết ${i + 1}`} />)}
             {doneKoSemis.map((m, i) => <KoRow key={m.id} match={m} label={`Bán kết ${i + 1}`} />)}
             {thirdMatch && thirdMatch.status === "completed" && <KoRow match={thirdMatch} label="Tranh hạng 3–4" />}
             <KoRow match={finalMatch} label="Chung kết" />
@@ -669,6 +671,7 @@ export default function PicPage() {
   }
 
   // ── Stage: group / knockout ───────────────────────────────────────────────────
+  const quarterMatchesKO = knockoutMatches.filter((m) => m.stage === "quarterfinal");
   const semiMatches = knockoutMatches.filter((m) => m.stage === "semifinal");
   const finalMatchKO = knockoutMatches.find((m) => m.stage === "final");
   const thirdMatchKO = knockoutMatches.find((m) => m.stage === "third");
@@ -708,7 +711,7 @@ export default function PicPage() {
             <span className="text-[10px] text-muted-foreground">
               {stage === "group" && `${pendingCount} trận còn lại`}
               {stage === "knockout" &&
-                (semiMatches.length > 0 ? "Bán kết → Chung kết" : "Chung kết")}
+                (quarterMatchesKO.length > 0 ? "Tứ kết → Bán kết → CK" : semiMatches.length > 0 ? "Bán kết → Chung kết" : "Chung kết")}
             </span>
           </div>
           <Users className="size-4 text-muted-foreground" />
@@ -745,6 +748,21 @@ export default function PicPage() {
         {/* Knockout stage */}
         {stage === "knockout" && (
           <div className="space-y-4">
+            {quarterMatchesKO.length > 0 && (
+              <div className="space-y-2">
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tứ kết — chạm
+                  <input type="number" min={1} value={koTarget} onChange={(e) => setKoTarget(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-12 rounded-md border bg-background px-1.5 py-0.5 text-center font-mono text-xs font-bold normal-case" />
+                </h2>
+                {quarterMatchesKO.map((m, i) => (
+                  <MatchCard key={m.id} match={m} players={players}
+                    groupLabel={`TK${i + 1}`}
+                    onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
+                    onDirectScore={handleKoScore(m.id)} />
+                ))}
+              </div>
+            )}
             {semiMatches.length > 0 && (
               <div className="space-y-2">
                 <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">

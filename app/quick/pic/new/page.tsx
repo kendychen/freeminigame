@@ -31,8 +31,11 @@ export default function PicNewPage() {
   const [targetGroup, setTargetGroup] = useState(11);
   const [targetKnockout, setTargetKnockout] = useState(15);
   const [hasThirdPlace, setHasThirdPlace] = useState(false);
-  const [advancePerGroup, setAdvancePerGroup] = useState(1);
+  const [advancePerGroup, setAdvancePerGroup] = useState(2);
+  const [singleAdvance, setSingleAdvance] = useState(4);
   const [groupCount, setGroupCount] = useState(1);
+  const [pointsForWin, setPointsForWin] = useState(2);
+  const [pointsForLoss, setPointsForLoss] = useState(0);
 
   const players = useMemo(
     () => rawNames.split("\n").map((s) => s.trim()).filter(Boolean),
@@ -44,7 +47,7 @@ export default function PicNewPage() {
     const result: number[] = [];
     for (let g = 1; g <= Math.ceil(pc / 4); g++) {
       const sizes = snakeDistribute(players, g).map((gr) => gr.length);
-      if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 6)
+      if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 8)
         result.push(g);
     }
     return result;
@@ -52,19 +55,27 @@ export default function PicNewPage() {
 
   const effG = validGroupCounts.includes(groupCount) ? groupCount : (validGroupCounts[0] ?? 1);
   const preview = useMemo(() => snakeDistribute(players, effG), [players, effG]);
-  const totalAdv = effG === 1 ? Math.min(4, pc) : effG * advancePerGroup;
+
+  // For single group: options 2, 4, 6, 8 (must be even, <= pc, >= 2)
+  const singleAdvanceOptions = useMemo(
+    () => [2, 4, 6, 8].filter((v) => v <= pc),
+    [pc],
+  );
+  const effSingleAdv = singleAdvanceOptions.includes(singleAdvance) ? singleAdvance : (singleAdvanceOptions[1] ?? singleAdvanceOptions[0] ?? 4);
+
+  const totalAdv = effG === 1 ? effSingleAdv : effG * advancePerGroup;
   const canStart = pc >= 4 && validGroupCounts.length > 0;
 
   const handleStart = () => {
     if (!canStart) return;
-    const aPerGroup = effG === 1 ? Math.min(4, pc) : advancePerGroup;
+    const aPerGroup = effG === 1 ? effSingleAdv : advancePerGroup;
     const config: PicConfig = {
       name: name.trim() || "Giải đấu PIC",
       targetGroup, targetKnockout,
       advancePerGroup: aPerGroup,
       hasThirdPlace,
-      pointsForWin: 2,
-      pointsForLoss: 0,
+      pointsForWin,
+      pointsForLoss,
     };
     init(config, players, effG);
     router.push("/quick/pic");
@@ -143,11 +154,7 @@ export default function PicNewPage() {
 
                 <div
                   className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${
-                    preview.length <= 2
-                      ? "grid-cols-2"
-                      : preview.length <= 4
-                        ? "grid-cols-2"
-                        : "grid-cols-3"
+                    preview.length <= 2 ? "grid-cols-2" : preview.length <= 4 ? "grid-cols-2" : "grid-cols-3"
                   }`}
                 >
                   {preview.map((grp, gi) => (
@@ -156,9 +163,7 @@ export default function PicNewPage() {
                         Bảng {String.fromCharCode(65 + gi)}
                       </p>
                       {grp.map((n, ni) => (
-                        <p key={ni} className="truncate text-[11px] text-muted-foreground">
-                          {n}
-                        </p>
+                        <p key={ni} className="truncate text-[11px] text-muted-foreground">{n}</p>
                       ))}
                     </div>
                   ))}
@@ -166,39 +171,93 @@ export default function PicNewPage() {
               </>
             ) : (
               <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                Không thể chia nhóm 4–6 người đều. Vui lòng điều chỉnh số lượng VĐV.
+                Không thể chia nhóm 4–8 người đều. Vui lòng điều chỉnh số lượng VĐV.
               </p>
             )}
           </section>
         )}
 
-        {/* Advance per group — only for multi-group */}
-        {effG > 1 && validGroupCounts.length > 0 && (
+        {/* Advance to knockout */}
+        {validGroupCounts.length > 0 && (
           <section className="space-y-2">
-            <label className="text-sm font-semibold">Số người đi tiếp mỗi bảng</label>
-            <div className="flex gap-2">
-              {[1, 2].map((v) => {
-                const total = effG * v;
-                const ok = total >= 2 && total % 2 === 0;
-                return (
+            <label className="text-sm font-semibold">
+              {effG === 1 ? "Số người vào vòng trung kết" : "Số người đi tiếp mỗi bảng"}
+            </label>
+
+            {effG === 1 ? (
+              /* Single group: pick total count */
+              <div className="flex flex-wrap gap-2">
+                {singleAdvanceOptions.map((v) => (
                   <button
                     key={v}
-                    onClick={() => ok && setAdvancePerGroup(v)}
-                    disabled={!ok}
-                    className={`flex-1 rounded-lg border py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 ${
-                      advancePerGroup === v
+                    onClick={() => setSingleAdvance(v)}
+                    className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      effSingleAdv === v
                         ? "border-primary bg-primary/10 text-primary"
                         : "hover:border-primary/50"
                     }`}
                   >
                     Top {v}
-                    <span className="ml-1 text-xs font-normal opacity-60">({total} người)</span>
+                    <span className="ml-1 text-xs font-normal opacity-60">({v} người)</span>
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              /* Multi-group: pick per-group count */
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 4].map((v) => {
+                  const total = effG * v;
+                  const ok = total >= 2 && total % 2 === 0;
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => ok && setAdvancePerGroup(v)}
+                      disabled={!ok}
+                      className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors disabled:opacity-30 ${
+                        advancePerGroup === v
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "hover:border-primary/50"
+                      }`}
+                    >
+                      Top {v}
+                      <span className="ml-1 text-xs font-normal opacity-60">({total} người)</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <p className="text-[11px] text-muted-foreground">
+              Tổng cộng <strong>{totalAdv} người</strong> vào bán kết.
+            </p>
           </section>
         )}
+
+        {/* Points system */}
+        <section className="space-y-2">
+          <label className="text-sm font-semibold">Hệ số tính điểm bảng</label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { w: 2, l: 0, label: "Thắng +2 / Thua +0", desc: "Phổ biến Pickleball" },
+              { w: 3, l: 0, label: "Thắng +3 / Thua +0", desc: "Kiểu bóng đá" },
+              { w: 3, l: 1, label: "Thắng +3 / Thua +1", desc: "Có điểm thua" },
+            ].map((p) => {
+              const active = pointsForWin === p.w && pointsForLoss === p.l;
+              return (
+                <button
+                  key={p.label}
+                  onClick={() => { setPointsForWin(p.w); setPointsForLoss(p.l); }}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                    active ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
+                  }`}
+                >
+                  <span className="font-semibold">{p.label}</span>
+                  <span className="ml-1.5 text-xs opacity-60">{p.desc}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         {/* Match rules */}
         <section className="space-y-3">
@@ -212,9 +271,7 @@ export default function PicNewPage() {
                     key={v}
                     onClick={() => setTargetGroup(v)}
                     className={`flex-1 rounded-lg border py-2 text-sm font-semibold transition-colors ${
-                      targetGroup === v
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "hover:border-primary/50"
+                      targetGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
                     }`}
                   >
                     {v}
@@ -230,9 +287,7 @@ export default function PicNewPage() {
                     key={v}
                     onClick={() => setTargetKnockout(v)}
                     className={`flex-1 rounded-lg border py-2 text-sm font-semibold transition-colors ${
-                      targetKnockout === v
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "hover:border-primary/50"
+                      targetKnockout === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
                     }`}
                   >
                     {v}

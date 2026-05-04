@@ -95,7 +95,7 @@ export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull 
     .map((m) => ({
       id: m.id,
       round: m.round,
-      stage: m.stage as "semifinal" | "final" | "third",
+      stage: m.stage as "quarterfinal" | "semifinal" | "final" | "third",
       a1: m.a1_id ?? "",
       a2: m.a2_id ?? "",
       b1: m.b1_id ?? "",
@@ -434,6 +434,28 @@ export async function scorePicMatch({
         .update({ stage: "draw", updated_at: new Date().toISOString() })
         .eq("id", eventId);
     }
+  } else if (match.stage === "quarterfinal") {
+    const { data: qfs } = await svc
+      .from("pic_matches")
+      .select("*")
+      .eq("event_id", eventId)
+      .eq("stage", "quarterfinal")
+      .order("round");
+    if (qfs && qfs.length >= 4 && qfs.every((m) => m.status === "completed")) {
+      const { data: semis } = await svc
+        .from("pic_matches")
+        .select("id, a1_id, round")
+        .eq("event_id", eventId)
+        .eq("stage", "semifinal")
+        .order("round");
+      if (semis && semis.length >= 2 && !semis[0]!.a1_id) {
+        const qfW = qfs.map((m) =>
+          m.score_a > m.score_b ? [m.a1_id, m.a2_id] : [m.b1_id, m.b2_id],
+        );
+        await svc.from("pic_matches").update({ a1_id: qfW[0]![0], a2_id: qfW[0]![1], b1_id: qfW[1]![0], b2_id: qfW[1]![1] }).eq("id", semis[0]!.id);
+        await svc.from("pic_matches").update({ a1_id: qfW[2]![0], a2_id: qfW[2]![1], b1_id: qfW[3]![0], b2_id: qfW[3]![1] }).eq("id", semis[1]!.id);
+      }
+    }
   } else if (match.stage === "semifinal") {
     const { data: semis } = await svc
       .from("pic_matches")
@@ -541,33 +563,23 @@ export async function picDrawKnockout(
 
   if (pairs.length === 2) {
     // Direct final
-    matches.push({
-      event_id: eventId,
-      round: 1,
-      stage: "final",
-      a1_id: pairs[0]![0],
-      a2_id: pairs[0]![1],
-      b1_id: pairs[1]![0],
-      b2_id: pairs[1]![1],
-    });
-  } else {
+    matches.push({ event_id: eventId, round: 1, stage: "final", a1_id: pairs[0]![0], a2_id: pairs[0]![1], b1_id: pairs[1]![0], b2_id: pairs[1]![1] });
+  } else if (pairs.length <= 4) {
     // Semis (pairs 0v1, 2v3) + final + optional 3rd
     for (let i = 0; i < pairs.length - 1; i += 2) {
-      matches.push({
-        event_id: eventId,
-        round: i / 2 + 1,
-        stage: "semifinal",
-        a1_id: pairs[i]![0],
-        a2_id: pairs[i]![1],
-        b1_id: pairs[i + 1]![0],
-        b2_id: pairs[i + 1]![1],
-      });
+      matches.push({ event_id: eventId, round: i / 2 + 1, stage: "semifinal", a1_id: pairs[i]![0], a2_id: pairs[i]![1], b1_id: pairs[i + 1]![0], b2_id: pairs[i + 1]![1] });
     }
-    // Final and 3rd — player slots filled after semis
     matches.push({ event_id: eventId, round: 99, stage: "final" });
-    if (hasThird) {
-      matches.push({ event_id: eventId, round: 98, stage: "third" });
+    if (hasThird) matches.push({ event_id: eventId, round: 98, stage: "third" });
+  } else {
+    // Quarters (pairs 0v1, 2v3, 4v5, 6v7) + semis (empty) + final (empty) + optional 3rd
+    for (let i = 0; i < pairs.length - 1; i += 2) {
+      matches.push({ event_id: eventId, round: i / 2 + 1, stage: "quarterfinal", a1_id: pairs[i]![0], a2_id: pairs[i]![1], b1_id: pairs[i + 1]![0], b2_id: pairs[i + 1]![1] });
     }
+    matches.push({ event_id: eventId, round: 1, stage: "semifinal" });
+    matches.push({ event_id: eventId, round: 2, stage: "semifinal" });
+    matches.push({ event_id: eventId, round: 99, stage: "final" });
+    if (hasThird) matches.push({ event_id: eventId, round: 98, stage: "third" });
   }
 
   const { error } = await svc.from("pic_matches").insert(matches);
