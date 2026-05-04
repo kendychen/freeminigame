@@ -6,7 +6,7 @@ import { ArrowRight, Trophy } from "lucide-react";
 import { type PicMatch, type PicPlayer } from "@/stores/pic-tournament";
 import { scorePicMatch, createPicMatchScore } from "@/app/actions/pic";
 import type { PicEventFull } from "@/app/actions/pic";
-import { QuickScoreClient, type QuickScore } from "@/app/score/[code]/QuickScoreClient";
+import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 function pairName(p1: PicPlayer | undefined, p2: PicPlayer | undefined) {
