@@ -394,37 +394,74 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   if (stage === "done") {
     const finalMatch = knockoutMatches.find((m) => m.stage === "final");
     const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
+    const doneKoSemis = knockoutMatches.filter((m) => m.stage === "semifinal");
     if (!finalMatch) return null;
     const aWon = finalMatch.scoreA > finalMatch.scoreB;
     const champs = aWon ? [finalMatch.a1, finalMatch.a2] : [finalMatch.b1, finalMatch.b2];
     const runners = aWon ? [finalMatch.b1, finalMatch.b2] : [finalMatch.a1, finalMatch.a2];
+
+    const KoRow = ({ match, label }: { match: PicMatch; label: string }) => {
+      const mAWon = match.scoreA > match.scoreB;
+      return (
+        <div className="rounded-xl border bg-card px-3 py-2.5">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+          <div className="flex items-center gap-2 text-sm">
+            <span className={`flex-1 truncate ${mAWon ? "font-bold" : "text-muted-foreground"}`}>
+              {[match.a1, match.a2].map((id) => byId(id)?.name).join(" & ")}
+            </span>
+            <span className="shrink-0 font-mono font-black tabular-nums">
+              {match.scoreA} – {match.scoreB}
+            </span>
+            <span className={`flex-1 truncate text-right ${!mAWon ? "font-bold" : "text-muted-foreground"}`}>
+              {[match.b1, match.b2].map((id) => byId(id)?.name).join(" & ")}
+            </span>
+          </div>
+        </div>
+      );
+    };
+
     return (
-      <div className="mx-auto max-w-sm space-y-4 py-4">
-        <h2 className="text-center text-xl font-bold">🏆 Kết quả</h2>
-        <div className="rounded-2xl border-2 border-yellow-400 bg-yellow-500/10 p-5 text-center">
-          <p className="text-2xl">🥇</p>
-          <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-yellow-600">Vô địch</p>
-          <p className="mt-1 text-lg font-black">{champs.map((id) => byId(id)?.name).join(" & ")}</p>
+      <div className="space-y-6 py-2">
+        {/* Podium */}
+        <div className="mx-auto max-w-sm space-y-3">
+          <h2 className="text-center text-xl font-bold">🏆 Kết quả</h2>
+          <div className="rounded-2xl border-2 border-yellow-400 bg-yellow-500/10 p-5 text-center">
+            <p className="text-2xl">🥇</p>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-yellow-600">Vô địch</p>
+            <p className="mt-1 text-lg font-black">{champs.map((id) => byId(id)?.name).join(" & ")}</p>
+          </div>
+          <div className="rounded-2xl border bg-card p-4 text-center">
+            <p className="text-xl">🥈</p>
+            <p className="mt-1 text-xs font-semibold text-muted-foreground">Á quân</p>
+            <p className="mt-1 font-bold">{runners.map((id) => byId(id)?.name).join(" & ")}</p>
+          </div>
+          {thirdMatch && thirdMatch.status === "completed" && (() => {
+            const t3Won = thirdMatch.scoreA > thirdMatch.scoreB;
+            const third = t3Won ? [thirdMatch.a1, thirdMatch.a2] : [thirdMatch.b1, thirdMatch.b2];
+            return (
+              <div className="rounded-2xl border bg-card p-4 text-center">
+                <p className="text-xl">🥉</p>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 3</p>
+                <p className="mt-0.5 font-bold">{third.map((id) => byId(id)?.name).join(" & ")}</p>
+              </div>
+            );
+          })()}
         </div>
-        <div className="rounded-2xl border bg-card p-4 text-center">
-          <p className="text-xl">🥈</p>
-          <p className="mt-1 text-xs font-semibold text-muted-foreground">Á quân</p>
-          <p className="mt-1 font-bold">{runners.map((id) => byId(id)?.name).join(" & ")}</p>
+
+        {/* Knockout results */}
+        <div className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vòng trung kết</h2>
+          {doneKoSemis.map((m, i) => <KoRow key={m.id} match={m} label={`Bán kết ${i + 1}`} />)}
+          {thirdMatch && thirdMatch.status === "completed" && <KoRow match={thirdMatch} label="Tranh hạng 3–4" />}
+          <KoRow match={finalMatch} label="Chung kết" />
         </div>
-        {thirdMatch && thirdMatch.status === "completed" && (() => {
-          const t3Won = thirdMatch.scoreA > thirdMatch.scoreB;
-          const third = t3Won ? [thirdMatch.a1, thirdMatch.a2] : [thirdMatch.b1, thirdMatch.b2];
-          return (
-            <div className="rounded-2xl border bg-card p-4 text-center">
-              <p className="text-xl">🥉</p>
-              <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 3</p>
-              <p className="mt-0.5 font-bold">{third.map((id) => byId(id)?.name).join(" & ")}</p>
-            </div>
-          );
-        })()}
-        <div className="rounded-xl border bg-card p-3 text-center">
-          <p className="text-xs text-muted-foreground">Tỉ số chung kết</p>
-          <p className="mt-1 font-mono text-3xl font-black tabular-nums">{finalMatch.scoreA} – {finalMatch.scoreB}</p>
+
+        {/* Group standings */}
+        <div className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
+          {groups.map((g) => (
+            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} />
+          ))}
         </div>
       </div>
     );

@@ -426,11 +426,70 @@ export default function PicPage() {
   if (stage === "done") {
     const finalMatch = knockoutMatches.find((m) => m.stage === "final");
     const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
+    const doneKoSemis = knockoutMatches.filter((m) => m.stage === "semifinal");
     if (!finalMatch) return null;
 
     const aWon = finalMatch.scoreA > finalMatch.scoreB;
     const champs = aWon ? [finalMatch.a1, finalMatch.a2] : [finalMatch.b1, finalMatch.b2];
     const runners = aWon ? [finalMatch.b1, finalMatch.b2] : [finalMatch.a1, finalMatch.a2];
+
+    const KoRow = ({ match, label }: { match: PicMatch; label: string }) => {
+      const mAWon = match.scoreA > match.scoreB;
+      return (
+        <div className="rounded-xl border bg-card px-3 py-2.5">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+          <div className="flex items-center gap-2 text-sm">
+            <span className={`flex-1 truncate ${mAWon ? "font-bold" : "text-muted-foreground"}`}>
+              {[match.a1, match.a2].map((id) => byId(id)?.name).join(" & ")}
+            </span>
+            <span className="shrink-0 font-mono font-black tabular-nums">{match.scoreA} – {match.scoreB}</span>
+            <span className={`flex-1 truncate text-right ${!mAWon ? "font-bold" : "text-muted-foreground"}`}>
+              {[match.b1, match.b2].map((id) => byId(id)?.name).join(" & ")}
+            </span>
+          </div>
+        </div>
+      );
+    };
+
+    const GroupStandings = ({ g }: { g: PicGroup }) => {
+      const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
+      const rows = computeStandings(gPlayers, g.matches, config.pointsForWin ?? 2, config.pointsForLoss ?? 0);
+      return (
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <div className="border-b bg-muted/40 px-3 py-2 text-xs font-bold text-primary">Bảng {g.label}</div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/20 text-xs text-muted-foreground">
+                <th className="px-3 py-2 text-left">#</th>
+                <th className="px-3 py-2 text-left">Tên</th>
+                <th className="px-3 py-2 text-center">T</th>
+                <th className="px-3 py-2 text-center">B</th>
+                <th className="px-3 py-2 text-center">±</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((s, i) => (
+                <tr key={s.playerId} className={`border-b last:border-0 ${i >= config.advancePerGroup ? "opacity-50" : ""}`}>
+                  <td className="px-3 py-2">
+                    <span className={`flex size-6 items-center justify-center rounded-full text-xs font-bold ${
+                      i === 0 ? "bg-yellow-400/20 text-yellow-600" :
+                      i === 1 ? "bg-slate-300/20 text-slate-500" :
+                      i < config.advancePerGroup ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    }`}>{s.rank}</span>
+                  </td>
+                  <td className="px-3 py-2 font-medium">{s.name}</td>
+                  <td className="px-3 py-2 text-center font-mono">{s.wins}</td>
+                  <td className="px-3 py-2 text-center font-mono text-muted-foreground">{s.losses}</td>
+                  <td className={`px-3 py-2 text-center font-mono font-semibold ${s.diff > 0 ? "text-green-600" : s.diff < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                    {s.diff > 0 ? "+" : ""}{s.diff}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    };
 
     return (
       <div className="min-h-screen bg-background">
@@ -438,57 +497,58 @@ export default function PicPage() {
           <p className="text-sm font-semibold text-muted-foreground">{config.name}</p>
           <h1 className="mt-0.5 text-xl font-bold">🏆 Kết quả</h1>
         </header>
-        <main className="mx-auto max-w-sm space-y-4 px-4 py-8">
-          <div className="rounded-2xl border-2 border-yellow-400 bg-yellow-500/10 p-5 text-center">
-            <p className="text-2xl">🥇</p>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-yellow-600">Vô địch</p>
-            <p className="mt-1 text-lg font-black">{champs.map((id) => byId(id)?.name).join(" & ")}</p>
-          </div>
-          <div className="rounded-2xl border bg-card p-4 text-center">
-            <p className="text-xl">🥈</p>
-            <p className="mt-1 text-xs font-semibold text-muted-foreground">Á quân</p>
-            <p className="mt-1 font-bold">{runners.map((id) => byId(id)?.name).join(" & ")}</p>
-          </div>
+        <main className="mx-auto max-w-xl space-y-6 px-4 py-6">
 
-          {thirdMatch && thirdMatch.status === "completed" && (() => {
-            const t3Won = thirdMatch.scoreA > thirdMatch.scoreB;
-            const third = t3Won ? [thirdMatch.a1, thirdMatch.a2] : [thirdMatch.b1, thirdMatch.b2];
-            const fourth = t3Won ? [thirdMatch.b1, thirdMatch.b2] : [thirdMatch.a1, thirdMatch.a2];
-            return (
-              <>
-                <div className="rounded-2xl border bg-card p-4 text-center">
-                  <p className="text-xl">🥉</p>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 3</p>
-                  <p className="mt-0.5 font-bold">{third.map((id) => byId(id)?.name).join(" & ")}</p>
-                </div>
-                <div className="rounded-2xl border bg-card p-4 text-center opacity-70">
-                  <p className="text-xl">4️⃣</p>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 4</p>
-                  <p className="mt-0.5 font-medium">{fourth.map((id) => byId(id)?.name).join(" & ")}</p>
-                </div>
-              </>
-            );
-          })()}
-
-          <div className="rounded-xl border bg-card p-3 text-center">
-            <p className="text-xs text-muted-foreground">Tỉ số chung kết</p>
-            <p className="mt-1 font-mono text-3xl font-black tabular-nums">
-              {finalMatch.scoreA} – {finalMatch.scoreB}
-            </p>
+          {/* Podium */}
+          <div className="mx-auto max-w-sm space-y-3">
+            <div className="rounded-2xl border-2 border-yellow-400 bg-yellow-500/10 p-5 text-center">
+              <p className="text-2xl">🥇</p>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-yellow-600">Vô địch</p>
+              <p className="mt-1 text-lg font-black">{champs.map((id) => byId(id)?.name).join(" & ")}</p>
+            </div>
+            <div className="rounded-2xl border bg-card p-4 text-center">
+              <p className="text-xl">🥈</p>
+              <p className="mt-1 text-xs font-semibold text-muted-foreground">Á quân</p>
+              <p className="mt-1 font-bold">{runners.map((id) => byId(id)?.name).join(" & ")}</p>
+            </div>
+            {thirdMatch && thirdMatch.status === "completed" && (() => {
+              const t3Won = thirdMatch.scoreA > thirdMatch.scoreB;
+              const third = t3Won ? [thirdMatch.a1, thirdMatch.a2] : [thirdMatch.b1, thirdMatch.b2];
+              const fourth = t3Won ? [thirdMatch.b1, thirdMatch.b2] : [thirdMatch.a1, thirdMatch.a2];
+              return (
+                <>
+                  <div className="rounded-2xl border bg-card p-4 text-center">
+                    <p className="text-xl">🥉</p>
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 3</p>
+                    <p className="mt-0.5 font-bold">{third.map((id) => byId(id)?.name).join(" & ")}</p>
+                  </div>
+                  <div className="rounded-2xl border bg-card p-4 text-center opacity-70">
+                    <p className="text-xl">4️⃣</p>
+                    <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 4</p>
+                    <p className="mt-0.5 font-medium">{fourth.map((id) => byId(id)?.name).join(" & ")}</p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              if (confirm("Tạo giải mới? Dữ liệu cũ sẽ xoá.")) {
-                actions.reset();
-                router.push("/quick/pic/new");
-              }
-            }}
-          >
-            <RotateCcw className="size-4" />
-            Tạo giải mới
+          {/* Knockout results */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vòng trung kết</h2>
+            {doneKoSemis.map((m, i) => <KoRow key={m.id} match={m} label={`Bán kết ${i + 1}`} />)}
+            {thirdMatch && thirdMatch.status === "completed" && <KoRow match={thirdMatch} label="Tranh hạng 3–4" />}
+            <KoRow match={finalMatch} label="Chung kết" />
+          </div>
+
+          {/* Group standings */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
+            {groups.map((g) => <GroupStandings key={g.id} g={g} />)}
+          </div>
+
+          <Button variant="outline" className="w-full"
+            onClick={() => { if (confirm("Tạo giải mới? Dữ liệu cũ sẽ xoá.")) { actions.reset(); router.push("/quick/pic/new"); } }}>
+            <RotateCcw className="size-4" />Tạo giải mới
           </Button>
         </main>
       </div>
