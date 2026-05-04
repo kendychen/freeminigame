@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
 import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore } from "@/app/actions/pic";
+import { buildDrawPairs, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
 import type { PicEventFull } from "@/app/actions/pic";
 import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
@@ -16,15 +17,6 @@ import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 function pairName(p1: PicPlayer | undefined, p2: PicPlayer | undefined) {
   return `${p1?.name ?? "?"} & ${p2?.name ?? "?"}`;
-}
-
-function shuffle(arr: string[]): string[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = a[i]; a[i] = a[j]!; a[j] = tmp!;
-  }
-  return a;
 }
 
 // ── AdminMatchScore: QuickScoreClient bridge (no referee token needed) ─────────
@@ -279,6 +271,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const [activeGroupIdx, setActiveGroupIdx] = useState(0);
   const [viewTab, setViewTab] = useState<"matches" | "standings">("matches");
   const [drawnPairs, setDrawnPairs] = useState<[string, string][] | null>(null);
+  const [drawMode, setDrawMode] = useState<DrawMode>("random_all");
 
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
   const byId = (id: string) => players.find((p) => p.id === id);
@@ -290,17 +283,13 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const L = config.pointsForLoss ?? 0;
   const TB = config.tiebreakerOrder ?? "diff_first";
 
-  const advancingIds = groups.flatMap((g) => {
+  const advancingByGroup = groups.map((g) => {
     const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
     return computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup).map((s) => s.playerId);
   });
+  const advancingIds = advancingByGroup.flat();
 
-  const doDraw = () => {
-    const shuffled = shuffle(advancingIds);
-    const pairs: [string, string][] = [];
-    for (let i = 0; i < shuffled.length - 1; i += 2) pairs.push([shuffled[i]!, shuffled[i + 1]!]);
-    setDrawnPairs(pairs);
-  };
+  const doDraw = () => setDrawnPairs(buildDrawPairs(drawMode, advancingByGroup));
 
   const handleDirectScore = (matchId: string) => (scoreA: number, scoreB: number) => {
     startTransition(async () => {
@@ -350,6 +339,20 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
           <div className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bốc thăm cặp đôi</h2>
+
+            {/* Draw mode selector */}
+            <div className="space-y-1.5">
+              {DRAW_MODES.filter((m) => multiGroup || m.value === "random_all").map((m) => (
+                <button key={m.value} onClick={() => { setDrawMode(m.value); setDrawnPairs(null); }}
+                  className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                    drawMode === m.value ? "border-primary bg-primary/10" : "hover:border-primary/50"
+                  }`}>
+                  <p className={`text-sm font-semibold ${drawMode === m.value ? "text-primary" : ""}`}>{m.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{m.desc}</p>
+                </button>
+              ))}
+            </div>
+
             <Button onClick={doDraw} variant="outline" className="w-full">
               <Shuffle className="size-4" />{drawnPairs ? "Bốc thăm lại" : "Bốc thăm ngẫu nhiên"}
             </Button>

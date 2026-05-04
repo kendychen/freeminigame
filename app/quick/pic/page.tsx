@@ -11,20 +11,12 @@ import {
   usePicStore, computeStandings,
   type PicMatch, type PicPlayer, type PicGroup,
 } from "@/stores/pic-tournament";
+import { buildDrawPairs, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 function pairName(p1: PicPlayer | undefined, p2: PicPlayer | undefined) {
   return `${p1?.name ?? "?"} & ${p2?.name ?? "?"}`;
-}
-
-function shuffle(arr: string[]): string[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = a[i]; a[i] = a[j]!; a[j] = tmp!;
-  }
-  return a;
 }
 
 // ─── ScoreOverlay ──────────────────────────────────────────────────────────────
@@ -271,6 +263,7 @@ export default function PicPage() {
   const [activeGroupIdx, setActiveGroupIdx] = useState(0);
   const [viewTab, setViewTab] = useState<"matches" | "standings">("matches");
   const [drawnPairs, setDrawnPairs] = useState<[string, string][] | null>(null);
+  const [drawMode, setDrawMode] = useState<DrawMode>("random_all");
 
   useEffect(() => {
     if (!current) router.replace("/quick/pic/new");
@@ -288,8 +281,8 @@ export default function PicPage() {
     0,
   );
 
-  // Compute advancing players for draw stage
-  const advancingIds = groups.flatMap((g) => {
+  // Compute advancing players for draw stage (ranked per group)
+  const advancingByGroup = groups.map((g) => {
     const gPlayers = g.playerIds
       .map((id) => players.find((p) => p.id === id))
       .filter((p): p is PicPlayer => !!p);
@@ -297,14 +290,9 @@ export default function PicPage() {
       .slice(0, config.advancePerGroup)
       .map((s) => s.playerId);
   });
+  const advancingIds = advancingByGroup.flat();
 
-  const doDraw = () => {
-    const shuffled = shuffle(advancingIds);
-    const pairs: [string, string][] = [];
-    for (let i = 0; i < shuffled.length - 1; i += 2)
-      pairs.push([shuffled[i]!, shuffled[i + 1]!]);
-    setDrawnPairs(pairs);
-  };
+  const doDraw = () => setDrawnPairs(buildDrawPairs(drawMode, advancingByGroup));
 
   // ── Stage: draw ───────────────────────────────────────────────────────────────
   if (stage === "draw") {
@@ -375,6 +363,20 @@ export default function PicPage() {
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Bốc thăm cặp đôi
             </h2>
+
+            {/* Draw mode selector */}
+            <div className="space-y-1.5">
+              {DRAW_MODES.filter((m) => multiGroup || m.value === "random_all").map((m) => (
+                <button key={m.value} onClick={() => { setDrawMode(m.value); setDrawnPairs(null); }}
+                  className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                    drawMode === m.value ? "border-primary bg-primary/10" : "hover:border-primary/50"
+                  }`}>
+                  <p className={`text-sm font-semibold ${drawMode === m.value ? "text-primary" : ""}`}>{m.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{m.desc}</p>
+                </button>
+              ))}
+            </div>
+
             <Button onClick={doDraw} variant="outline" className="w-full">
               <Shuffle className="size-4" />
               {drawnPairs ? "Bốc thăm lại" : "Bốc thăm ngẫu nhiên"}
@@ -389,8 +391,7 @@ export default function PicPage() {
                     </p>
                     <div className="space-y-1.5">
                       {([mu.a, mu.b] as [string, string][]).map((pair, pi) => (
-                        <div
-                          key={pi}
+                        <div key={pi}
                           className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}
                         >
                           <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
