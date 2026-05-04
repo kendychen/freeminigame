@@ -316,11 +316,11 @@ export default function PicPlayersClient({
                       const total = effG * v;
                       return (
                         <button key={v} onClick={() => setAdvancePerGroup(v)}
-                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
+                          className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${
                             advancePerGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
                           }`}>
-                          Top {v}
-                          <span className="ml-1 text-xs font-normal opacity-60">({total}ng)</span>
+                          <span className="block">Top {v}/bảng</span>
+                          <span className="block text-xs font-normal opacity-60">→ {total} người tổng</span>
                         </button>
                       );
                     })}
