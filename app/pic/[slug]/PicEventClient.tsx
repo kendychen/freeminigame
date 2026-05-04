@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Trophy, ChevronLeft, Shuffle, CheckCircle2,
-  Plus, Minus, ArrowRight,
+  Plus, Minus, Check, Pencil, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
@@ -133,41 +133,102 @@ function ScoreOverlay({
 
 // ── MatchCard ──────────────────────────────────────────────────────────────────
 
-function MatchCard({ match, players, label, onClick }: {
-  match: PicMatch; players: PicPlayer[]; label?: string; onClick?: () => void;
+function MatchCard({ match, players, groupLabel, onClick, onDirectScore }: {
+  match: PicMatch; players: PicPlayer[]; groupLabel?: string;
+  onClick?: () => void; onDirectScore?: (scoreA: number, scoreB: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftA, setDraftA] = useState("");
+  const [draftB, setDraftB] = useState("");
+
   const byId = (id: string) => players.find((p) => p.id === id);
   const aName = match.a1 ? pairName(byId(match.a1), byId(match.a2)) : "TBD";
   const bName = match.b1 ? pairName(byId(match.b1), byId(match.b2)) : "TBD";
   const isDone = match.status === "completed";
   const aWon = isDone && match.scoreA > match.scoreB;
   const bWon = isDone && match.scoreB > match.scoreA;
-  const canClick = !isDone && !!match.a1 && !!match.b1;
+  const canPlay = !isDone && !!match.a1 && !!match.b1;
+  const canEdit = !!match.a1 && !!match.b1;
+
+  const openEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraftA(String(match.scoreA));
+    setDraftB(String(match.scoreB));
+    setEditing(true);
+  };
+
+  const save = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDirectScore?.(Math.max(0, parseInt(draftA) || 0), Math.max(0, parseInt(draftB) || 0));
+    setEditing(false);
+  };
+
+  const cancel = (e: React.MouseEvent) => { e.stopPropagation(); setEditing(false); };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-primary/50 bg-card px-3 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs text-muted-foreground">{aName} vs {bName}</p>
+          <div className="mt-2 flex items-center gap-2">
+            <input type="number" min={0} value={draftA}
+              onChange={(e) => setDraftA(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-16 rounded-md border bg-background px-2 py-1.5 text-center font-mono text-base font-bold"
+            />
+            <span className="font-bold text-muted-foreground">–</span>
+            <input type="number" min={0} value={draftB}
+              onChange={(e) => setDraftB(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-16 rounded-md border bg-background px-2 py-1.5 text-center font-mono text-base font-bold"
+            />
+          </div>
+        </div>
+        <button onClick={save}
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <Check className="size-4" />
+        </button>
+        <button onClick={cancel}
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border hover:bg-accent">
+          <X className="size-4" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <button onClick={canClick ? onClick : undefined} disabled={!canClick}
-      className={`flex w-full items-center gap-3 rounded-xl border bg-card px-3 py-3 text-left transition-colors ${
-        isDone ? "opacity-70" : canClick ? "hover:border-primary/50 hover:bg-accent/30 active:scale-[0.99]" : "cursor-default opacity-50"
-      }`}
+    <div
+      className={`flex items-center gap-2 rounded-xl border bg-card px-3 py-3 transition-colors ${
+        canPlay ? "cursor-pointer hover:border-primary/50 hover:bg-accent/30 active:scale-[0.99]" : ""
+      } ${!canEdit ? "opacity-40" : ""}`}
+      onClick={canPlay ? onClick : undefined}
     >
-      <div className="min-w-0 flex-1 space-y-1">
-        {label && <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>}
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-[10px] font-bold text-blue-500">A</span>
-          <span className={`truncate text-sm ${aWon ? "font-bold text-primary" : ""}`}>{aName}</span>
-          {aWon && <Trophy className="size-3.5 shrink-0 text-primary" />}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-500">B</span>
-          <span className={`truncate text-sm ${bWon ? "font-bold text-primary" : ""}`}>{bName}</span>
-          {bWon && <Trophy className="size-3.5 shrink-0 text-primary" />}
-        </div>
+      {groupLabel && (
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+          {groupLabel}
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm font-semibold leading-tight ${aWon ? "text-primary" : ""}`}>
+          {aName}{aWon && <Trophy className="ml-1 inline size-3.5 text-primary" />}
+        </p>
       </div>
-      <div className={`shrink-0 rounded-lg px-3 py-1.5 font-mono text-lg font-bold tabular-nums ${isDone ? "bg-secondary" : "border"}`}>
-        {match.scoreA} – {match.scoreB}
+      <span className="shrink-0 text-[10px] font-medium text-muted-foreground">vs</span>
+      <div className="min-w-0 flex-1 text-right">
+        <p className={`truncate text-sm font-semibold leading-tight ${bWon ? "text-primary" : "text-muted-foreground"}`}>
+          {bWon && <Trophy className="mr-1 inline size-3.5 text-primary" />}{bName}
+        </p>
       </div>
-      {canClick && <ArrowRight className="size-4 shrink-0 text-muted-foreground" />}
-    </button>
+      <div className={`shrink-0 rounded-lg px-2.5 py-1 font-mono text-sm font-bold tabular-nums ${isDone ? "bg-secondary" : "border text-muted-foreground"}`}>
+        {match.scoreA}–{match.scoreB}
+      </div>
+      {canEdit && onDirectScore && (
+        <button onClick={openEdit}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground hover:border-primary/60 hover:text-primary">
+          <Pencil className="size-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -250,13 +311,15 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const handleScore = (scoreA: number, scoreB: number) => {
     if (!activeMatch) return;
     startTransition(async () => {
-      await scorePicMatch({
-        eventId,
-        matchId: activeMatch.match.id,
-        scoreA,
-        scoreB,
-      });
+      await scorePicMatch({ eventId, matchId: activeMatch.match.id, scoreA, scoreB });
       setActiveMatch(null);
+      router.refresh();
+    });
+  };
+
+  const handleDirectScore = (matchId: string) => (scoreA: number, scoreB: number) => {
+    startTransition(async () => {
+      await scorePicMatch({ eventId, matchId, scoreA, scoreB });
       router.refresh();
     });
   };
@@ -430,9 +493,10 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
           {semiMatches.length > 0 && (
             <div className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bán kết — chạm {config.targetKnockout}</h2>
-              {semiMatches.map((m, i) => (
-                <MatchCard key={m.id} match={m} players={players} label={`Bán kết ${i + 1}`}
-                  onClick={() => setActiveMatch({ match: m, stage: "knockout" })} />
+              {semiMatches.map((m) => (
+                <MatchCard key={m.id} match={m} players={players}
+                  onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
+                  onDirectScore={handleDirectScore(m.id)} />
               ))}
             </div>
           )}
@@ -440,14 +504,16 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
             <div className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">🏆 Chung kết — chạm {config.targetKnockout}</h2>
               <MatchCard match={finalMatchKO} players={players}
-                onClick={() => setActiveMatch({ match: finalMatchKO, stage: "knockout" })} />
+                onClick={() => setActiveMatch({ match: finalMatchKO, stage: "knockout" })}
+                onDirectScore={handleDirectScore(finalMatchKO.id)} />
             </div>
           )}
           {thirdMatchKO && (
             <div className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tranh hạng 3–4 — chạm {config.targetKnockout}</h2>
               <MatchCard match={thirdMatchKO} players={players}
-                onClick={() => setActiveMatch({ match: thirdMatchKO, stage: "knockout" })} />
+                onClick={() => setActiveMatch({ match: thirdMatchKO, stage: "knockout" })}
+                onDirectScore={handleDirectScore(thirdMatchKO.id)} />
             </div>
           )}
         </div>
@@ -457,7 +523,9 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
         <div className="space-y-2">
           {activeGroup.matches.map((m) => (
             <MatchCard key={m.id} match={m} players={players}
-              onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })} />
+              groupLabel={activeGroup.label}
+              onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })}
+              onDirectScore={handleDirectScore(m.id)} />
           ))}
           {allGroupDone && (
             <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="mt-2 w-full">
