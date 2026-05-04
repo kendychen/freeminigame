@@ -66,6 +66,7 @@ interface QuickStoreActions {
   setKnockoutGenerated: (b: boolean) => void;
   setChampion: (id: string | null) => void;
   setStatus: (s: "setup" | "running" | "completed") => void;
+  updateTiebreakers: (tiebreakers: TieBreakerConfig[]) => void;
   loadFromHash: (state: QuickTournamentState) => void;
   exportSnapshot: () => QuickTournamentState | null;
 }
@@ -202,6 +203,13 @@ export const useQuickStore = create<QuickStore>()(
         },
         setStatus(status) {
           set((s) => (s.current ? { current: { ...s.current, status } } : s));
+        },
+        updateTiebreakers(tiebreakers) {
+          set((s) =>
+            s.current
+              ? { current: { ...s.current, config: { ...s.current.config, tiebreakers }, updatedAt: Date.now() } }
+              : s,
+          );
         },
         loadFromHash(state) {
           set({ current: state });

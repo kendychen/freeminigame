@@ -12,16 +12,18 @@ import { BracketView } from "@/components/bracket/BracketView";
 import { MatchScoreDialog } from "@/components/tournaments/MatchScoreDialog";
 import { StandingsTable } from "@/components/tournaments/StandingsTable";
 import { ScheduleView } from "@/components/tournaments/ScheduleView";
+import { TiebreakerEditor } from "@/components/tournaments/TiebreakerEditor";
 import type { Match } from "@/lib/pairing/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-type Tab = "bracket" | "schedule" | "standings";
+type Tab = "bracket" | "schedule" | "standings" | "settings";
 
 export default function QuickBracketPage() {
   const router = useRouter();
   const current = useQuickStore((s) => s.current);
   const reset = useQuickStore((s) => s.actions.reset);
   const updateScore = useQuickStore((s) => s.actions.updateScore);
+  const updateTiebreakers = useQuickStore((s) => s.actions.updateTiebreakers);
   const [hydrated, setHydrated] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("bracket");
@@ -54,6 +56,7 @@ export default function QuickBracketPage() {
       ? Object.keys(current.groupAssignments ?? {}).sort()
       : [];
 
+  const hasStandings = !isElim && !isRandomPairs && !isRandomGroups;
   const tabs: Array<{ id: Tab; label: string; show: boolean }> = [
     { id: "bracket", label: "Bảng đấu", show: isElim || isGroupKO },
     {
@@ -61,11 +64,8 @@ export default function QuickBracketPage() {
       label: isRandomPairs ? "Cặp đấu" : "Lịch thi đấu",
       show: !isRandomGroups,
     },
-    {
-      id: "standings",
-      label: "Bảng điểm",
-      show: !isElim && !isRandomPairs && !isRandomGroups,
-    },
+    { id: "standings", label: "Bảng điểm", show: hasStandings },
+    { id: "settings", label: "Cài đặt", show: hasStandings },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
 
@@ -244,6 +244,20 @@ export default function QuickBracketPage() {
               />
             )}
           </div>
+        )}
+
+        {activeTab === "settings" && (
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle>Cài đặt xếp hạng</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TiebreakerEditor
+                value={config.tiebreakers}
+                onChange={updateTiebreakers}
+              />
+            </CardContent>
+          </Card>
         )}
 
         <MatchScoreDialog

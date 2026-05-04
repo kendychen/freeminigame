@@ -326,7 +326,7 @@ export default function QuickNewPage() {
                 </div>
               )}
 
-              {format === "swiss" && (
+{format === "swiss" && (
                 <div className="space-y-2">
                   <Label>Số vòng Swiss</Label>
                   <Input
