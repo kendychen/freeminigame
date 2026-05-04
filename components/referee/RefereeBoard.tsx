@@ -64,7 +64,8 @@ export function RefereeBoard({
 }: RefereeBoardProps) {
   const [pending, start] = useTransition();
   const lsKey = `ref-score:${match.id}`;
-  const isCompleted = match.status === "completed";
+  const [localCompleted, setLocalCompleted] = useState(match.status === "completed");
+  const isCompleted = match.status === "completed" || localCompleted;
 
   const [scoreA, setScoreA] = useState<number>(match.score_a);
   const [scoreB, setScoreB] = useState<number>(match.score_b);
@@ -191,18 +192,17 @@ export function RefereeBoard({
     }
     if (onReset) {
       start(async () => {
-        const res = await onReset();
-        if (res.error) toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
+        try {
+          const res = await onReset();
+          if (res.error) toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
+        } catch {
+          toast({ title: "Lỗi kết nối", description: "Không thể reset. Thử lại.", variant: "destructive" });
+        }
       });
     }
   };
 
   const [armedFinalize, setArmedFinalize] = useState(false);
-  useEffect(() => {
-    if (!armedFinalize) return;
-    const t = setTimeout(() => setArmedFinalize(false), 4000);
-    return () => clearTimeout(t);
-  }, [armedFinalize]);
 
   const finalize = () => {
     if (!onFinalize) return;
@@ -212,17 +212,21 @@ export function RefereeBoard({
     }
     if (!armedFinalize) {
       setArmedFinalize(true);
-      toast({ title: "Bấm lần nữa để xác nhận", description: `Kết thúc trận với tỉ số ${scoreA} - ${scoreB}` });
       return;
     }
     setArmedFinalize(false);
     start(async () => {
-      const res = await onFinalize(scoreA, scoreB);
-      if (res.error) {
-        toast({ title: "Lỗi kết thúc", description: translateError(res.error), variant: "destructive" });
-      } else {
-        toast({ title: "Đã kết thúc trận" });
-        try { localStorage.removeItem(lsKey); } catch { /* ignore */ }
+      try {
+        const res = await onFinalize(scoreA, scoreB);
+        if (res.error) {
+          toast({ title: "Lỗi kết thúc", description: translateError(res.error), variant: "destructive" });
+        } else {
+          setLocalCompleted(true);
+          toast({ title: "Đã kết thúc trận" });
+          try { localStorage.removeItem(lsKey); } catch { /* ignore */ }
+        }
+      } catch {
+        toast({ title: "Lỗi kết nối", description: "Không thể lưu kết quả. Kiểm tra mạng và thử lại.", variant: "destructive" });
       }
     });
   };
@@ -230,11 +234,16 @@ export function RefereeBoard({
   const reopen = () => {
     if (!onReopen) return;
     start(async () => {
-      const res = await onReopen();
-      if (res.error) {
-        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
-      } else {
-        toast({ title: "Đã mở lại trận" });
+      try {
+        const res = await onReopen();
+        if (res.error) {
+          toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
+        } else {
+          setLocalCompleted(false);
+          toast({ title: "Đã mở lại trận" });
+        }
+      } catch {
+        toast({ title: "Lỗi kết nối", description: "Không thể mở lại. Kiểm tra mạng và thử lại.", variant: "destructive" });
       }
     });
   };
@@ -284,6 +293,38 @@ export function RefereeBoard({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
+      {/* Finalize confirmation overlay — center screen */}
+      {armedFinalize && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-5 bg-background/95 px-6 backdrop-blur-sm">
+          <div className="text-center">
+            <p className="text-lg font-semibold text-muted-foreground">Kết thúc trận?</p>
+            <p className="mt-3 font-mono text-6xl font-black tabular-nums">{scoreA} – {scoreB}</p>
+            {scoreA !== scoreB && (
+              <p className="mt-2 text-base font-semibold">
+                {scoreA > scoreB ? (teamA?.name ?? "Đội A") : (teamB?.name ?? "Đội B")} thắng
+              </p>
+            )}
+          </div>
+          <div className="flex w-full max-w-xs flex-col gap-3">
+            <button
+              onClick={finalize}
+              disabled={pending}
+              className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-destructive text-lg font-bold text-destructive-foreground transition-all active:scale-95 disabled:opacity-50"
+            >
+              <CheckCircle2 className="size-5" />
+              {pending ? "Đang lưu…" : "Xác nhận kết thúc"}
+            </button>
+            <button
+              onClick={() => setArmedFinalize(false)}
+              disabled={pending}
+              className="flex h-12 items-center justify-center rounded-2xl border border-border bg-background text-sm font-medium transition-all active:scale-95 disabled:opacity-50"
+            >
+              Huỷ
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Serving choice overlay */}
       {showServingChoice && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-6 bg-background/95 px-6 backdrop-blur-sm">
@@ -328,10 +369,9 @@ export function RefereeBoard({
         ) : (
           <span className="size-8" />
         )}
-        <div className="flex flex-1 items-center justify-center gap-2 px-2 text-center text-xs sm:text-sm">
-          <span className="truncate font-medium">{tournamentName}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">{computedSubtitle}</span>
+        <div className="flex min-w-0 flex-1 flex-col items-center px-2 text-center">
+          <span className="w-full truncate text-xs font-medium sm:text-sm">{tournamentName}</span>
+          <span className="w-full truncate text-[10px] text-muted-foreground sm:text-xs">{computedSubtitle}</span>
         </div>
         <div className="flex items-center gap-1">
           {headerExtra}
@@ -374,18 +414,15 @@ export function RefereeBoard({
 
       {/* Pickleball serving indicator */}
       {pickleballMode && servingTeam && !isCompleted && (
-        <div className="flex items-center justify-center gap-2 border-b bg-primary/5 py-1.5 text-sm font-semibold text-primary">
-          <span className="text-base">🏓</span>
-          <span>
+        <div className="flex items-center justify-center gap-1.5 overflow-hidden border-b bg-primary/5 px-3 py-1.5 text-sm font-semibold text-primary">
+          <span className="shrink-0 text-base">🏓</span>
+          <span className="truncate">
             {servingTeam === "a" ? (teamA?.name ?? "Đội A") : (teamB?.name ?? "Đội B")}
-            {" "}đang giao · <span className="rounded bg-primary/15 px-1.5 py-0.5 text-xs">Tay {serverNumber}</span>
+            {" "}đang giao
           </span>
-          <span className="ml-1 font-mono text-xs text-muted-foreground">
-            {servingTeam === "a" ? scoreA : scoreB}
-            {" – "}
-            {servingTeam === "a" ? scoreB : scoreA}
-            {" – "}
-            {serverNumber}
+          <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-xs">Tay {serverNumber}</span>
+          <span className="ml-1 shrink-0 font-mono text-xs text-muted-foreground">
+            {servingTeam === "a" ? scoreA : scoreB}–{servingTeam === "a" ? scoreB : scoreA}–{serverNumber}
           </span>
         </div>
       )}
@@ -421,57 +458,58 @@ export function RefereeBoard({
         className="border-t bg-card/50 px-3 py-2.5 sm:px-4 sm:py-3"
         style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}
       >
-        <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-2">
+        <div className="mx-auto w-full max-w-2xl space-y-2">
           {pickleballMode && !isCompleted && servingTeam ? (
             <>
-              {/* Pickleball action buttons */}
-              <button
-                onClick={scorePoint}
-                disabled={!hasTeams || pending}
-                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-primary text-base font-bold text-primary-foreground shadow-md transition-all active:scale-95 disabled:opacity-40 sm:h-16 sm:text-lg"
-                aria-label="Điểm cho đội đang giao"
-              >
-                <Plus className="size-5" />
-                Điểm
-              </button>
-              <button
-                onClick={sideOut}
-                disabled={!hasTeams || pending}
-                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-orange-400 bg-orange-500/10 text-base font-bold text-orange-600 transition-all active:scale-95 disabled:opacity-40 dark:border-orange-500 dark:text-orange-400 sm:h-16 sm:text-lg"
-                aria-label="Mất giao bóng"
-              >
-                Mất giao
-              </button>
-              <button
-                onClick={undoPb}
-                disabled={pbHistory.length === 0 || pending}
-                className="flex h-14 items-center justify-center gap-1.5 rounded-2xl border border-border bg-background px-4 text-sm font-medium transition-all active:scale-95 disabled:opacity-40 sm:h-16"
-                aria-label="Hoàn tác"
-              >
-                <Undo2 className="size-4" />
-                Undo
-              </button>
-              <button
-                onClick={reset}
-                disabled={pending}
-                className="flex h-14 items-center justify-center gap-1.5 rounded-2xl border border-border bg-background px-3 text-sm text-muted-foreground transition-all active:scale-95 disabled:opacity-40 sm:h-16"
-              >
-                <RotateCcw className="size-4" />
-              </button>
-              {onFinalize && (
+              {/* Row 1: primary scoring actions */}
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={finalize}
-                  disabled={pending || scoreA === scoreB}
-                  className={`flex h-14 items-center justify-center gap-1.5 rounded-2xl px-4 text-sm font-medium transition-all active:scale-95 disabled:opacity-40 sm:h-16 ${
-                    armedFinalize
-                      ? "bg-destructive text-destructive-foreground"
-                      : "bg-secondary text-foreground"
-                  }`}
+                  onClick={scorePoint}
+                  disabled={!hasTeams || pending}
+                  className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-primary text-base font-bold text-primary-foreground shadow-md transition-all active:scale-95 disabled:opacity-40 sm:h-16 sm:text-lg"
+                  aria-label="Điểm cho đội đang giao"
                 >
-                  <CheckCircle2 className="size-4" />
-                  {armedFinalize ? "Xác nhận?" : "Kết thúc"}
+                  <Plus className="size-5" />
+                  Điểm
                 </button>
-              )}
+                <button
+                  onClick={sideOut}
+                  disabled={!hasTeams || pending}
+                  className="flex h-14 items-center justify-center gap-2 rounded-2xl border-2 border-orange-400 bg-orange-500/10 text-base font-bold text-orange-600 transition-all active:scale-95 disabled:opacity-40 dark:border-orange-500 dark:text-orange-400 sm:h-16 sm:text-lg"
+                  aria-label="Mất giao bóng"
+                >
+                  Mất giao
+                </button>
+              </div>
+              {/* Row 2: secondary actions */}
+              <div className="flex gap-2">
+                <button
+                  onClick={undoPb}
+                  disabled={pbHistory.length === 0 || pending}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl border border-border bg-background text-sm font-medium transition-all active:scale-95 disabled:opacity-40"
+                  aria-label="Hoàn tác"
+                >
+                  <Undo2 className="size-4" />
+                  Undo
+                </button>
+                <button
+                  onClick={reset}
+                  disabled={pending}
+                  className="flex h-11 items-center justify-center rounded-2xl border border-border bg-background px-3 text-muted-foreground transition-all active:scale-95 disabled:opacity-40"
+                >
+                  <RotateCcw className="size-4" />
+                </button>
+                {onFinalize && (
+                  <button
+                    onClick={finalize}
+                    disabled={pending || scoreA === scoreB}
+                    className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-secondary text-sm font-medium text-foreground transition-all active:scale-95 disabled:opacity-40"
+                  >
+                    <CheckCircle2 className="size-4" />
+                    Kết thúc
+                  </button>
+                )}
+              </div>
             </>
           ) : !pickleballMode ? (
             <>
@@ -483,12 +521,12 @@ export function RefereeBoard({
               {onFinalize && match.status !== "completed" && (
                 <Button
                   size="sm"
-                  variant={armedFinalize ? "destructive" : "default"}
+                  variant="default"
                   onClick={finalize}
                   disabled={pending || scoreA === scoreB}
                 >
                   <CheckCircle2 className="size-4" />
-                  {armedFinalize ? "Bấm lần nữa để xác nhận" : "Kết thúc trận"}
+                  Kết thúc trận
                 </Button>
               )}
             </>
