@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Trophy } from "lucide-react";
+import { Check, Pencil, Trophy, X } from "lucide-react";
 import { type PicMatch, type PicPlayer } from "@/stores/pic-tournament";
 import { scorePicMatch, createPicMatchScore } from "@/app/actions/pic";
 import type { PicEventFull } from "@/app/actions/pic";
@@ -108,40 +108,132 @@ function PicMatchScore({
 
 // ── Match row ──────────────────────────────────────────────────────────────────
 
-function MatchRow({ match, players, onClick }: {
-  match: PicMatch; players: PicPlayer[]; onClick: () => void;
+function MatchRow({ match, players, groupLabel, onClick, onDirectScore }: {
+  match: PicMatch;
+  players: PicPlayer[];
+  groupLabel?: string;
+  onClick: () => void;
+  onDirectScore: (scoreA: number, scoreB: number) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftA, setDraftA] = useState("");
+  const [draftB, setDraftB] = useState("");
+  const [saving, setSaving] = useState(false);
+
   const byId = (id: string) => players.find((p) => p.id === id);
   const isDone = match.status === "completed";
   const aName = match.a1 ? pairName(byId(match.a1), byId(match.a2)) : "TBD";
   const bName = match.b1 ? pairName(byId(match.b1), byId(match.b2)) : "TBD";
   const aWon = isDone && match.scoreA > match.scoreB;
   const bWon = isDone && match.scoreB > match.scoreA;
-  const canClick = !isDone && !!match.a1 && !!match.b1;
+  const canPlay = !isDone && !!match.a1 && !!match.b1;
+  const canEdit = !!match.a1 && !!match.b1;
+
+  const openEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraftA(String(match.scoreA));
+    setDraftB(String(match.scoreB));
+    setEditing(true);
+  };
+
+  const save = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSaving(true);
+    await onDirectScore(Math.max(0, parseInt(draftA) || 0), Math.max(0, parseInt(draftB) || 0));
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const cancel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-primary/50 bg-card px-3 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs text-muted-foreground">{aName} vs {bName}</p>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="number" min={0} value={draftA}
+              onChange={(e) => setDraftA(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-16 rounded-md border bg-background px-2 py-1.5 text-center font-mono text-base font-bold"
+            />
+            <span className="font-bold text-muted-foreground">–</span>
+            <input
+              type="number" min={0} value={draftB}
+              onChange={(e) => setDraftB(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-16 rounded-md border bg-background px-2 py-1.5 text-center font-mono text-base font-bold"
+            />
+          </div>
+        </div>
+        <button
+          onClick={save} disabled={saving}
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-50"
+        >
+          <Check className="size-4" />
+        </button>
+        <button
+          onClick={cancel}
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border hover:bg-accent"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <button onClick={canClick ? onClick : undefined} disabled={!canClick}
-      className={`flex w-full items-center gap-3 rounded-xl border bg-card px-3 py-3 text-left transition-colors ${
-        isDone ? "opacity-60" : canClick ? "hover:border-primary/50 hover:bg-accent/30 active:scale-[0.99]" : "cursor-default opacity-40"
-      }`}
+    <div
+      className={`flex items-center gap-2 rounded-xl border bg-card px-3 py-3 transition-colors ${
+        canPlay ? "cursor-pointer hover:border-primary/50 hover:bg-accent/30 active:scale-[0.99]" : ""
+      } ${!canEdit ? "opacity-40" : ""}`}
+      onClick={canPlay ? onClick : undefined}
     >
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-[10px] font-bold text-blue-500">A</span>
-          <span className={`truncate text-sm ${aWon ? "font-bold text-primary" : ""}`}>{aName}</span>
-          {aWon && <Trophy className="size-3.5 shrink-0 text-primary" />}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-500">B</span>
-          <span className={`truncate text-sm ${bWon ? "font-bold text-primary" : ""}`}>{bName}</span>
-          {bWon && <Trophy className="size-3.5 shrink-0 text-primary" />}
-        </div>
+      {/* Group badge */}
+      {groupLabel && (
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+          {groupLabel}
+        </span>
+      )}
+
+      {/* Team A */}
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm font-semibold leading-tight ${aWon ? "text-primary" : ""}`}>
+          {aName}
+          {aWon && <Trophy className="ml-1 inline size-3.5 text-primary" />}
+        </p>
       </div>
-      <div className={`shrink-0 rounded-lg px-3 py-1.5 font-mono text-lg font-bold tabular-nums ${isDone ? "bg-secondary" : "border"}`}>
-        {match.scoreA} – {match.scoreB}
+
+      {/* vs */}
+      <span className="shrink-0 text-[10px] font-medium text-muted-foreground">vs</span>
+
+      {/* Team B */}
+      <div className="min-w-0 flex-1 text-right">
+        <p className={`truncate text-sm font-semibold leading-tight ${bWon ? "text-primary" : "text-muted-foreground"}`}>
+          {bWon && <Trophy className="mr-1 inline size-3.5 text-primary" />}
+          {bName}
+        </p>
       </div>
-      {canClick && <ArrowRight className="size-4 shrink-0 text-muted-foreground" />}
-    </button>
+
+      {/* Score */}
+      <div className={`shrink-0 rounded-lg px-2.5 py-1 font-mono text-sm font-bold tabular-nums ${isDone ? "bg-secondary" : "border text-muted-foreground"}`}>
+        {match.scoreA}–{match.scoreB}
+      </div>
+
+      {/* Pencil */}
+      {canEdit && (
+        <button
+          onClick={openEdit}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground hover:border-primary/60 hover:text-primary"
+        >
+          <Pencil className="size-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -156,11 +248,22 @@ export default function PicRefereeClient({
   token: string;
   groupFilter: string | null;
 }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const [activeMatch, setActiveMatch] = useState<PicMatch | null>(null);
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
 
+  // Tire = target score, editable per session (no DB persistence)
+  const [tireGroup, setTireGroup] = useState<number>(config.targetGroup);
+  const [tireKnockout, setTireKnockout] = useState<number>(config.targetKnockout);
+
   const target = (m: PicMatch) =>
-    m.stage === "group" ? config.targetGroup : config.targetKnockout;
+    m.stage === "group" ? tireGroup : tireKnockout;
+
+  const handleDirectScore = (matchId: string) => async (scoreA: number, scoreB: number) => {
+    await scorePicMatch({ eventId, matchId, scoreA, scoreB, token });
+    startTransition(() => { router.refresh(); });
+  };
 
   if (activeMatch) {
     return (
@@ -175,7 +278,6 @@ export default function PicRefereeClient({
     );
   }
 
-  // Filter groups if groupFilter is set
   const visibleGroups = groupFilter
     ? groups.filter((g) => g.label === groupFilter)
     : groups;
@@ -183,6 +285,20 @@ export default function PicRefereeClient({
   const semiMatches = knockoutMatches.filter((m) => m.stage === "semifinal");
   const finalMatch = knockoutMatches.find((m) => m.stage === "final");
   const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
+
+  const TireInput = ({ type }: { type: "group" | "knockout" }) => {
+    const val = type === "group" ? tireGroup : tireKnockout;
+    return (
+      <input
+        type="number" min={1} max={99} value={val}
+        onChange={(e) => {
+          const n = parseInt(e.target.value);
+          if (n > 0) { type === "group" ? setTireGroup(n) : setTireKnockout(n); }
+        }}
+        className="w-9 rounded border bg-background px-1 py-0 text-center font-mono text-xs"
+      />
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -197,7 +313,7 @@ export default function PicRefereeClient({
         </div>
       </header>
 
-      {/* Group tabs (when multiple groups and no filter) */}
+      {/* Group tabs */}
       {!groupFilter && groups.length > 1 && stage === "group" && (
         <div className="border-b">
           <div className="mx-auto flex max-w-xl gap-1 overflow-x-auto px-4 py-2">
@@ -205,13 +321,11 @@ export default function PicRefereeClient({
               const done = g.matches.filter((m) => m.status === "completed").length;
               const total = g.matches.length;
               return (
-                <a
-                  key={g.id}
-                  href={`?g=${g.label}`}
+                <a key={g.id} href={`?g=${g.label}`}
                   className="flex shrink-0 flex-col items-center rounded-lg border px-4 py-2 text-center text-xs hover:bg-accent"
                 >
                   <span className="font-bold">Bảng {g.label}</span>
-                  <span className="text-muted-foreground">{done}/{total} trận</span>
+                  <span className="text-muted-foreground">{done}/{total}</span>
                 </a>
               );
             })}
@@ -229,11 +343,18 @@ export default function PicRefereeClient({
 
         {stage === "group" && visibleGroups.map((g) => (
           <div key={g.id} className="space-y-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Bảng {g.label} — chạm {config.targetGroup}
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Bảng {g.label} — chạm <TireInput type="group" />
             </h2>
             {g.matches.map((m) => (
-              <MatchRow key={m.id} match={m} players={players} onClick={() => setActiveMatch(m)} />
+              <MatchRow
+                key={m.id}
+                match={m}
+                players={players}
+                groupLabel={g.label}
+                onClick={() => setActiveMatch(m)}
+                onDirectScore={handleDirectScore(m.id)}
+              />
             ))}
           </div>
         ))}
@@ -242,28 +363,37 @@ export default function PicRefereeClient({
           <>
             {semiMatches.length > 0 && (
               <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Bán kết — chạm {config.targetKnockout}
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Bán kết — chạm <TireInput type="knockout" />
                 </h2>
                 {semiMatches.map((m) => (
-                  <MatchRow key={m.id} match={m} players={players} onClick={() => setActiveMatch(m)} />
+                  <MatchRow key={m.id} match={m} players={players}
+                    onClick={() => setActiveMatch(m)}
+                    onDirectScore={handleDirectScore(m.id)}
+                  />
                 ))}
               </div>
             )}
             {finalMatch && (
               <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  🏆 Chung kết — chạm {config.targetKnockout}
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  🏆 Chung kết — chạm <TireInput type="knockout" />
                 </h2>
-                <MatchRow match={finalMatch} players={players} onClick={() => setActiveMatch(finalMatch)} />
+                <MatchRow match={finalMatch} players={players}
+                  onClick={() => setActiveMatch(finalMatch)}
+                  onDirectScore={handleDirectScore(finalMatch.id)}
+                />
               </div>
             )}
             {thirdMatch && (
               <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tranh hạng 3–4 — chạm {config.targetKnockout}
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tranh hạng 3–4 — chạm <TireInput type="knockout" />
                 </h2>
-                <MatchRow match={thirdMatch} players={players} onClick={() => setActiveMatch(thirdMatch)} />
+                <MatchRow match={thirdMatch} players={players}
+                  onClick={() => setActiveMatch(thirdMatch)}
+                  onDirectScore={handleDirectScore(thirdMatch.id)}
+                />
               </div>
             )}
           </>
