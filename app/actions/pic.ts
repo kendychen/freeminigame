@@ -119,17 +119,14 @@ export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull 
   };
 }
 
-// ── Create event ───────────────────────────────────────────────────────────────
+// ── Create event (empty — players added separately) ───────────────────────────
 
 export async function createPicEvent(
-  config: PicConfig,
-  playerNames: string[],
-  groupCount: number,
+  config: Omit<PicConfig, "advancePerGroup">,
 ): Promise<{ slug: string } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
 
-  // Create event
   let slug = ensureSafeSlug(config.name);
   if (!slug || slug === "tour") slug = "pic";
   slug = withRandomSuffix(slug);
@@ -143,7 +140,7 @@ export async function createPicEvent(
       config: {
         targetGroup: config.targetGroup,
         targetKnockout: config.targetKnockout,
-        advancePerGroup: config.advancePerGroup,
+        advancePerGroup: 1,
         hasThirdPlace: config.hasThirdPlace,
       },
       stage: "group",
@@ -152,22 +149,133 @@ export async function createPicEvent(
     .single();
   if (evErr || !ev) return { error: evErr?.message ?? "create_failed" };
 
-  // Insert players
-  const { data: players, error: plErr } = await svc
-    .from("pic_players")
-    .insert(playerNames.map((name) => ({ event_id: ev.id, name: name.trim() })))
-    .select("id");
-  if (plErr || !players) return { error: plErr?.message ?? "players_failed" };
+  revalidatePath("/dashboard");
+  return { slug };
+}
 
-  // Snake-distribute player IDs into groups
-  const playerIds = players.map((p) => p.id);
-  const groupSlots = snakeDistribute(playerIds, groupCount);
+// ── Add / remove player ────────────────────────────────────────────────────────
+
+export async function addPicPlayer(
+  eventId: string,
+  name: string,
+): Promise<{ id: string } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: p, error } = await svc
+    .from("pic_players")
+    .insert({ event_id: eventId, name: name.trim() })
+    .select("id")
+    .single();
+  if (error || !p) return { error: error?.message ?? "add_failed" };
+
+  revalidatePath(`/pic`);
+  return { id: p.id };
+}
+
+export async function removePicPlayer(
+  eventId: string,
+  playerId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { error } = await svc
+    .from("pic_players")
+    .delete()
+    .eq("id", playerId)
+    .eq("event_id", eventId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic`);
+  return { ok: true };
+}
+
+export async function bulkAddPicPlayers(
+  eventId: string,
+  names: string[],
+): Promise<{ count: number } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const trimmed = names.map((n) => n.trim()).filter(Boolean);
+  if (!trimmed.length) return { count: 0 };
+
+  const { data, error } = await svc
+    .from("pic_players")
+    .insert(trimmed.map((name) => ({ event_id: eventId, name })))
+    .select("id");
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic`);
+  return { count: data?.length ?? 0 };
+}
+
+// ── Generate group schedule ────────────────────────────────────────────────────
+
+export async function generatePicGroups(
+  eventId: string,
+  groupCount: number,
+  advancePerGroup: number,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingGroups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId);
+  if (existingGroups && existingGroups.length > 0)
+    return { error: "schedule_already_generated" };
+
+  const { data: players } = await svc
+    .from("pic_players")
+    .select("id")
+    .eq("event_id", eventId);
+  if (!players || players.length < 4) return { error: "need_at_least_4_players" };
+
+  // Random shuffle
+  const ids = players.map((p) => p.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+  }
+
+  const groupSlots = snakeDistribute(ids, groupCount);
 
   for (let gi = 0; gi < groupSlots.length; gi++) {
     const label = String.fromCharCode(65 + gi);
     const { data: grp, error: grpErr } = await svc
       .from("pic_groups")
-      .insert({ event_id: ev.id, label })
+      .insert({ event_id: eventId, label })
       .select("id")
       .single();
     if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
@@ -182,7 +290,7 @@ export async function createPicEvent(
     const schedule = generateGroupSchedule(Math.min(n, 6));
     await svc.from("pic_matches").insert(
       schedule.map((slot, i) => ({
-        event_id: ev.id,
+        event_id: eventId,
         group_id: grp.id,
         round: i + 1,
         stage: "group",
@@ -194,8 +302,18 @@ export async function createPicEvent(
     );
   }
 
-  revalidatePath("/dashboard");
-  return { slug };
+  // Update advancePerGroup in config
+  const cfg = ev.config as Record<string, unknown>;
+  await svc
+    .from("pic_events")
+    .update({
+      config: { ...cfg, advancePerGroup },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId);
+
+  revalidatePath(`/pic`);
+  return { ok: true };
 }
 
 // ── Score a match ──────────────────────────────────────────────────────────────
