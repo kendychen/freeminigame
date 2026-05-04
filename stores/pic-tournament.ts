@@ -12,7 +12,7 @@ export interface PicPlayer {
 export interface PicMatch {
   id: string;
   round: number;
-  stage: "group" | "quarterfinal" | "semifinal" | "final" | "third";
+  stage: "group" | "r16" | "quarterfinal" | "semifinal" | "final" | "third";
   a1: string; a2: string;
   b1: string; b2: string;
   scoreA: number;
@@ -223,12 +223,25 @@ export const usePicStore = create<PicStore>()(
             if (hasThirdPlace) {
               matches.push({ id: uid(), round: 98, stage: "third", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
             }
-          } else {
+          } else if (pairs.length <= 8) {
             // Quarters (pairs 0v1, 2v3, 4v5, 6v7) + semis + final + optional 3rd
             for (let i = 0; i < pairs.length - 1; i += 2) {
               matches.push({ id: uid(), round: i / 2 + 1, stage: "quarterfinal", a1: pairs[i]![0], a2: pairs[i]![1], b1: pairs[i + 1]![0], b2: pairs[i + 1]![1], scoreA: 0, scoreB: 0, status: "pending" });
             }
-            // Semis filled after QF; final/3rd filled after semis
+            matches.push({ id: uid(), round: 1, stage: "semifinal", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            matches.push({ id: uid(), round: 2, stage: "semifinal", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            matches.push({ id: uid(), round: 99, stage: "final", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            if (hasThirdPlace) {
+              matches.push({ id: uid(), round: 98, stage: "third", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            }
+          } else {
+            // R16 (pairs 0v1 … 14v15) + 4 QF + 2 semi + final + optional 3rd
+            for (let i = 0; i < pairs.length - 1; i += 2) {
+              matches.push({ id: uid(), round: i / 2 + 1, stage: "r16", a1: pairs[i]![0], a2: pairs[i]![1], b1: pairs[i + 1]![0], b2: pairs[i + 1]![1], scoreA: 0, scoreB: 0, status: "pending" });
+            }
+            for (let q = 1; q <= 4; q++) {
+              matches.push({ id: uid(), round: q, stage: "quarterfinal", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            }
             matches.push({ id: uid(), round: 1, stage: "semifinal", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
             matches.push({ id: uid(), round: 2, stage: "semifinal", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
             matches.push({ id: uid(), round: 99, stage: "final", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
@@ -249,6 +262,20 @@ export const usePicStore = create<PicStore>()(
             let ko = s.current.knockoutMatches.map((m) =>
               m.id === matchId ? { ...m, scoreA, scoreB, status: "completed" as const } : m,
             );
+
+            // Auto-advance R16 winners → QF
+            const r16 = ko.filter((m) => m.stage === "r16").sort((a, b) => a.round - b.round);
+            if (r16.length >= 8 && r16.every((m) => m.status === "completed")) {
+              const qfs = ko.filter((m) => m.stage === "quarterfinal").sort((a, b) => a.round - b.round);
+              if (qfs.length >= 4 && !qfs[0]!.a1) {
+                const r16W = r16.map((m) => m.scoreA > m.scoreB ? [m.a1, m.a2] : [m.b1, m.b2]);
+                ko = ko.map((m) => {
+                  const qi = qfs.findIndex((q) => q.id === m.id);
+                  if (qi === -1) return m;
+                  return { ...m, a1: r16W[qi * 2]![0]!, a2: r16W[qi * 2]![1]!, b1: r16W[qi * 2 + 1]![0]!, b2: r16W[qi * 2 + 1]![1]! };
+                });
+              }
+            }
 
             // Auto-advance QF winners → semis
             const qfs = ko.filter((m) => m.stage === "quarterfinal").sort((a, b) => a.round - b.round);

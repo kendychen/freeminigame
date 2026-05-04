@@ -394,6 +394,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   if (stage === "done") {
     const finalMatch = knockoutMatches.find((m) => m.stage === "final");
     const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
+    const doneKoR16 = knockoutMatches.filter((m) => m.stage === "r16");
     const doneKoQF = knockoutMatches.filter((m) => m.stage === "quarterfinal");
     const doneKoSemis = knockoutMatches.filter((m) => m.stage === "semifinal");
     if (!finalMatch) return null;
@@ -452,6 +453,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
         {/* Knockout results */}
         <div className="space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vòng trung kết</h2>
+          {doneKoR16.map((m, i) => <KoRow key={m.id} match={m} label={`1/16 - ${i + 1}`} />)}
           {doneKoQF.map((m, i) => <KoRow key={m.id} match={m} label={`Tứ kết ${i + 1}`} />)}
           {doneKoSemis.map((m, i) => <KoRow key={m.id} match={m} label={`Bán kết ${i + 1}`} />)}
           {thirdMatch && thirdMatch.status === "completed" && <KoRow match={thirdMatch} label="Tranh hạng 3–4" />}
@@ -508,6 +510,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   }
 
   // ── Group / knockout ──────────────────────────────────────────────────────────
+  const r16Matches = knockoutMatches.filter((m) => m.stage === "r16");
   const quarterMatches = knockoutMatches.filter((m) => m.stage === "quarterfinal");
   const semiMatches = knockoutMatches.filter((m) => m.stage === "semifinal");
   const finalMatchKO = knockoutMatches.find((m) => m.stage === "final");
@@ -542,6 +545,17 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
       {stage === "knockout" && (
         <div className="space-y-4">
+          {r16Matches.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vòng 1/16 — chạm {config.targetKnockout}</h2>
+              {r16Matches.map((m, i) => (
+                <MatchCard key={m.id} match={m} players={players}
+                  groupLabel={`1/16-${i + 1}`}
+                  onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
+                  onDirectScore={handleDirectScore(m.id)} />
+              ))}
+            </div>
+          )}
           {quarterMatches.length > 0 && (
             <div className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tứ kết — chạm {config.targetKnockout}</h2>

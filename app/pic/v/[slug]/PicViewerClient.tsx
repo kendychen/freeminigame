@@ -93,6 +93,7 @@ export default function PicViewerClient({ state }: { state: PicEventFull }) {
 
   const finalMatch = knockoutMatches.find((m) => m.stage === "final");
   const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
+  const r16Matches = knockoutMatches.filter((m) => m.stage === "r16");
   const quarterMatches = knockoutMatches.filter((m) => m.stage === "quarterfinal");
   const semiMatches = knockoutMatches.filter((m) => m.stage === "semifinal");
   const isDone = stage === "done";
@@ -168,6 +169,14 @@ export default function PicViewerClient({ state }: { state: PicEventFull }) {
         {(stage === "knockout" || isDone) && knockoutMatches.some((m) => m.status === "completed") && (
           <div className="space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vòng trung kết</h2>
+            {r16Matches.filter((m) => m.status === "completed").map((m, i) => (
+              <KoRow key={m.id} match={m} label={`1/16 - ${i + 1}`} players={players} />
+            ))}
+            {r16Matches.some((m) => m.status === "pending") && (
+              <div className="rounded-xl border border-dashed p-3 text-center text-sm text-muted-foreground">
+                Đang thi đấu vòng 1/16…
+              </div>
+            )}
             {quarterMatches.filter((m) => m.status === "completed").map((m, i) => (
               <KoRow key={m.id} match={m} label={`Tứ kết ${i + 1}`} players={players} />
             ))}
