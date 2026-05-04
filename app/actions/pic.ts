@@ -532,6 +532,152 @@ export async function picDrawKnockout(
   return { ok: true };
 }
 
+// ── Realtime group draw via pair_sessions ─────────────────────────────────────
+
+export async function createPicDraw(
+  eventId: string,
+  groupCount: number,
+  advancePerGroup: number,
+): Promise<{ code: string; hostToken: string } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const cfg = (ev.config as Record<string, unknown>) ?? {};
+  if (cfg.drawCode) return { error: "draw_exists" };
+
+  const { data: playersData } = await svc
+    .from("pic_players")
+    .select("id, name")
+    .eq("event_id", eventId);
+  const players = playersData ?? [];
+  if (players.length < 4) return { error: "Cần ít nhất 4 VĐV" };
+
+  const groupSize = Math.floor(players.length / groupCount);
+  const title = ((cfg.name as string) ?? "Bốc thăm PIC").slice(0, 100);
+  const participants = players.map((p) => ({ id: p.id, name: p.name, joinedAt: Date.now() }));
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomBytes(3).toString("hex");
+    const hostToken = randomBytes(24).toString("base64url");
+    const { error: insertErr } = await svc.from("pair_sessions").insert({
+      code,
+      host_token: hostToken,
+      title,
+      group_size: groupSize,
+      participants,
+      status: "locked",
+      expires_at: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
+    });
+    if (!insertErr) {
+      await svc
+        .from("pic_events")
+        .update({ config: { ...cfg, drawCode: code, drawGroupCount: groupCount, drawAdvancePerGroup: advancePerGroup } })
+        .eq("id", eventId);
+      revalidatePath(`/pic/${eventId}`);
+      return { code, hostToken };
+    }
+    if (!insertErr.message.toLowerCase().includes("duplicate")) return { error: insertErr.message };
+  }
+  return { error: "Trùng mã liên tiếp" };
+}
+
+export async function applyPicDraw(
+  eventId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const cfg = (ev.config as Record<string, unknown>) ?? {};
+  const drawCode = cfg.drawCode as string | undefined | null;
+  const groupCount = (cfg.drawGroupCount as number) ?? 1;
+  const advancePerGroup = (cfg.drawAdvancePerGroup as number) ?? 1;
+  if (!drawCode) return { error: "no_draw" };
+
+  // Idempotency: skip if groups already created
+  const { data: existingGroups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId)
+    .limit(1);
+  if (existingGroups && existingGroups.length > 0) return { ok: true };
+
+  const { data: session } = await svc
+    .from("pair_sessions")
+    .select("result, status")
+    .eq("code", drawCode)
+    .single();
+  if (!session) return { error: "draw_not_found" };
+  if (session.status !== "shuffled" && session.status !== "locked") return { error: "not_shuffled" };
+
+  const result = session.result as { groups: string[][]; byes: string[] } | null;
+  if (!result || result.groups.length === 0) return { error: "no_result" };
+
+  // Build final group slots: start from pair session groups, distribute byes
+  const groupSlots: string[][] = result.groups.map((g) => [...g]);
+  for (const byeId of result.byes ?? []) {
+    let minIdx = 0;
+    for (let i = 1; i < groupSlots.length; i++) {
+      if (groupSlots[i]!.length < groupSlots[minIdx]!.length) minIdx = i;
+    }
+    groupSlots[minIdx]!.push(byeId);
+  }
+
+  const labels = "ABCDEFGH";
+  for (let gi = 0; gi < groupSlots.length; gi++) {
+    const label = labels[gi] ?? String(gi + 1);
+    const slotIds = groupSlots[gi]!;
+
+    const { data: grp, error: grpErr } = await svc
+      .from("pic_groups")
+      .insert({ event_id: eventId, label })
+      .select("id")
+      .single();
+    if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
+
+    await svc.from("pic_group_players").insert(
+      slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
+
+    const n = slotIds.length;
+    if (n < 4) continue;
+    const schedule = generateGroupSchedule(Math.min(n, 8));
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
+    );
+  }
+
+  await svc
+    .from("pic_events")
+    .update({ config: { ...cfg, drawCode: null, advancePerGroup }, updated_at: new Date().toISOString() })
+    .eq("id", eventId);
+
+  revalidatePath(`/pic/${eventId}`);
+  return { ok: true };
+}
+
 // ── Create quick_scores entry for a PIC match ─────────────────────────────────
 
 export async function createPicMatchScore({

@@ -33,6 +33,9 @@ export interface PicConfig {
   targetKnockout: number;
   advancePerGroup: number;
   hasThirdPlace: boolean;
+  drawCode?: string | null;
+  drawGroupCount?: number;
+  drawAdvancePerGroup?: number;
 }
 
 export type PicStage = "group" | "draw" | "knockout" | "done";

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Upload, Shuffle, Users } from "lucide-react";
+import { Plus, Trash2, Upload, Shuffle, Users, Radio, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
-import { addPicPlayer, removePicPlayer, bulkAddPicPlayers, generatePicGroups } from "@/app/actions/pic";
+import { addPicPlayer, removePicPlayer, bulkAddPicPlayers, generatePicGroups, createPicDraw, applyPicDraw } from "@/app/actions/pic";
+import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 interface Player { id: string; name: string }
 
@@ -27,10 +28,12 @@ export default function PicPlayersClient({
   eventId,
   initialPlayers,
   hasGroups,
+  drawCode: initialDrawCode,
 }: {
   eventId: string;
   initialPlayers: Player[];
   hasGroups: boolean;
+  drawCode: string | null;
 }) {
   const router = useRouter();
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
@@ -39,6 +42,8 @@ export default function PicPlayersClient({
   const [groupCount, setGroupCount] = useState(1);
   const [advancePerGroup, setAdvancePerGroup] = useState(1);
   const [pending, startTransition] = useTransition();
+  const [drawCode, setDrawCode] = useState<string | null>(initialDrawCode);
+  const [drawStatus, setDrawStatus] = useState<string | null>(null);
 
   const pc = players.length;
 
@@ -56,15 +61,46 @@ export default function PicPlayersClient({
   const groupSizes = useMemo(() => snakePreview(pc, effG), [pc, effG]);
   const canGenerate = pc >= 4 && validGroupCounts.length > 0 && !hasGroups;
 
+  // Subscribe to pair session realtime — auto-apply when shuffled
+  useEffect(() => {
+    if (!drawCode || hasGroups) return;
+    const sb = getSupabaseBrowser();
+    // Load current status first
+    void sb.from("pair_sessions").select("status").eq("code", drawCode).single().then(({ data }: { data: { status: string } | null }) => {
+      if (data) setDrawStatus(data.status);
+    });
+    const ch = sb
+      .channel(`pic-draw:${drawCode}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "pair_sessions", filter: `code=eq.${drawCode}` },
+        (payload: { new: { status: string } }) => {
+          const status = payload.new.status;
+          setDrawStatus(status);
+          if (status === "shuffled") {
+            startTransition(async () => {
+              const res = await applyPicDraw(eventId);
+              if ("ok" in res) {
+                toast({ title: "Đã áp dụng kết quả bốc thăm!" });
+                router.refresh();
+              } else {
+                toast({ title: "Lỗi áp dụng", description: res.error, variant: "destructive" });
+              }
+            });
+          }
+        },
+      )
+      .subscribe();
+    return () => { void sb.removeChannel(ch); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawCode, hasGroups]);
+
   const onAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || hasGroups) return;
     startTransition(async () => {
       const res = await addPicPlayer(eventId, name.trim());
-      if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
-        return;
-      }
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setPlayers((prev) => [...prev, { id: res.id, name: name.trim() }]);
       setName("");
     });
@@ -75,10 +111,7 @@ export default function PicPlayersClient({
     if (!names.length || hasGroups) return;
     startTransition(async () => {
       const res = await bulkAddPicPlayers(eventId, names);
-      if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
-        return;
-      }
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       toast({ title: "Đã thêm", description: `${res.count} VĐV` });
       setCsvText("");
       router.refresh();
@@ -89,10 +122,7 @@ export default function PicPlayersClient({
     if (hasGroups) return;
     startTransition(async () => {
       const res = await removePicPlayer(eventId, id);
-      if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
-        return;
-      }
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setPlayers((prev) => prev.filter((p) => p.id !== id));
     });
   };
@@ -101,12 +131,30 @@ export default function PicPlayersClient({
     if (!canGenerate) return;
     startTransition(async () => {
       const res = await generatePicGroups(eventId, effG, advancePerGroup);
-      if ("error" in res) {
-        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
-        return;
-      }
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       toast({ title: "Đã chia bảng!", description: `${effG} bảng đã được tạo ngẫu nhiên.` });
       router.refresh();
+    });
+  };
+
+  const onCreateLiveDraw = () => {
+    if (!canGenerate) return;
+    startTransition(async () => {
+      const res = await createPicDraw(eventId, effG, advancePerGroup);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      setDrawCode(res.code);
+      setDrawStatus("locked");
+      const url = `${window.location.origin}/pair/${res.code}?host_token=${res.hostToken}`;
+      window.open(url, "_blank");
+      toast({ title: "Phòng bốc thăm đã tạo!", description: "Chia sẻ link để mọi người cùng xem." });
+    });
+  };
+
+  const onApplyDraw = () => {
+    startTransition(async () => {
+      const res = await applyPicDraw(eventId);
+      if ("ok" in res) { toast({ title: "Đã áp dụng!" }); router.refresh(); }
+      else toast({ title: "Lỗi", description: res.error, variant: "destructive" });
     });
   };
 
@@ -168,15 +216,48 @@ export default function PicPlayersClient({
             </CardContent>
           </Card>
 
+          {/* Live draw session — shown when active */}
+          {drawCode && (
+            <Card className="border-red-400/40 bg-red-500/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-red-500">
+                  <Radio className="size-4 animate-pulse" />
+                  Phòng bốc thăm đang hoạt động
+                </CardTitle>
+                <CardDescription>
+                  {drawStatus === "shuffled"
+                    ? "Đã có kết quả! Đang áp dụng vào giải…"
+                    : "Chia sẻ link bên dưới để mọi người cùng xem quay bảng."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <a
+                  href={`/pair/${drawCode}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-mono text-primary hover:bg-accent"
+                >
+                  <ExternalLink className="size-3.5 shrink-0" />
+                  /pair/{drawCode}
+                </a>
+                {drawStatus === "shuffled" && (
+                  <Button onClick={onApplyDraw} disabled={pending} className="w-full">
+                    Áp dụng kết quả bốc thăm
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Group generation */}
           <Card className="border-primary/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shuffle className="size-5 text-primary" />
-                Chia bảng đấu random
+                Chia bảng đấu
               </CardTitle>
               <CardDescription>
-                Chọn số bảng rồi bấm quay — server tự phân ngẫu nhiên.
+                Chọn số bảng, rồi quay ngay hoặc tạo phòng bốc thăm realtime để mọi người cùng xem.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -240,10 +321,16 @@ export default function PicPlayersClient({
                 </div>
               )}
 
-              <Button onClick={onGenerate} disabled={!canGenerate || pending} size="lg" className="w-full">
-                <Shuffle className="size-4" />
-                {pending ? "Đang tạo…" : "🎲 Quay bảng đấu random"}
-              </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button onClick={onGenerate} disabled={!canGenerate || pending || !!drawCode} variant="outline" size="lg">
+                  <Shuffle className="size-4" />
+                  {pending ? "Đang tạo…" : "🎲 Quay ngay (local)"}
+                </Button>
+                <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode} size="lg">
+                  <Radio className="size-4" />
+                  {pending ? "Đang tạo…" : "📺 Quay LIVE (realtime)"}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 ⚠️ Chia bảng 1 lần duy nhất. Sau khi quay, sang tab <strong>Trận đấu</strong> để nhập điểm.
               </p>

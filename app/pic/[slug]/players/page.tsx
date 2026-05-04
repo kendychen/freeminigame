@@ -20,6 +20,7 @@ export default async function PicPlayersPage({
       eventId={state.id}
       initialPlayers={state.players}
       hasGroups={state.groups.length > 0}
+      drawCode={state.config.drawCode ?? null}
     />
   );
 }
