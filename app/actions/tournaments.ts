@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ensureSafeSlug, withRandomSuffix } from "@/lib/slug";
 import type { TournamentFormat } from "@/lib/pairing/types";
+import type { TieBreakerConfig } from "@/lib/standings/types";
 
 export interface CreateTournamentInput {
   name: string;
@@ -256,6 +257,29 @@ export async function updatePlateConfig(input: {
     qualifyPerGroup: Math.max(1, input.qualifyPerGroup),
     qualifyPlatePerGroup: Math.max(0, input.qualifyPlatePerGroup),
   };
+  const { error } = await supabase
+    .from("tournaments")
+    .update({ config: next })
+    .eq("id", input.tournamentId);
+  if (error) return { error: error.message } as const;
+  revalidatePath(`/t`, "layout");
+  return { ok: true } as const;
+}
+
+export async function updateTournamentTiebreakers(input: {
+  tournamentId: string;
+  tiebreakers: TieBreakerConfig[];
+}) {
+  const supabase = await createClient();
+  const { data: t, error: readErr } = await supabase
+    .from("tournaments")
+    .select("config")
+    .eq("id", input.tournamentId)
+    .single();
+  if (readErr) return { error: readErr.message } as const;
+
+  const cfg = ((t?.config as Record<string, unknown> | null) ?? {});
+  const next = { ...cfg, tiebreakers: input.tiebreakers };
   const { error } = await supabase
     .from("tournaments")
     .update({ config: next })

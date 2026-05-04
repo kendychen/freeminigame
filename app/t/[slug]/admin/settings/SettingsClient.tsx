@@ -21,8 +21,11 @@ import {
   softDeleteTournament,
   togglePublic,
   updatePlateConfig,
+  updateTournamentTiebreakers,
 } from "@/app/actions/tournaments";
 import type { DbTournament } from "@/types/database";
+import type { TieBreakerConfig } from "@/lib/standings/types";
+import { TiebreakerEditor } from "@/components/tournaments/TiebreakerEditor";
 import { toast } from "@/components/ui/toast";
 import { translateError } from "@/lib/error-messages";
 
@@ -59,8 +62,14 @@ export function SettingsClient({
     plateEnabled?: boolean;
     qualifyPerGroup?: number;
     qualifyPlatePerGroup?: number;
+    tiebreakers?: TieBreakerConfig[];
   };
   const isGroupKO = tournament.format === "group_knockout";
+  const hasStandings = !["single_elim", "double_elim"].includes(tournament.format);
+  const [tiebreakers, setTiebreakers] = useState<TieBreakerConfig[]>(
+    cfg.tiebreakers ?? defaultTiebreakers(tournament.format),
+  );
+  const [savingTb, setSavingTb] = useState(false);
   const [plateEnabled, setPlateEnabled] = useState(!!cfg.plateEnabled);
   const [qpg, setQpg] = useState<number>(cfg.qualifyPerGroup ?? 2);
   const [qpgPlate, setQpgPlate] = useState<number>(
@@ -168,6 +177,21 @@ export function SettingsClient({
         toast({ title: next ? "Đã công khai" : "Đã ẩn" });
       }
     });
+
+  const onSaveTiebreakers = async () => {
+    setSavingTb(true);
+    const res = await updateTournamentTiebreakers({
+      tournamentId: tournament.id,
+      tiebreakers,
+    });
+    setSavingTb(false);
+    if ("error" in res) {
+      toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+    } else {
+      toast({ title: "Đã lưu thứ tự ưu tiên" });
+      router.refresh();
+    }
+  };
 
   const onDelete = () => {
     if (!confirm("Xoá giải đấu này? Có thể khôi phục bởi super_admin.")) return;
@@ -397,6 +421,23 @@ export function SettingsClient({
         </CardContent>
       </Card>
 
+      {hasStandings && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Thứ tự ưu tiên khi bằng điểm</CardTitle>
+            <CardDescription>
+              Kéo để sắp xếp lại. Áp dụng ngay vào bảng xếp hạng sau khi lưu.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <TiebreakerEditor value={tiebreakers} onChange={setTiebreakers} />
+            <Button onClick={onSaveTiebreakers} disabled={savingTb}>
+              {savingTb ? "Đang lưu…" : "Lưu thứ tự"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Vùng nguy hiểm</CardTitle>
@@ -412,4 +453,20 @@ export function SettingsClient({
       </Card>
     </div>
   );
+}
+
+function defaultTiebreakers(format: string): TieBreakerConfig[] {
+  if (format === "swiss") {
+    return [
+      { order: 1, type: "buchholz" },
+      { order: 2, type: "sonneborn_berger" },
+      { order: 3, type: "head_to_head" },
+      { order: 4, type: "random" },
+    ];
+  }
+  return [
+    { order: 1, type: "head_to_head" },
+    { order: 2, type: "point_differential" },
+    { order: 3, type: "random" },
+  ];
 }
