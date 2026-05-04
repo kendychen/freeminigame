@@ -144,7 +144,7 @@ export default function PicPlayersClient({
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setDrawCode(res.code);
       setDrawStatus("locked");
-      const url = `${window.location.origin}/pair/${res.code}?host_token=${res.hostToken}`;
+      const url = `${window.location.origin}/pair/${res.code}?host=${res.hostToken}`;
       window.open(url, "_blank");
       toast({ title: "Phòng bốc thăm đã tạo!", description: "Chia sẻ link để mọi người cùng xem." });
     });
