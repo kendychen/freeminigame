@@ -181,6 +181,28 @@ export async function updatePicConfig(
   return { ok: true };
 }
 
+// ── Advance group → draw ──────────────────────────────────────────────────────
+
+export async function picAdvanceToDraw(
+  eventId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc.from("pic_events").select("owner_id, stage").eq("id", eventId).single();
+  if (!ev || ev.owner_id !== user.id) return { error: "Không có quyền" };
+  if (ev.stage !== "group") return { error: "Chưa ở vòng bảng" };
+
+  const { data: matches } = await svc.from("pic_matches").select("status").eq("event_id", eventId).eq("stage", "group");
+  if (!matches || matches.some((m) => m.status !== "completed")) return { error: "Còn trận chưa kết thúc" };
+
+  const { error } = await svc.from("pic_events").update({ stage: "draw", updated_at: new Date().toISOString() }).eq("id", eventId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic`);
+  return { ok: true };
+}
+
 // ── Add / remove player ────────────────────────────────────────────────────────
 
 export async function addPicPlayer(

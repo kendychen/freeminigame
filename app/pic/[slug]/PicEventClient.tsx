@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
-import { scorePicMatch, picDrawKnockout, createPicMatchScore } from "@/app/actions/pic";
+import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore } from "@/app/actions/pic";
 import type { PicEventFull } from "@/app/actions/pic";
 import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
@@ -513,8 +513,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               onDirectScore={handleDirectScore(m.id)} />
           ))}
           {allGroupDone && (
-            <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="mt-2 w-full">
-              <Trophy className="size-4" />Xem kết quả &amp; Bốc thăm
+            <Button disabled={pending} onClick={() => { startTransition(async () => { await picAdvanceToDraw(eventId); router.refresh(); }); }} size="lg" className="mt-2 w-full">
+              <Trophy className="size-4" />{pending ? "Đang xử lý…" : "Xem kết quả & Bốc thăm"}
             </Button>
           )}
         </div>
