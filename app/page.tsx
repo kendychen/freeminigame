@@ -165,9 +165,9 @@ export default async function HomePage() {
                 động trên điện thoại — kết quả tự cập nhật cho viewer.
               </p>
 
-              <div className="mt-8 grid w-full gap-2.5 sm:w-auto sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
+              <div className="mt-8 grid w-full gap-2.5 sm:w-auto sm:grid-cols-2 sm:gap-3 lg:grid-cols-5">
                 <Link href="/pair/new" className="w-full sm:w-auto">
-                  <Button size="lg" className="w-full sm:min-w-[200px]">
+                  <Button size="lg" className="w-full sm:min-w-[180px]">
                     <Radio className="size-4" />
                     Bốc thăm realtime
                   </Button>
@@ -176,7 +176,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full sm:min-w-[200px]"
+                    className="w-full sm:min-w-[180px]"
                   >
                     <Gavel className="size-4" />
                     Tỷ số nhanh
@@ -186,10 +186,20 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full sm:min-w-[200px]"
+                    className="w-full sm:min-w-[180px]"
                   >
                     <Zap className="size-4" />
                     Chia cặp nhanh
+                  </Button>
+                </Link>
+                <Link href="/quick/pic/new" className="w-full sm:w-auto">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full sm:min-w-[180px]"
+                  >
+                    <Users className="size-4" />
+                    PIC xoay cặp
                   </Button>
                 </Link>
                 <Link
@@ -199,7 +209,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="ghost"
-                    className="w-full sm:min-w-[200px]"
+                    className="w-full sm:min-w-[180px]"
                   >
                     <Trophy className="size-4" />
                     {user ? "Bảng điều khiển" : "Giải đấu Live"}
