@@ -13,7 +13,7 @@ function pairName(p1: PicPlayer | undefined, p2: PicPlayer | undefined) {
   return `${p1?.name ?? "?"} & ${p2?.name ?? "?"}`;
 }
 
-// ── PicMatchScore: bridge between PIC match and QuickScoreClient ───────────────
+// ── PicMatchScore: bridge to QuickScoreClient ──────────────────────────────────
 
 function PicMatchScore({
   match, players, target, token, eventId, onClose,
@@ -34,7 +34,6 @@ function PicMatchScore({
     match.stage === "semifinal" ? "Bán kết" :
     match.stage === "third" ? "Tranh 3–4" : "Chung kết";
 
-  // Create quick_scores entry on mount
   useEffect(() => {
     createPicMatchScore({ teamAName: aName, teamBName: bName, targetPoints: target, title: stageLabel })
       .then((res) => {
@@ -55,7 +54,6 @@ function PicMatchScore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Subscribe to realtime — when completed, call scorePicMatch
   useEffect(() => {
     if (!quickScore) return;
     const sb = getSupabaseBrowser();
@@ -152,9 +150,11 @@ function MatchRow({ match, players, onClick }: {
 export default function PicRefereeClient({
   state,
   token,
+  groupFilter,
 }: {
   state: PicEventFull;
   token: string;
+  groupFilter: string | null;
 }) {
   const [activeMatch, setActiveMatch] = useState<PicMatch | null>(null);
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
@@ -175,6 +175,11 @@ export default function PicRefereeClient({
     );
   }
 
+  // Filter groups if groupFilter is set
+  const visibleGroups = groupFilter
+    ? groups.filter((g) => g.label === groupFilter)
+    : groups;
+
   const semiMatches = knockoutMatches.filter((m) => m.stage === "semifinal");
   const finalMatch = knockoutMatches.find((m) => m.stage === "final");
   const thirdMatch = knockoutMatches.find((m) => m.stage === "third");
@@ -185,10 +190,34 @@ export default function PicRefereeClient({
         <div className="mx-auto flex h-14 max-w-xl items-center justify-center px-4">
           <div className="text-center">
             <p className="font-semibold">{config.name}</p>
-            <p className="text-[11px] text-muted-foreground">Trọng tài — không cần đăng nhập</p>
+            <p className="text-[11px] text-muted-foreground">
+              {groupFilter ? `Trọng tài Bảng ${groupFilter}` : "Trọng tài — không cần đăng nhập"}
+            </p>
           </div>
         </div>
       </header>
+
+      {/* Group tabs (when multiple groups and no filter) */}
+      {!groupFilter && groups.length > 1 && stage === "group" && (
+        <div className="border-b">
+          <div className="mx-auto flex max-w-xl gap-1 overflow-x-auto px-4 py-2">
+            {groups.map((g) => {
+              const done = g.matches.filter((m) => m.status === "completed").length;
+              const total = g.matches.length;
+              return (
+                <a
+                  key={g.id}
+                  href={`?g=${g.label}`}
+                  className="flex shrink-0 flex-col items-center rounded-lg border px-4 py-2 text-center text-xs hover:bg-accent"
+                >
+                  <span className="font-bold">Bảng {g.label}</span>
+                  <span className="text-muted-foreground">{done}/{total} trận</span>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto max-w-xl space-y-5 px-4 py-4">
         {stage === "done" && (
@@ -198,7 +227,7 @@ export default function PicRefereeClient({
           </div>
         )}
 
-        {stage === "group" && groups.map((g) => (
+        {stage === "group" && visibleGroups.map((g) => (
           <div key={g.id} className="space-y-2">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Bảng {g.label} — chạm {config.targetGroup}

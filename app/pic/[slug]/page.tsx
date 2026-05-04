@@ -68,7 +68,7 @@ export default async function PicOverviewPage({
           <Link href={`/pic/${slug}/matches`}>
             <Button>Quản lý trận đấu</Button>
           </Link>
-          <RefereeButton eventId={state.id} />
+          <RefereeButton eventId={state.id} groupLabels={state.groups.map((g) => g.label)} />
         </CardContent>
       </Card>
     </div>
