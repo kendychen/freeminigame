@@ -125,6 +125,7 @@ export function RefereeClient({
       onFinalize={onFinalize}
       onReopen={onReopen}
       membersByTeam={membersByTeam}
+      pickleballMode
       headerExtra={
         <>
           <button

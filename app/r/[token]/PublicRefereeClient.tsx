@@ -91,6 +91,7 @@ export function PublicRefereeClient({
       onFinalize={onFinalize}
       onReopen={onReopen}
       membersByTeam={membersByTeam}
+      pickleballMode
     />
   );
 }

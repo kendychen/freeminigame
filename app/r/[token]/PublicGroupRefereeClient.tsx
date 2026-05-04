@@ -133,6 +133,7 @@ export function PublicGroupRefereeClient({
         onFinalize={onFinalize}
         onReopen={onReopen}
         membersByTeam={membersByTeam}
+        pickleballMode
         headerExtra={
           <button
             onClick={() => setActiveId(null)}
