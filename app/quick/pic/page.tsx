@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Trophy, RotateCcw, ChevronLeft, Shuffle, CheckCircle2,
-  Plus, Minus, ArrowRight, Users,
+  Plus, Minus, Users, Check, X, Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -148,75 +148,132 @@ function ScoreOverlay({
 // ─── MatchCard ─────────────────────────────────────────────────────────────────
 
 function MatchCard({
-  match, players, label, onClick,
+  match, players, groupLabel, onClick, onDirectScore,
 }: {
-  match: PicMatch; players: PicPlayer[]; label?: string; onClick?: () => void;
+  match: PicMatch; players: PicPlayer[]; groupLabel?: string;
+  onClick?: () => void; onDirectScore?: (scoreA: number, scoreB: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftA, setDraftA] = useState("");
+  const [draftB, setDraftB] = useState("");
+
   const byId = (id: string) => players.find((p) => p.id === id);
   const aName = match.a1 ? pairName(byId(match.a1), byId(match.a2)) : "TBD";
   const bName = match.b1 ? pairName(byId(match.b1), byId(match.b2)) : "TBD";
   const isDone = match.status === "completed";
   const aWon = isDone && match.scoreA > match.scoreB;
   const bWon = isDone && match.scoreB > match.scoreA;
-  const canClick = !isDone && !!match.a1 && !!match.b1;
+  const canPlay = !isDone && !!match.a1 && !!match.b1;
+  const canEdit = !!match.a1 && !!match.b1;
+
+  const openEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraftA(String(match.scoreA));
+    setDraftB(String(match.scoreB));
+    setEditing(true);
+  };
+
+  const save = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDirectScore?.(Math.max(0, parseInt(draftA) || 0), Math.max(0, parseInt(draftB) || 0));
+    setEditing(false);
+  };
+
+  const cancel = (e: React.MouseEvent) => { e.stopPropagation(); setEditing(false); };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-primary/50 bg-card px-3 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs text-muted-foreground">{aName} vs {bName}</p>
+          <div className="mt-2 flex items-center gap-2">
+            <input type="number" min={0} value={draftA}
+              onChange={(e) => setDraftA(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-16 rounded-md border bg-background px-2 py-1.5 text-center font-mono text-base font-bold"
+            />
+            <span className="font-bold text-muted-foreground">–</span>
+            <input type="number" min={0} value={draftB}
+              onChange={(e) => setDraftB(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-16 rounded-md border bg-background px-2 py-1.5 text-center font-mono text-base font-bold"
+            />
+          </div>
+        </div>
+        <button onClick={save}
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <Check className="size-4" />
+        </button>
+        <button onClick={cancel}
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border hover:bg-accent">
+          <X className="size-4" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <button
-      onClick={canClick ? onClick : undefined}
-      disabled={!canClick}
-      className={`flex w-full items-center gap-3 rounded-xl border bg-card px-3 py-3 text-left transition-colors ${
-        isDone
-          ? "opacity-70"
-          : canClick
-            ? "hover:border-primary/50 hover:bg-accent/30 active:scale-[0.99]"
-            : "cursor-default opacity-50"
-      }`}
+    <div
+      className={`flex items-center gap-2 rounded-xl border bg-card px-3 py-3 transition-colors ${
+        canPlay ? "cursor-pointer hover:border-primary/50 hover:bg-accent/30 active:scale-[0.99]" : ""
+      } ${!canEdit ? "opacity-40" : ""}`}
+      onClick={canPlay ? onClick : undefined}
     >
-      <div className="min-w-0 flex-1 space-y-1">
-        {label && (
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-        )}
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-[10px] font-bold text-blue-500">A</span>
-          <span className={`truncate text-sm ${aWon ? "font-bold text-primary" : ""}`}>{aName}</span>
-          {aWon && <Trophy className="size-3.5 shrink-0 text-primary" />}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-[10px] font-bold text-orange-500">B</span>
-          <span className={`truncate text-sm ${bWon ? "font-bold text-primary" : ""}`}>{bName}</span>
-          {bWon && <Trophy className="size-3.5 shrink-0 text-primary" />}
-        </div>
+      {groupLabel && (
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+          {groupLabel}
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-sm font-semibold leading-tight ${aWon ? "text-primary" : ""}`}>
+          {aName}{aWon && <Trophy className="ml-1 inline size-3.5 text-primary" />}
+        </p>
       </div>
-      <div className={`shrink-0 rounded-lg px-3 py-1.5 font-mono text-lg font-bold tabular-nums ${isDone ? "bg-secondary" : "border border-border"}`}>
-        {match.scoreA} – {match.scoreB}
+      <span className="shrink-0 text-[10px] font-medium text-muted-foreground">vs</span>
+      <div className="min-w-0 flex-1 text-right">
+        <p className={`truncate text-sm font-semibold leading-tight ${bWon ? "text-primary" : "text-muted-foreground"}`}>
+          {bWon && <Trophy className="mr-1 inline size-3.5 text-primary" />}{bName}
+        </p>
       </div>
-      {canClick && <ArrowRight className="size-4 shrink-0 text-muted-foreground" />}
-    </button>
+      <div className={`shrink-0 rounded-lg px-2.5 py-1 font-mono text-sm font-bold tabular-nums ${isDone ? "bg-secondary" : "border text-muted-foreground"}`}>
+        {match.scoreA}–{match.scoreB}
+      </div>
+      {canEdit && onDirectScore && (
+        <button onClick={openEdit}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground hover:border-primary/60 hover:text-primary">
+          <Pencil className="size-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
 // ─── StandingsTable ────────────────────────────────────────────────────────────
 
 function StandingsTable({
-  group, players, advancePerGroup,
+  group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder,
 }: {
   group: PicGroup; players: PicPlayer[]; advancePerGroup: number;
+  pointsForWin: number; pointsForLoss: number;
+  tiebreakerOrder?: "diff_first" | "wins_first";
 }) {
   const gPlayers = group.playerIds
     .map((id) => players.find((p) => p.id === id))
     .filter((p): p is PicPlayer => !!p);
-  const standings = computeStandings(gPlayers, group.matches);
+  const standings = computeStandings(gPlayers, group.matches, pointsForWin, pointsForLoss, tiebreakerOrder);
 
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <div className="border-b bg-muted/40 px-3 py-2 text-xs font-bold text-primary">
         Bảng {group.label}
+        <span className="ml-2 font-normal text-muted-foreground">T+{pointsForWin} B+{pointsForLoss}</span>
       </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/20 text-xs text-muted-foreground">
             <th className="px-3 py-2 text-left">#</th>
             <th className="px-3 py-2 text-left">Tên</th>
+            <th className="px-3 py-2 text-center">Điểm</th>
             <th className="px-3 py-2 text-center">T</th>
             <th className="px-3 py-2 text-center">B</th>
             <th className="px-3 py-2 text-center">±</th>
@@ -224,19 +281,16 @@ function StandingsTable({
         </thead>
         <tbody>
           {standings.map((s, i) => (
-            <tr
-              key={s.playerId}
-              className={`border-b last:border-0 ${i >= advancePerGroup ? "opacity-50" : ""}`}
-            >
+            <tr key={s.playerId} className={`border-b last:border-0 ${i >= advancePerGroup ? "opacity-50" : ""}`}>
               <td className="px-3 py-2.5">
                 <span className={`flex size-6 items-center justify-center rounded-full text-xs font-bold ${
                   i === 0 ? "bg-yellow-400/20 text-yellow-600" :
                   i === 1 ? "bg-slate-300/20 text-slate-500" :
-                  i < advancePerGroup ? "bg-primary/10 text-primary" :
-                  "bg-muted text-muted-foreground"
+                  i < advancePerGroup ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
                 }`}>{s.rank}</span>
               </td>
               <td className="px-3 py-2.5 font-medium">{s.name}</td>
+              <td className="px-3 py-2.5 text-center font-mono font-bold text-primary">{s.pts}</td>
               <td className="px-3 py-2.5 text-center font-mono">{s.wins}</td>
               <td className="px-3 py-2.5 text-center font-mono text-muted-foreground">{s.losses}</td>
               <td className={`px-3 py-2.5 text-center font-mono font-semibold ${
@@ -264,6 +318,8 @@ export default function PicPage() {
   const [viewTab, setViewTab] = useState<"matches" | "standings">("matches");
   const [drawnPairs, setDrawnPairs] = useState<[string, string][] | null>(null);
   const [drawMode, setDrawMode] = useState<DrawMode>("random_all");
+  const [groupTarget, setGroupTarget] = useState(current?.config.targetGroup ?? 11);
+  const [koTarget, setKoTarget] = useState(current?.config.targetKnockout ?? 15);
 
   useEffect(() => {
     if (!current) router.replace("/quick/pic/new");
@@ -274,6 +330,17 @@ export default function PicPage() {
   const { config, players, groups, knockoutMatches, stage } = current;
   const byId = (id: string) => players.find((p) => p.id === id);
   const multiGroup = groups.length > 1;
+  const W = config.pointsForWin ?? 2;
+  const L = config.pointsForLoss ?? 0;
+  const TB = config.tiebreakerOrder ?? "diff_first";
+
+  const handleGroupScore = (groupId: string, matchId: string) => (scoreA: number, scoreB: number) => {
+    actions.scoreGroup(groupId, matchId, scoreA, scoreB);
+  };
+
+  const handleKoScore = (matchId: string) => (scoreA: number, scoreB: number) => {
+    actions.scoreKnockout(matchId, scoreA, scoreB);
+  };
 
   const allGroupDone = groups.every((g) => g.matches.every((m) => m.status === "completed"));
   const pendingCount = groups.reduce(
@@ -286,7 +353,7 @@ export default function PicPage() {
     const gPlayers = g.playerIds
       .map((id) => players.find((p) => p.id === id))
       .filter((p): p is PicPlayer => !!p);
-    return computeStandings(gPlayers, g.matches)
+    return computeStandings(gPlayers, g.matches, W, L, TB)
       .slice(0, config.advancePerGroup)
       .map((s) => s.playerId);
   });
@@ -337,7 +404,7 @@ export default function PicPage() {
                 const gPlayers = g.playerIds
                   .map((id) => players.find((p) => p.id === id))
                   .filter((p): p is PicPlayer => !!p);
-                const top = computeStandings(gPlayers, g.matches).slice(0, config.advancePerGroup);
+                const top = computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup);
                 return (
                   <div key={g.id} className="rounded-xl border bg-card px-3 py-2">
                     <p className="mb-1 text-xs font-bold text-primary">Bảng {g.label}</p>
@@ -583,7 +650,7 @@ export default function PicPage() {
 
   // ── Score overlay ─────────────────────────────────────────────────────────────
   if (activeMatch) {
-    const target = activeMatch.stage === "group" ? config.targetGroup : config.targetKnockout;
+    const target = activeMatch.stage === "group" ? groupTarget : koTarget;
     return (
       <ScoreOverlay
         match={activeMatch.match}
@@ -680,44 +747,36 @@ export default function PicPage() {
           <div className="space-y-4">
             {semiMatches.length > 0 && (
               <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Bán kết — chạm {config.targetKnockout}
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Bán kết — chạm
+                  <input type="number" min={1} value={koTarget} onChange={(e) => setKoTarget(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-12 rounded-md border bg-background px-1.5 py-0.5 text-center font-mono text-xs font-bold normal-case" />
                 </h2>
-                {semiMatches.map((m, i) => (
-                  <MatchCard
-                    key={m.id}
-                    match={m}
-                    players={players}
-                    label={`Bán kết ${i + 1}`}
+                {semiMatches.map((m) => (
+                  <MatchCard key={m.id} match={m} players={players}
                     onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
-                  />
+                    onDirectScore={handleKoScore(m.id)} />
                 ))}
               </div>
             )}
-
             {finalMatchKO && (
               <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  🏆 Chung kết — chạm {config.targetKnockout}
+                <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  🏆 Chung kết — chạm
+                  <input type="number" min={1} value={koTarget} onChange={(e) => setKoTarget(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-12 rounded-md border bg-background px-1.5 py-0.5 text-center font-mono text-xs font-bold normal-case" />
                 </h2>
-                <MatchCard
-                  match={finalMatchKO}
-                  players={players}
+                <MatchCard match={finalMatchKO} players={players}
                   onClick={() => setActiveMatch({ match: finalMatchKO, stage: "knockout" })}
-                />
+                  onDirectScore={handleKoScore(finalMatchKO.id)} />
               </div>
             )}
-
             {thirdMatchKO && (
               <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tranh hạng 3–4 — chạm {config.targetKnockout}
-                </h2>
-                <MatchCard
-                  match={thirdMatchKO}
-                  players={players}
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tranh hạng 3–4</h2>
+                <MatchCard match={thirdMatchKO} players={players}
                   onClick={() => setActiveMatch({ match: thirdMatchKO, stage: "knockout" })}
-                />
+                  onDirectScore={handleKoScore(thirdMatchKO.id)} />
               </div>
             )}
           </div>
@@ -726,15 +785,16 @@ export default function PicPage() {
         {/* Group stage: matches tab */}
         {stage === "group" && viewTab === "matches" && activeGroup && (
           <div className="space-y-2">
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Vòng bảng — chạm
+              <input type="number" min={1} value={groupTarget} onChange={(e) => setGroupTarget(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-12 rounded-md border bg-background px-1.5 py-0.5 text-center font-mono text-xs font-bold normal-case" />
+            </h2>
             {activeGroup.matches.map((m) => (
-              <MatchCard
-                key={m.id}
-                match={m}
-                players={players}
-                onClick={() =>
-                  setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })
-                }
-              />
+              <MatchCard key={m.id} match={m} players={players}
+                groupLabel={multiGroup ? activeGroup.label : undefined}
+                onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })}
+                onDirectScore={handleGroupScore(activeGroup.id, m.id)} />
             ))}
             {allGroupDone && (
               <Button onClick={() => actions.advanceToDraw()} size="lg" className="mt-2 w-full">
@@ -749,12 +809,9 @@ export default function PicPage() {
         {stage === "group" && viewTab === "standings" && (
           <div className="space-y-4">
             {groups.map((g) => (
-              <StandingsTable
-                key={g.id}
-                group={g}
-                players={players}
+              <StandingsTable key={g.id} group={g} players={players}
                 advancePerGroup={config.advancePerGroup}
-              />
+                pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} />
             ))}
             {allGroupDone && (
               <Button onClick={() => actions.advanceToDraw()} size="lg" className="w-full">
