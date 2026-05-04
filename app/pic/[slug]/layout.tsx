@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { BarChart3, Users, CalendarDays } from "lucide-react";
+import { BarChart3, Users, CalendarDays, Settings2 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -32,6 +32,7 @@ export default async function PicAdminLayout({
     { href: `/pic/${slug}`, label: "Tổng quan", short: "Tổng quan", icon: BarChart3 },
     { href: `/pic/${slug}/players`, label: "VĐV", short: "VĐV", icon: Users },
     { href: `/pic/${slug}/matches`, label: "Trận đấu", short: "Trận đấu", icon: CalendarDays },
+    { href: `/pic/${slug}/settings`, label: "Cài đặt", short: "Cài đặt", icon: Settings2 },
   ];
 
   return (
@@ -75,7 +76,7 @@ export default async function PicAdminLayout({
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur lg:hidden">
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-4">
           {nav.map((item) => (
             <Link
               key={item.href}

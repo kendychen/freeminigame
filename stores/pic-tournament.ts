@@ -33,6 +33,8 @@ export interface PicConfig {
   targetKnockout: number;
   advancePerGroup: number;
   hasThirdPlace: boolean;
+  pointsForWin: number;
+  pointsForLoss: number;
   drawCode?: string | null;
   drawGroupCount?: number;
   drawAdvancePerGroup?: number;
@@ -49,6 +51,7 @@ export interface PicStanding {
   pf: number;
   pa: number;
   diff: number;
+  pts: number;
 }
 
 export interface PicState {
@@ -80,6 +83,8 @@ function uid() { return Math.random().toString(36).slice(2, 9); }
 export function computeStandings(
   players: PicPlayer[],
   matches: PicMatch[],
+  pointsForWin = 2,
+  pointsForLoss = 0,
 ): PicStanding[] {
   const done = matches.filter((m) => m.status === "completed");
   const stats = new Map(players.map((p) => [p.id, { wins: 0, losses: 0, pf: 0, pa: 0 }]));
@@ -101,9 +106,10 @@ export function computeStandings(
   return players
     .map((p) => {
       const s = stats.get(p.id)!;
-      return { rank: 0, playerId: p.id, name: p.name, wins: s.wins, losses: s.losses, pf: s.pf, pa: s.pa, diff: s.pf - s.pa };
+      const pts = s.wins * pointsForWin + s.losses * pointsForLoss;
+      return { rank: 0, playerId: p.id, name: p.name, wins: s.wins, losses: s.losses, pf: s.pf, pa: s.pa, diff: s.pf - s.pa, pts };
     })
-    .sort((a, b) => b.wins - a.wins || b.diff - a.diff || a.name.localeCompare(b.name))
+    .sort((a, b) => b.pts - a.pts || b.diff - a.diff || b.wins - a.wins || a.name.localeCompare(b.name))
     .map((s, i) => ({ ...s, rank: i + 1 }));
 }
 

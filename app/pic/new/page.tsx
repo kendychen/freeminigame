@@ -24,6 +24,8 @@ function PicNewForm() {
   const [targetGroup, setTargetGroup] = useState(11);
   const [targetKnockout, setTargetKnockout] = useState(15);
   const [hasThirdPlace, setHasThirdPlace] = useState(false);
+  const [pointsForWin, setPointsForWin] = useState(2);
+  const [pointsForLoss, setPointsForLoss] = useState(0);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const canStart = name.trim().length >= 3 && !pending;
@@ -37,6 +39,8 @@ function PicNewForm() {
         targetGroup,
         targetKnockout,
         hasThirdPlace,
+        pointsForWin,
+        pointsForLoss,
       });
       if ("error" in res) {
         setServerError(res.error);
@@ -102,6 +106,29 @@ function PicNewForm() {
                 ))}
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <label className="text-sm font-semibold">Hệ số tính điểm bảng</label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { w: 2, l: 0, label: "Thắng +2 / Thua +0", desc: "Phổ biến Pickleball" },
+              { w: 3, l: 0, label: "Thắng +3 / Thua +0", desc: "Kiểu bóng đá" },
+              { w: 3, l: 1, label: "Thắng +3 / Thua +1", desc: "Có điểm thua" },
+            ].map((p) => {
+              const active = pointsForWin === p.w && pointsForLoss === p.l;
+              return (
+                <button key={p.label} type="button"
+                  onClick={() => { setPointsForWin(p.w); setPointsForLoss(p.l); }}
+                  className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                    active ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
+                  }`}>
+                  <span className="font-semibold">{p.label}</span>
+                  <span className="ml-1.5 text-xs opacity-60">{p.desc}</span>
+                </button>
+              );
+            })}
           </div>
         </section>
 

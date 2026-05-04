@@ -142,6 +142,8 @@ export async function createPicEvent(
         targetKnockout: config.targetKnockout,
         advancePerGroup: 1,
         hasThirdPlace: config.hasThirdPlace,
+        pointsForWin: config.pointsForWin ?? 2,
+        pointsForLoss: config.pointsForLoss ?? 0,
       },
       stage: "group",
     })
@@ -151,6 +153,31 @@ export async function createPicEvent(
 
   revalidatePath("/dashboard");
   return { slug };
+}
+
+// ── Update event config ────────────────────────────────────────────────────────
+
+export async function updatePicConfig(
+  eventId: string,
+  patch: Partial<Pick<PicConfig, "name" | "targetGroup" | "targetKnockout" | "hasThirdPlace" | "pointsForWin" | "pointsForLoss">>,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc.from("pic_events").select("owner_id, config").eq("id", eventId).single();
+  if (!ev || ev.owner_id !== user.id) return { error: "Không có quyền" };
+
+  const cfg = (ev.config ?? {}) as PicConfig;
+  const newConfig: PicConfig = { ...cfg, ...patch };
+
+  const updates: Record<string, unknown> = { config: newConfig };
+  if (patch.name) updates.name = patch.name;
+
+  const { error } = await svc.from("pic_events").update(updates).eq("id", eventId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic`);
+  return { ok: true };
 }
 
 // ── Add / remove player ────────────────────────────────────────────────────────

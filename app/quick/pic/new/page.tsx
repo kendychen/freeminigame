@@ -63,6 +63,8 @@ export default function PicNewPage() {
       targetGroup, targetKnockout,
       advancePerGroup: aPerGroup,
       hasThirdPlace,
+      pointsForWin: 2,
+      pointsForLoss: 0,
     };
     init(config, players, effG);
     router.push("/quick/pic");
