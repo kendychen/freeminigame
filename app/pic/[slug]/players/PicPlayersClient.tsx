@@ -46,7 +46,7 @@ export default function PicPlayersClient({
     const result: number[] = [];
     for (let g = 1; g <= Math.ceil(pc / 4); g++) {
       const sizes = snakePreview(pc, g);
-      if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 6)
+      if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 8)
         result.push(g);
     }
     return result;

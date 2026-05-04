@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 
-interface QuickScore {
+export interface QuickScore {
   code: string;
   team_a_name: string;
   team_b_name: string;
@@ -38,7 +38,7 @@ interface PbSnapshot {
   serverNumber: ServerNum;
 }
 
-export function QuickScoreClient({ initial }: { initial: QuickScore }) {
+export function QuickScoreClient({ initial, onBack }: { initial: QuickScore; onBack?: () => void }) {
   const [score, setScore] = useState<QuickScore>(initial);
   const [pending, start] = useTransition();
   const [armedFinalize, setArmedFinalize] = useState(false);
@@ -259,6 +259,7 @@ export function QuickScoreClient({ initial }: { initial: QuickScore }) {
       >
         <a
           href="/"
+          onClick={onBack ? (e) => { e.preventDefault(); onBack(); } : undefined}
           className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-xs font-medium hover:bg-accent"
         >
           <ArrowLeft className="size-3.5" />

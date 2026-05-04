@@ -287,7 +287,7 @@ export async function generatePicGroups(
 
     const n = slotIds.length;
     if (n < 4) continue;
-    const schedule = generateGroupSchedule(Math.min(n, 6));
+    const schedule = generateGroupSchedule(Math.min(n, 8));
     await svc.from("pic_matches").insert(
       schedule.map((slot, i) => ({
         event_id: eventId,
@@ -530,6 +530,35 @@ export async function picDrawKnockout(
 
   revalidatePath(`/pic/${eventId}`);
   return { ok: true };
+}
+
+// ── Create quick_scores entry for a PIC match ─────────────────────────────────
+
+export async function createPicMatchScore({
+  teamAName,
+  teamBName,
+  targetPoints,
+  title,
+}: {
+  teamAName: string;
+  teamBName: string;
+  targetPoints: number;
+  title: string;
+}): Promise<{ code: string } | { error: string }> {
+  const svc = createServiceClient();
+  for (let i = 0; i < 5; i++) {
+    const code = randomBytes(6).toString("base64url");
+    const { error } = await svc.from("quick_scores").insert({
+      code,
+      team_a_name: teamAName.slice(0, 80),
+      team_b_name: teamBName.slice(0, 80),
+      target_points: targetPoints,
+      title: title.slice(0, 120),
+    });
+    if (!error) return { code };
+    if (!error.message.toLowerCase().includes("duplicate")) return { error: error.message };
+  }
+  return { error: "Trùng mã liên tiếp" };
 }
 
 // ── Referee token ──────────────────────────────────────────────────────────────
