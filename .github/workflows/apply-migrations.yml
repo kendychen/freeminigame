@@ -19,9 +19,10 @@ jobs:
 
       - name: Apply latest migration
         env:
-          PGHOST: ${{ secrets.SUPABASE_DB_HOST }}
+          # Use session-mode pooler (IPv4) instead of direct DB (IPv6 only)
+          PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
           PGPORT: 5432
-          PGUSER: postgres
+          PGUSER: postgres.luzbuptumedpvgukxnhe
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           PGDATABASE: postgres
           PGSSLMODE: require
