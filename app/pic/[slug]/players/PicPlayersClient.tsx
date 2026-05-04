@@ -58,8 +58,27 @@ export default function PicPlayersClient({
   }, [pc]);
 
   const effG = validGroupCounts.includes(groupCount) ? groupCount : (validGroupCounts[0] ?? 1);
+  // Reset advance if current value becomes invalid when groups change
+  useEffect(() => {
+    if (groupSizes.length === 0) return;
+    const minSize = Math.min(...groupSizes);
+    const stillValid = advancePerGroup < minSize && (effG * advancePerGroup) % 2 === 0 && effG * advancePerGroup >= 2;
+    if (!stillValid) setAdvancePerGroup(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effG]);
   const groupSizes = useMemo(() => snakePreview(pc, effG), [pc, effG]);
   const canGenerate = pc >= 4 && validGroupCounts.length > 0 && !hasGroups;
+
+  // All valid advance-per-group values: total must be even & >= 2, v < min group size
+  const validAdvanceOptions = useMemo(() => {
+    if (groupSizes.length === 0) return [1];
+    const minSize = Math.min(...groupSizes);
+    const opts: number[] = [];
+    for (let v = 1; v < minSize; v++) {
+      if ((effG * v) % 2 === 0 && effG * v >= 2) opts.push(v);
+    }
+    return opts.length > 0 ? opts : [1];
+  }, [groupSizes, effG]);
 
   // Subscribe to pair session realtime — auto-apply when shuffled
   useEffect(() => {
@@ -291,14 +310,13 @@ export default function PicPlayersClient({
                   )}
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm font-medium">Vào chung kết/bảng</p>
-                  <div className="flex gap-1.5">
-                    {[1, 2].map((v) => {
+                  <p className="text-sm font-medium">Vào vòng trong</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {validAdvanceOptions.map((v) => {
                       const total = effG * v;
-                      const ok = total >= 2 && total % 2 === 0;
                       return (
-                        <button key={v} onClick={() => ok && setAdvancePerGroup(v)} disabled={!ok}
-                          className={`flex-1 rounded-md border py-2 text-sm font-semibold transition-colors disabled:opacity-40 ${
+                        <button key={v} onClick={() => setAdvancePerGroup(v)}
+                          className={`rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
                             advancePerGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
                           }`}>
                           Top {v}
@@ -306,6 +324,9 @@ export default function PicPlayersClient({
                         </button>
                       );
                     })}
+                    {validAdvanceOptions.length === 0 && (
+                      <p className="text-sm text-muted-foreground">Cần chọn số bảng trước</p>
+                    )}
                   </div>
                 </div>
               </div>
