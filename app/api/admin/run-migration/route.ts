@@ -12,11 +12,11 @@ export async function POST(req: Request) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { Client } = require("pg");
-    // Use direct DB connection (Vercel supports IPv6; pooler has "tenant not found" issues)
+    // Try project-scoped user (new Supabase format) on direct IPv6 host
     const client = new Client({
       host: "db.luzbuptumedpvgukxnhe.supabase.co",
       port: 5432,
-      user: "postgres",
+      user: "postgres.luzbuptumedpvgukxnhe",
       password: "7U9hVa,KA&6jE%b",
       database: "postgres",
       ssl: { rejectUnauthorized: false },
