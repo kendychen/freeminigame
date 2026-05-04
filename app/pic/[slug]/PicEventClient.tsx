@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Trophy, ChevronLeft, Shuffle, CheckCircle2,
-  Plus, Minus, Check, Pencil, X,
+  Trophy, Shuffle, CheckCircle2, Check, Pencil, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
-import { scorePicMatch, picDrawKnockout } from "@/app/actions/pic";
+import { scorePicMatch, picDrawKnockout, createPicMatchScore } from "@/app/actions/pic";
 import type { PicEventFull } from "@/app/actions/pic";
+import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
+import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -26,42 +27,20 @@ function shuffle(arr: string[]): string[] {
   return a;
 }
 
-// ── ScoreOverlay ───────────────────────────────────────────────────────────────
+// ── AdminMatchScore: QuickScoreClient bridge (no referee token needed) ─────────
 
-function ScoreOverlay({
-  match, players, target, onFinish, onClose,
+function AdminMatchScore({
+  match, players, target, eventId, onClose,
 }: {
   match: PicMatch; players: PicPlayer[]; target: number;
-  onFinish: (a: number, b: number) => void; onClose: () => void;
+  eventId: string; onClose: () => void;
 }) {
+  const router = useRouter();
+  const [quickScore, setQuickScore] = useState<QuickScore | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
   const byId = (id: string) => players.find((p) => p.id === id);
-  const [scoreA, setScoreA] = useState(match.scoreA);
-  const [scoreB, setScoreB] = useState(match.scoreB);
-  const [history, setHistory] = useState<[number, number][]>([]);
-  const [armed, setArmed] = useState<[number, number] | null>(null);
-
-  const add = (side: "a" | "b") => {
-    const na = side === "a" ? scoreA + 1 : scoreA;
-    const nb = side === "b" ? scoreB + 1 : scoreB;
-    setHistory((h) => [...h, [scoreA, scoreB]]);
-    setScoreA(na); setScoreB(nb);
-    if (na >= target || nb >= target) setArmed([na, nb]);
-  };
-  const sub = (side: "a" | "b") => {
-    if (side === "a" && scoreA <= 0) return;
-    if (side === "b" && scoreB <= 0) return;
-    setHistory((h) => [...h, [scoreA, scoreB]]);
-    if (side === "a") setScoreA((v) => v - 1); else setScoreB((v) => v - 1);
-    setArmed(null);
-  };
-  const undo = () => {
-    const prev = history[history.length - 1];
-    if (!prev) return;
-    setHistory((h) => h.slice(0, -1));
-    setScoreA(prev[0]); setScoreB(prev[1]);
-    setArmed(null);
-  };
-
   const aName = pairName(byId(match.a1), byId(match.a2));
   const bName = pairName(byId(match.b1), byId(match.b2));
   const stageLabel =
@@ -69,66 +48,70 @@ function ScoreOverlay({
     match.stage === "semifinal" ? "Bán kết" :
     match.stage === "third" ? "Tranh 3–4" : "Chung kết";
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      {armed && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 bg-background/95 px-6 backdrop-blur-sm">
-          <div className="text-center">
-            <p className="text-lg font-semibold text-muted-foreground">Kết thúc trận?</p>
-            <p className="mt-3 font-mono text-6xl font-black tabular-nums">{armed[0]} – {armed[1]}</p>
-            <p className="mt-2 text-base font-semibold">{armed[0] > armed[1] ? aName : bName} thắng</p>
-          </div>
-          <div className="flex w-full max-w-xs flex-col gap-3">
-            <button onClick={() => onFinish(armed[0], armed[1])}
-              className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-primary text-lg font-bold text-primary-foreground active:scale-95">
-              <CheckCircle2 className="size-5" />Xác nhận
-            </button>
-            <button onClick={() => setArmed(null)}
-              className="flex h-12 items-center justify-center rounded-2xl border bg-background text-sm font-medium active:scale-95">
-              Tiếp tục đánh
-            </button>
-          </div>
+  useEffect(() => {
+    createPicMatchScore({ teamAName: aName, teamBName: bName, targetPoints: target, title: stageLabel })
+      .then((res) => {
+        if ("error" in res) { setCreateError(res.error); return; }
+        setQuickScore({
+          code: res.code,
+          team_a_name: aName,
+          team_b_name: bName,
+          score_a: 0,
+          score_b: 0,
+          status: "pending",
+          winner: null,
+          target_points: target,
+          title: stageLabel,
+          updated_at: new Date().toISOString(),
+        });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!quickScore) return;
+    const sb = getSupabaseBrowser();
+    const ch = sb
+      .channel(`admin-qs:${quickScore.code}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "quick_scores", filter: `code=eq.${quickScore.code}` },
+        (payload: { new: QuickScore }) => {
+          const updated = payload.new;
+          if (updated.status === "completed") {
+            startTransition(async () => {
+              await scorePicMatch({ eventId, matchId: match.id, scoreA: updated.score_a, scoreB: updated.score_b });
+              onClose();
+              router.refresh();
+            });
+          }
+        },
+      )
+      .subscribe();
+    return () => { void sb.removeChannel(ch); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickScore?.code]);
+
+  if (createError) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background px-6">
+        <div className="space-y-3 text-center">
+          <p className="text-destructive">{createError}</p>
+          <button onClick={onClose} className="rounded-md border px-4 py-2 text-sm">Quay lại</button>
         </div>
-      )}
-      <header className="flex items-center justify-between border-b px-4 py-2.5">
-        <button onClick={onClose} className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-accent">
-          <ChevronLeft className="size-3.5" />Quay lại
-        </button>
-        <div className="flex flex-col items-center text-center text-xs">
-          <span className="font-semibold">{stageLabel}</span>
-          <span className="text-muted-foreground">Chạm {target} điểm</span>
-        </div>
-        <button onClick={undo} disabled={history.length === 0} className="rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-40">
-          Undo
-        </button>
-      </header>
-      <div className="grid flex-1 grid-cols-2">
-        {(["a", "b"] as const).map((side) => {
-          const score = side === "a" ? scoreA : scoreB;
-          const nm = side === "a" ? aName : bName;
-          const accent = side === "a" ? "text-blue-500 bg-blue-500/10" : "text-orange-500 bg-orange-500/10";
-          return (
-            <div key={side} className={`flex flex-col items-center gap-3 p-4 ${side === "a" ? "border-r" : ""}`}>
-              <p className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${accent}`}>{side.toUpperCase()}</p>
-              <p className="line-clamp-2 text-center text-sm font-semibold">{nm}</p>
-              <div className="flex-1 select-none font-mono font-black tabular-nums"
-                style={{ fontSize: "clamp(72px,20vw,180px)", lineHeight: 1 }}>{score}</div>
-              <div className="flex w-full flex-col gap-2">
-                <button onClick={() => add(side)}
-                  className={`flex h-16 w-full items-center justify-center rounded-2xl text-2xl font-bold shadow-md active:scale-95 ${side === "a" ? "bg-blue-500 text-white" : "bg-orange-500 text-white"}`}>
-                  <Plus className="size-7" />
-                </button>
-                <button onClick={() => sub(side)} disabled={score <= 0}
-                  className="flex h-10 w-full items-center justify-center rounded-xl border bg-background text-muted-foreground active:scale-95 disabled:opacity-30">
-                  <Minus className="size-4" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (!quickScore) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+        <p className="animate-pulse text-sm text-muted-foreground">Đang tạo trận…</p>
+      </div>
+    );
+  }
+
+  return <QuickScoreClient initial={quickScore} onBack={onClose} />;
 }
 
 // ── MatchCard ──────────────────────────────────────────────────────────────────
@@ -308,15 +291,6 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     setDrawnPairs(pairs);
   };
 
-  const handleScore = (scoreA: number, scoreB: number) => {
-    if (!activeMatch) return;
-    startTransition(async () => {
-      await scorePicMatch({ eventId, matchId: activeMatch.match.id, scoreA, scoreB });
-      setActiveMatch(null);
-      router.refresh();
-    });
-  };
-
   const handleDirectScore = (matchId: string) => (scoreA: number, scoreB: number) => {
     startTransition(async () => {
       await scorePicMatch({ eventId, matchId, scoreA, scoreB });
@@ -446,11 +420,11 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   if (activeMatch) {
     const target = activeMatch.stage === "group" ? config.targetGroup : config.targetKnockout;
     return (
-      <ScoreOverlay
+      <AdminMatchScore
         match={activeMatch.match}
         players={players}
         target={target}
-        onFinish={handleScore}
+        eventId={eventId}
         onClose={() => setActiveMatch(null)}
       />
     );
