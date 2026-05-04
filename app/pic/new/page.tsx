@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createPicEvent } from "@/app/actions/pic";
@@ -22,9 +22,10 @@ function snakeDistribute(names: string[], groupCount: number): string[][] {
 
 export default function PicNewPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
-  const [name, setName] = useState("Giải đấu PIC");
+  const [name, setName] = useState(searchParams.get("name") ?? "Giải đấu PIC");
   const [rawNames, setRawNames] = useState(
     "Người chơi 1\nNgười chơi 2\nNgười chơi 3\nNgười chơi 4\nNgười chơi 5\nNgười chơi 6",
   );

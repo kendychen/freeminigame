@@ -21,10 +21,12 @@ import type { TournamentFormat } from "@/lib/pairing/types";
 import { toast } from "@/components/ui/toast";
 import { translateError } from "@/lib/error-messages";
 
+type FormatOption = TournamentFormat | "pic";
+
 export default function NewTournamentPage() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [format, setFormat] = useState<TournamentFormat>("single_elim");
+  const [format, setFormat] = useState<FormatOption>("single_elim");
   const [series, setSeries] = useState<"bo1" | "bo3" | "bo5">("bo1");
   const [isPublic, setPublic] = useState(true);
   const [groupSize, setGroupSize] = useState(4);
@@ -36,6 +38,10 @@ export default function NewTournamentPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (format === "pic") {
+      router.push(`/pic/new?name=${encodeURIComponent(name)}`);
+      return;
+    }
     setSubmitting(true);
     const res = await createTournament({
       name,
@@ -99,27 +105,35 @@ export default function NewTournamentPage() {
                 <Select
                   id="format"
                   value={format}
-                  onChange={(e) => setFormat(e.target.value as TournamentFormat)}
+                  onChange={(e) => setFormat(e.target.value as FormatOption)}
                 >
                   <option value="single_elim">Single Elimination</option>
                   <option value="double_elim">Double Elimination</option>
                   <option value="round_robin">Round Robin</option>
                   <option value="swiss">Swiss</option>
                   <option value="group_knockout">Group + Knockout</option>
+                  <option value="pic">PIC xoay cặp</option>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="series">Thể thức trận</Label>
-                <Select
-                  id="series"
-                  value={series}
-                  onChange={(e) => setSeries(e.target.value as "bo1" | "bo3" | "bo5")}
-                >
-                  <option value="bo1">BO1</option>
-                  <option value="bo3">BO3</option>
-                  <option value="bo5">BO5</option>
-                </Select>
-              </div>
+              {format === "pic" && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm text-muted-foreground">
+                  Bước tiếp theo bạn sẽ thêm danh sách VĐV và chia bảng.
+                </div>
+              )}
+              {format !== "pic" && (
+                <div className="space-y-2">
+                  <Label htmlFor="series">Thể thức trận</Label>
+                  <Select
+                    id="series"
+                    value={series}
+                    onChange={(e) => setSeries(e.target.value as "bo1" | "bo3" | "bo5")}
+                  >
+                    <option value="bo1">BO1</option>
+                    <option value="bo3">BO3</option>
+                    <option value="bo5">BO5</option>
+                  </Select>
+                </div>
+              )}
               {format === "round_robin" && (
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -189,15 +203,17 @@ export default function NewTournamentPage() {
                   )}
                 </div>
               )}
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isPublic}
-                  onChange={(e) => setPublic(e.target.checked)}
-                  className="size-4"
-                />
-                Công khai (viewer xem không cần đăng nhập)
-              </label>
+              {format !== "pic" && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={isPublic}
+                    onChange={(e) => setPublic(e.target.checked)}
+                    className="size-4"
+                  />
+                  Công khai (viewer xem không cần đăng nhập)
+                </label>
+              )}
               <div className="flex justify-end gap-2 pt-4">
                 <Link href="/dashboard">
                   <Button type="button" variant="ghost">
