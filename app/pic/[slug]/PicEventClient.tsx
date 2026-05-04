@@ -3,12 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Trophy, RotateCcw, ChevronLeft, Shuffle, CheckCircle2,
-  Plus, Minus, ArrowRight, Users, Link2, Check,
+  Trophy, ChevronLeft, Shuffle, CheckCircle2,
+  Plus, Minus, ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
-import { scorePicMatch, picDrawKnockout, getPicRefereeToken } from "@/app/actions/pic";
+import { scorePicMatch, picDrawKnockout } from "@/app/actions/pic";
 import type { PicEventFull } from "@/app/actions/pic";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -228,7 +228,6 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const [activeGroupIdx, setActiveGroupIdx] = useState(0);
   const [viewTab, setViewTab] = useState<"matches" | "standings">("matches");
   const [drawnPairs, setDrawnPairs] = useState<[string, string][] | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
   const byId = (id: string) => players.find((p) => p.id === id);
@@ -246,18 +245,6 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     const pairs: [string, string][] = [];
     for (let i = 0; i < shuffled.length - 1; i += 2) pairs.push([shuffled[i]!, shuffled[i + 1]!]);
     setDrawnPairs(pairs);
-  };
-
-  const handleCopyRefLink = () => {
-    startTransition(async () => {
-      const res = await getPicRefereeToken(eventId);
-      if ("token" in res) {
-        const url = `${window.location.origin}/pic/r/${res.token}`;
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    });
   };
 
   const handleScore = (scoreA: number, scoreB: number) => {
@@ -282,13 +269,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
         matchups.push({ a: drawnPairs[i]!, b: drawnPairs[i + 1]! });
     }
     return (
-      <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
-            <span className="font-semibold">{config.name}</span>
-          </div>
-        </header>
-        <main className="mx-auto max-w-xl space-y-5 px-4 py-6">
+      <div className="space-y-5">
           <div className="rounded-xl border bg-primary/5 p-4 text-center">
             <Trophy className="mx-auto mb-2 size-8 text-primary" />
             <p className="font-bold">Vòng bảng hoàn thành!</p>
@@ -354,7 +335,6 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               {pending ? "Đang lưu…" : "Xác nhận & Bắt đầu"}
             </Button>
           )}
-        </main>
       </div>
     );
   }
@@ -368,38 +348,33 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     const champs = aWon ? [finalMatch.a1, finalMatch.a2] : [finalMatch.b1, finalMatch.b2];
     const runners = aWon ? [finalMatch.b1, finalMatch.b2] : [finalMatch.a1, finalMatch.a2];
     return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b px-4 py-3 text-center">
-          <p className="text-sm font-semibold text-muted-foreground">{config.name}</p>
-          <h1 className="mt-0.5 text-xl font-bold">🏆 Kết quả</h1>
-        </header>
-        <main className="mx-auto max-w-sm space-y-4 px-4 py-8">
-          <div className="rounded-2xl border-2 border-yellow-400 bg-yellow-500/10 p-5 text-center">
-            <p className="text-2xl">🥇</p>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-yellow-600">Vô địch</p>
-            <p className="mt-1 text-lg font-black">{champs.map((id) => byId(id)?.name).join(" & ")}</p>
-          </div>
-          <div className="rounded-2xl border bg-card p-4 text-center">
-            <p className="text-xl">🥈</p>
-            <p className="mt-1 text-xs font-semibold text-muted-foreground">Á quân</p>
-            <p className="mt-1 font-bold">{runners.map((id) => byId(id)?.name).join(" & ")}</p>
-          </div>
-          {thirdMatch && thirdMatch.status === "completed" && (() => {
-            const t3Won = thirdMatch.scoreA > thirdMatch.scoreB;
-            const third = t3Won ? [thirdMatch.a1, thirdMatch.a2] : [thirdMatch.b1, thirdMatch.b2];
-            return (
-              <div className="rounded-2xl border bg-card p-4 text-center">
-                <p className="text-xl">🥉</p>
-                <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 3</p>
-                <p className="mt-0.5 font-bold">{third.map((id) => byId(id)?.name).join(" & ")}</p>
-              </div>
-            );
-          })()}
-          <div className="rounded-xl border bg-card p-3 text-center">
-            <p className="text-xs text-muted-foreground">Tỉ số chung kết</p>
-            <p className="mt-1 font-mono text-3xl font-black tabular-nums">{finalMatch.scoreA} – {finalMatch.scoreB}</p>
-          </div>
-        </main>
+      <div className="mx-auto max-w-sm space-y-4 py-4">
+        <h2 className="text-center text-xl font-bold">🏆 Kết quả</h2>
+        <div className="rounded-2xl border-2 border-yellow-400 bg-yellow-500/10 p-5 text-center">
+          <p className="text-2xl">🥇</p>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-yellow-600">Vô địch</p>
+          <p className="mt-1 text-lg font-black">{champs.map((id) => byId(id)?.name).join(" & ")}</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4 text-center">
+          <p className="text-xl">🥈</p>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">Á quân</p>
+          <p className="mt-1 font-bold">{runners.map((id) => byId(id)?.name).join(" & ")}</p>
+        </div>
+        {thirdMatch && thirdMatch.status === "completed" && (() => {
+          const t3Won = thirdMatch.scoreA > thirdMatch.scoreB;
+          const third = t3Won ? [thirdMatch.a1, thirdMatch.a2] : [thirdMatch.b1, thirdMatch.b2];
+          return (
+            <div className="rounded-2xl border bg-card p-4 text-center">
+              <p className="text-xl">🥉</p>
+              <p className="mt-1 text-xs font-semibold text-muted-foreground">Hạng 3</p>
+              <p className="mt-0.5 font-bold">{third.map((id) => byId(id)?.name).join(" & ")}</p>
+            </div>
+          );
+        })()}
+        <div className="rounded-xl border bg-card p-3 text-center">
+          <p className="text-xs text-muted-foreground">Tỉ số chung kết</p>
+          <p className="mt-1 font-mono text-3xl font-black tabular-nums">{finalMatch.scoreA} – {finalMatch.scoreB}</p>
+        </div>
       </div>
     );
   }
@@ -431,99 +406,79 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const activeGroup = groups[activeGroupIdx];
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
-          <button onClick={handleCopyRefLink} disabled={pending}
-            className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50">
-            {copied ? <Check className="size-3.5 text-green-500" /> : <Link2 className="size-3.5" />}
-            {copied ? "Đã copy" : "Link trọng tài"}
-          </button>
-          <div className="flex flex-col items-center text-center">
-            <span className="text-sm font-semibold">{config.name}</span>
-            <span className="text-[10px] text-muted-foreground">
-              {stage === "group" && `${pendingCount} trận còn lại`}
-              {stage === "knockout" && (semiMatches.length > 0 ? "Bán kết → Chung kết" : "Chung kết")}
-            </span>
-          </div>
-          <Users className="size-4 text-muted-foreground" />
+    <div className="space-y-3">
+      {stage === "group" && (
+        <div className="flex overflow-x-auto border-b">
+          {allTabs.map((t) => (
+            <button key={String(t.id)}
+              onClick={() => {
+                if (t.id === "standings") setViewTab("standings");
+                else { setActiveGroupIdx(t.id as number); setViewTab("matches"); }
+              }}
+              className={`shrink-0 px-4 py-2.5 text-sm font-medium transition-colors ${
+                activeTabId === t.id ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+      )}
 
-        {stage === "group" && (
-          <div className="flex overflow-x-auto border-t">
-            {allTabs.map((t) => (
-              <button key={String(t.id)}
-                onClick={() => {
-                  if (t.id === "standings") setViewTab("standings");
-                  else { setActiveGroupIdx(t.id as number); setViewTab("matches"); }
-                }}
-                className={`shrink-0 px-4 py-2.5 text-sm font-medium transition-colors ${
-                  activeTabId === t.id ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </header>
+      {stage === "knockout" && (
+        <div className="space-y-4">
+          {semiMatches.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bán kết — chạm {config.targetKnockout}</h2>
+              {semiMatches.map((m, i) => (
+                <MatchCard key={m.id} match={m} players={players} label={`Bán kết ${i + 1}`}
+                  onClick={() => setActiveMatch({ match: m, stage: "knockout" })} />
+              ))}
+            </div>
+          )}
+          {finalMatchKO && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">🏆 Chung kết — chạm {config.targetKnockout}</h2>
+              <MatchCard match={finalMatchKO} players={players}
+                onClick={() => setActiveMatch({ match: finalMatchKO, stage: "knockout" })} />
+            </div>
+          )}
+          {thirdMatchKO && (
+            <div className="space-y-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tranh hạng 3–4 — chạm {config.targetKnockout}</h2>
+              <MatchCard match={thirdMatchKO} players={players}
+                onClick={() => setActiveMatch({ match: thirdMatchKO, stage: "knockout" })} />
+            </div>
+          )}
+        </div>
+      )}
 
-      <main className="mx-auto max-w-xl space-y-3 px-4 py-4">
-        {stage === "knockout" && (
-          <div className="space-y-4">
-            {semiMatches.length > 0 && (
-              <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bán kết — chạm {config.targetKnockout}</h2>
-                {semiMatches.map((m, i) => (
-                  <MatchCard key={m.id} match={m} players={players} label={`Bán kết ${i + 1}`}
-                    onClick={() => setActiveMatch({ match: m, stage: "knockout" })} />
-                ))}
-              </div>
-            )}
-            {finalMatchKO && (
-              <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">🏆 Chung kết — chạm {config.targetKnockout}</h2>
-                <MatchCard match={finalMatchKO} players={players}
-                  onClick={() => setActiveMatch({ match: finalMatchKO, stage: "knockout" })} />
-              </div>
-            )}
-            {thirdMatchKO && (
-              <div className="space-y-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tranh hạng 3–4 — chạm {config.targetKnockout}</h2>
-                <MatchCard match={thirdMatchKO} players={players}
-                  onClick={() => setActiveMatch({ match: thirdMatchKO, stage: "knockout" })} />
-              </div>
-            )}
-          </div>
-        )}
+      {stage === "group" && viewTab === "matches" && activeGroup && (
+        <div className="space-y-2">
+          {activeGroup.matches.map((m) => (
+            <MatchCard key={m.id} match={m} players={players}
+              onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })} />
+          ))}
+          {allGroupDone && (
+            <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="mt-2 w-full">
+              <Trophy className="size-4" />Xem kết quả &amp; Bốc thăm
+            </Button>
+          )}
+        </div>
+      )}
 
-        {stage === "group" && viewTab === "matches" && activeGroup && (
-          <div className="space-y-2">
-            {activeGroup.matches.map((m) => (
-              <MatchCard key={m.id} match={m} players={players}
-                onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })} />
-            ))}
-            {allGroupDone && (
-              <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="mt-2 w-full">
-                <Trophy className="size-4" />Xem kết quả &amp; Bốc thăm
-              </Button>
-            )}
-          </div>
-        )}
-
-        {stage === "group" && viewTab === "standings" && (
-          <div className="space-y-4">
-            {groups.map((g) => (
-              <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} />
-            ))}
-            {allGroupDone && (
-              <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="w-full">
-                <Trophy className="size-4" />Xem kết quả &amp; Bốc thăm
-              </Button>
-            )}
-          </div>
-        )}
-      </main>
+      {stage === "group" && viewTab === "standings" && (
+        <div className="space-y-4">
+          {groups.map((g) => (
+            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} />
+          ))}
+          {allGroupDone && (
+            <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="w-full">
+              <Trophy className="size-4" />Xem kết quả &amp; Bốc thăm
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
