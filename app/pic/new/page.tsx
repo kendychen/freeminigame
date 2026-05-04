@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,14 @@ function snakeDistribute(names: string[], groupCount: number): string[][] {
 }
 
 export default function PicNewPage() {
+  return (
+    <Suspense>
+      <PicNewForm />
+    </Suspense>
+  );
+}
+
+function PicNewForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
