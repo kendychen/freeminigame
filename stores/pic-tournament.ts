@@ -12,7 +12,7 @@ export interface PicPlayer {
 export interface PicMatch {
   id: string;
   round: number;
-  stage: "group" | "final";
+  stage: "group" | "semifinal" | "final" | "third";
   a1: string; a2: string;
   b1: string; b2: string;
   scoreA: number;
@@ -20,10 +20,18 @@ export interface PicMatch {
   status: "pending" | "completed";
 }
 
+export interface PicGroup {
+  id: string;
+  label: string;        // "A", "B", "C", ...
+  playerIds: string[];  // refs into PicState.players
+  matches: PicMatch[];
+}
+
 export interface PicConfig {
   name: string;
   targetGroup: number;
   targetKnockout: number;
+  advancePerGroup: number;
   hasThirdPlace: boolean;
 }
 
@@ -44,7 +52,7 @@ export interface PicState {
   id: string;
   config: PicConfig;
   players: PicPlayer[];
-  groupMatches: PicMatch[];
+  groups: PicGroup[];
   knockoutMatches: PicMatch[];
   stage: PicStage;
   createdAt: number;
@@ -54,39 +62,34 @@ export interface PicState {
 interface PicStore {
   current: PicState | null;
   actions: {
-    init(config: PicConfig, players: PicPlayer[]): void;
-    scoreGroup(matchId: string, scoreA: number, scoreB: number): void;
+    init(config: PicConfig, allPlayers: string[], groupCount: number): void;
+    scoreGroup(groupId: string, matchId: string, scoreA: number, scoreB: number): void;
     advanceToDraw(): void;
-    drawKnockout(pairs: [[string, string], [string, string]]): void;
+    drawKnockout(pairs: [string, string][]): void;
     scoreKnockout(matchId: string, scoreA: number, scoreB: number): void;
     reset(): void;
   };
 }
 
-function uid() {
-  return Math.random().toString(36).slice(2, 9);
-}
+function uid() { return Math.random().toString(36).slice(2, 9); }
 
+/** Compute individual standings for a subset of players within a group. */
 export function computeStandings(
   players: PicPlayer[],
   matches: PicMatch[],
 ): PicStanding[] {
   const done = matches.filter((m) => m.status === "completed");
-  const stats = new Map(
-    players.map((p) => [p.id, { wins: 0, losses: 0, pf: 0, pa: 0 }]),
-  );
+  const stats = new Map(players.map((p) => [p.id, { wins: 0, losses: 0, pf: 0, pa: 0 }]));
 
   for (const m of done) {
     const aWon = m.scoreA > m.scoreB;
     for (const pid of [m.a1, m.a2] as string[]) {
-      const s = stats.get(pid);
-      if (!s) continue;
+      const s = stats.get(pid); if (!s) continue;
       if (aWon) s.wins++; else s.losses++;
       s.pf += m.scoreA; s.pa += m.scoreB;
     }
     for (const pid of [m.b1, m.b2] as string[]) {
-      const s = stats.get(pid);
-      if (!s) continue;
+      const s = stats.get(pid); if (!s) continue;
       if (!aWon) s.wins++; else s.losses++;
       s.pf += m.scoreB; s.pa += m.scoreA;
     }
@@ -95,114 +98,155 @@ export function computeStandings(
   return players
     .map((p) => {
       const s = stats.get(p.id)!;
-      return {
-        rank: 0, playerId: p.id, name: p.name,
-        wins: s.wins, losses: s.losses,
-        pf: s.pf, pa: s.pa, diff: s.pf - s.pa,
-      };
+      return { rank: 0, playerId: p.id, name: p.name, wins: s.wins, losses: s.losses, pf: s.pf, pa: s.pa, diff: s.pf - s.pa };
     })
     .sort((a, b) => b.wins - a.wins || b.diff - a.diff || a.name.localeCompare(b.name))
     .map((s, i) => ({ ...s, rank: i + 1 }));
 }
 
+/** Distribute N players into G groups as evenly as possible (snake seeding). */
+function distributeToGroups(players: PicPlayer[], groupCount: number): PicGroup[] {
+  const groups: PicGroup[] = Array.from({ length: groupCount }, (_, i) => ({
+    id: uid(),
+    label: String.fromCharCode(65 + i), // A, B, C, ...
+    playerIds: [],
+    matches: [],
+  }));
+
+  // Snake distribution: 0→1→2→3→3→2→1→0→0→...
+  let dir = 1, gi = 0;
+  for (const p of players) {
+    groups[gi]!.playerIds.push(p.id);
+    const next = gi + dir;
+    if (next >= groupCount || next < 0) { dir = -dir; } else { gi += dir; }
+  }
+
+  // Generate matches per group
+  for (const g of groups) {
+    const n = g.playerIds.length;
+    if (n < 4) continue;
+    const schedule = generateGroupSchedule(Math.min(n, 6));
+    g.matches = schedule.map((slot, i) => ({
+      id: uid(), round: i + 1, stage: "group",
+      a1: g.playerIds[slot.a[0]]!, a2: g.playerIds[slot.a[1]]!,
+      b1: g.playerIds[slot.b[0]]!, b2: g.playerIds[slot.b[1]]!,
+      scoreA: 0, scoreB: 0, status: "pending",
+    }));
+  }
+
+  return groups;
+}
+
 export const usePicStore = create<PicStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       current: null,
       actions: {
-        init(config, players) {
-          const slots = generateGroupSchedule(players.length);
-          const groupMatches: PicMatch[] = slots.map((slot, i) => ({
+        init(config, allPlayerNames, groupCount) {
+          const players: PicPlayer[] = allPlayerNames.map((name, i) => ({
             id: uid(),
-            round: i + 1,
-            stage: "group",
-            a1: players[slot.a[0]]!.id,
-            a2: players[slot.a[1]]!.id,
-            b1: players[slot.b[0]]!.id,
-            b2: players[slot.b[1]]!.id,
-            scoreA: 0, scoreB: 0,
-            status: "pending",
+            name: name.trim() || `VĐV ${i + 1}`,
           }));
+          const groups = distributeToGroups(players, groupCount);
           set({
             current: {
-              id: uid(),
-              config,
-              players,
-              groupMatches,
+              id: uid(), config, players, groups,
               knockoutMatches: [],
               stage: "group",
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
+              createdAt: Date.now(), updatedAt: Date.now(),
             },
           });
         },
 
-        scoreGroup(matchId, scoreA, scoreB) {
+        scoreGroup(groupId, matchId, scoreA, scoreB) {
           set((s) => {
             if (!s.current) return s;
-            const groupMatches = s.current.groupMatches.map((m) =>
-              m.id === matchId ? { ...m, scoreA, scoreB, status: "completed" as const } : m,
-            );
-            const allDone = groupMatches.every((m) => m.status === "completed");
+            const groups = s.current.groups.map((g) => {
+              if (g.id !== groupId) return g;
+              return {
+                ...g,
+                matches: g.matches.map((m) =>
+                  m.id === matchId ? { ...m, scoreA, scoreB, status: "completed" as const } : m,
+                ),
+              };
+            });
+            const allDone = groups.every((g) => g.matches.every((m) => m.status === "completed"));
             return {
-              current: {
-                ...s.current,
-                groupMatches,
-                stage: allDone ? "draw" : "group",
-                updatedAt: Date.now(),
-              },
+              current: { ...s.current, groups, stage: allDone ? "draw" : "group", updatedAt: Date.now() },
             };
           });
         },
 
         advanceToDraw() {
-          set((s) => {
-            if (!s.current) return s;
-            return { current: { ...s.current, stage: "draw", updatedAt: Date.now() } };
-          });
+          set((s) => s.current
+            ? { current: { ...s.current, stage: "draw", updatedAt: Date.now() } }
+            : s
+          );
         },
 
         drawKnockout(pairs) {
-          const [[a1, a2], [b1, b2]] = pairs;
-          const finalMatch: PicMatch = {
-            id: uid(), round: 1, stage: "final",
-            a1, a2, b1, b2,
-            scoreA: 0, scoreB: 0, status: "pending",
-          };
-          set((s) => {
-            if (!s.current) return s;
-            return {
-              current: {
-                ...s.current,
-                knockoutMatches: [finalMatch],
-                stage: "knockout",
-                updatedAt: Date.now(),
-              },
-            };
-          });
+          const st = get().current;
+          if (!st) return;
+          const { hasThirdPlace } = st.config;
+          const matches: PicMatch[] = [];
+
+          if (pairs.length === 2) {
+            // Direct final (4 advancing)
+            matches.push({ id: uid(), round: 1, stage: "final", a1: pairs[0]![0], a2: pairs[0]![1], b1: pairs[1]![0], b2: pairs[1]![1], scoreA: 0, scoreB: 0, status: "pending" });
+          } else {
+            // Semis (pairs 0v1, 2v3) + final + optional 3rd
+            for (let i = 0; i < pairs.length - 1; i += 2) {
+              matches.push({ id: uid(), round: i / 2 + 1, stage: "semifinal", a1: pairs[i]![0], a2: pairs[i]![1], b1: pairs[i + 1]![0], b2: pairs[i + 1]![1], scoreA: 0, scoreB: 0, status: "pending" });
+            }
+            // Final and 3rd-place slots — players filled after semis complete
+            matches.push({ id: uid(), round: 99, stage: "final", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            if (hasThirdPlace) {
+              matches.push({ id: uid(), round: 98, stage: "third", a1: "", a2: "", b1: "", b2: "", scoreA: 0, scoreB: 0, status: "pending" });
+            }
+          }
+
+          set((s) => s.current
+            ? { current: { ...s.current, knockoutMatches: matches, stage: "knockout", updatedAt: Date.now() } }
+            : s
+          );
         },
 
         scoreKnockout(matchId, scoreA, scoreB) {
           set((s) => {
             if (!s.current) return s;
-            const knockoutMatches = s.current.knockoutMatches.map((m) =>
+            let ko = s.current.knockoutMatches.map((m) =>
               m.id === matchId ? { ...m, scoreA, scoreB, status: "completed" as const } : m,
             );
-            const allDone = knockoutMatches.every((m) => m.status === "completed");
+
+            // Auto-advance semi winners → final/3rd
+            const semis = ko.filter((m) => m.stage === "semifinal");
+            if (semis.length >= 2 && semis.every((m) => m.status === "completed")) {
+              const finalM = ko.find((m) => m.stage === "final");
+              const thirdM = ko.find((m) => m.stage === "third");
+              if (finalM && (!finalM.a1)) {
+                const winners = semis.map((m) =>
+                  m.scoreA > m.scoreB ? [m.a1, m.a2] as [string,string] : [m.b1, m.b2] as [string,string]
+                );
+                const losers = semis.map((m) =>
+                  m.scoreA > m.scoreB ? [m.b1, m.b2] as [string,string] : [m.a1, m.a2] as [string,string]
+                );
+                ko = ko.map((m) => {
+                  if (m.stage === "final") return { ...m, a1: winners[0]![0], a2: winners[0]![1], b1: winners[1]![0], b2: winners[1]![1] };
+                  if (m.stage === "third") return { ...m, a1: losers[0]![0], a2: losers[0]![1], b1: losers[1]![0], b2: losers[1]![1] };
+                  return m;
+                });
+              }
+            }
+
+            const relevant = ko.filter((m) => m.stage !== "third" || s.current!.config.hasThirdPlace);
+            const allDone = relevant.every((m) => m.status === "completed");
             return {
-              current: {
-                ...s.current,
-                knockoutMatches,
-                stage: allDone ? "done" : "knockout",
-                updatedAt: Date.now(),
-              },
+              current: { ...s.current, knockoutMatches: ko, stage: allDone ? "done" : "knockout", updatedAt: Date.now() },
             };
           });
         },
 
-        reset() {
-          set({ current: null });
-        },
+        reset() { set({ current: null }); },
       },
     }),
     {

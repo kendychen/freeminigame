@@ -192,7 +192,7 @@ export default async function HomePage() {
                     Chia cặp nhanh
                   </Button>
                 </Link>
-                <Link href="/quick/pic/new" className="w-full sm:w-auto">
+                <Link href={user ? "/pic/new" : "/quick/pic/new"} className="w-full sm:w-auto">
                   <Button
                     size="lg"
                     variant="outline"

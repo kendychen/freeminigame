@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { usePicStore } from "@/stores/pic-tournament";
+import { createPicEvent } from "@/app/actions/pic";
 import type { PicConfig } from "@/stores/pic-tournament";
 import Link from "next/link";
 
@@ -22,7 +22,7 @@ function snakeDistribute(names: string[], groupCount: number): string[][] {
 
 export default function PicNewPage() {
   const router = useRouter();
-  const init = usePicStore((s) => s.actions.init);
+  const [pending, startTransition] = useTransition();
 
   const [name, setName] = useState("Giải đấu PIC");
   const [rawNames, setRawNames] = useState(
@@ -33,6 +33,7 @@ export default function PicNewPage() {
   const [hasThirdPlace, setHasThirdPlace] = useState(false);
   const [advancePerGroup, setAdvancePerGroup] = useState(1);
   const [groupCount, setGroupCount] = useState(1);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const players = useMemo(
     () => rawNames.split("\n").map((s) => s.trim()).filter(Boolean),
@@ -53,26 +54,34 @@ export default function PicNewPage() {
   const effG = validGroupCounts.includes(groupCount) ? groupCount : (validGroupCounts[0] ?? 1);
   const preview = useMemo(() => snakeDistribute(players, effG), [players, effG]);
   const totalAdv = effG === 1 ? Math.min(4, pc) : effG * advancePerGroup;
-  const canStart = pc >= 4 && validGroupCounts.length > 0;
+  const canStart = pc >= 4 && validGroupCounts.length > 0 && !pending;
 
   const handleStart = () => {
     if (!canStart) return;
+    setServerError(null);
     const aPerGroup = effG === 1 ? Math.min(4, pc) : advancePerGroup;
     const config: PicConfig = {
       name: name.trim() || "Giải đấu PIC",
-      targetGroup, targetKnockout,
+      targetGroup,
+      targetKnockout,
       advancePerGroup: aPerGroup,
       hasThirdPlace,
     };
-    init(config, players, effG);
-    router.push("/quick/pic");
+    startTransition(async () => {
+      const res = await createPicEvent(config, players, effG);
+      if ("error" in res) {
+        setServerError(res.error);
+      } else {
+        router.push(`/pic/${res.slug}`);
+      }
+    });
   };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center gap-3 px-4">
-          <Link href="/" className="rounded-md p-1.5 text-muted-foreground hover:bg-accent">
+          <Link href="/dashboard" className="rounded-md p-1.5 text-muted-foreground hover:bg-accent">
             <ChevronLeft className="size-5" />
           </Link>
           <span className="font-semibold">Tạo giải PIC xoay cặp</span>
@@ -80,7 +89,12 @@ export default function PicNewPage() {
       </header>
 
       <main className="mx-auto max-w-xl space-y-6 px-4 py-6">
-        {/* Tournament name */}
+        {serverError && (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            Lỗi: {serverError}
+          </div>
+        )}
+
         <section className="space-y-2">
           <label className="text-sm font-semibold">Tên giải đấu</label>
           <input
@@ -90,7 +104,6 @@ export default function PicNewPage() {
           />
         </section>
 
-        {/* Players */}
         <section className="space-y-2">
           <label className="text-sm font-semibold">
             Vận động viên
@@ -108,7 +121,6 @@ export default function PicNewPage() {
           <p className="text-[11px] text-muted-foreground">Mỗi dòng 1 tên. Cần ít nhất 4 người.</p>
         </section>
 
-        {/* Group count */}
         {pc >= 4 && (
           <section className="space-y-2">
             <label className="text-sm font-semibold">Số bảng đấu</label>
@@ -138,7 +150,6 @@ export default function PicNewPage() {
                     );
                   })}
                 </div>
-
                 <div
                   className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${
                     preview.length <= 2
@@ -170,7 +181,6 @@ export default function PicNewPage() {
           </section>
         )}
 
-        {/* Advance per group — only for multi-group */}
         {effG > 1 && validGroupCounts.length > 0 && (
           <section className="space-y-2">
             <label className="text-sm font-semibold">Số người đi tiếp mỗi bảng</label>
@@ -198,7 +208,6 @@ export default function PicNewPage() {
           </section>
         )}
 
-        {/* Match rules */}
         <section className="space-y-3">
           <label className="text-sm font-semibold">Luật thi đấu</label>
           <div className="grid grid-cols-2 gap-3">
@@ -242,7 +251,6 @@ export default function PicNewPage() {
           <p className="text-[11px] text-muted-foreground">Không cách — ai chạm trước thắng.</p>
         </section>
 
-        {/* 3rd place — only relevant when semis exist (8+ advancing) */}
         {totalAdv >= 8 && (
           <section>
             <label className="flex cursor-pointer items-center justify-between rounded-lg border bg-card p-3">
@@ -263,7 +271,7 @@ export default function PicNewPage() {
         )}
 
         <Button onClick={handleStart} size="lg" className="w-full" disabled={!canStart}>
-          Bắt đầu giải đấu
+          {pending ? "Đang tạo…" : "Bắt đầu giải đấu"}
         </Button>
       </main>
     </div>

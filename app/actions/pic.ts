@@ -1,0 +1,440 @@
+"use server";
+
+import { randomBytes } from "node:crypto";
+import { revalidatePath } from "next/cache";
+import { createServiceClient } from "@/lib/supabase/service";
+import { requireUser } from "@/lib/auth";
+import { ensureSafeSlug, withRandomSuffix } from "@/lib/slug";
+import { generateGroupSchedule } from "@/lib/pic-schedule";
+import type { PicConfig, PicPlayer, PicGroup, PicMatch, PicState, PicStage } from "@/stores/pic-tournament";
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+export type PicEventFull = PicState & {
+  referee_token: string | null;
+  ownerId: string | null;
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function snakeDistribute(ids: string[], groupCount: number): string[][] {
+  const groups: string[][] = Array.from({ length: groupCount }, () => []);
+  let dir = 1, gi = 0;
+  for (const id of ids) {
+    groups[gi]!.push(id);
+    const next = gi + dir;
+    if (next >= groupCount || next < 0) dir = -dir;
+    else gi += dir;
+  }
+  return groups;
+}
+
+function newToken(): string {
+  return randomBytes(18).toString("base64url");
+}
+
+// ── Load full event state ──────────────────────────────────────────────────────
+
+export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull | null> {
+  const svc = createServiceClient();
+
+  const isUuid = /^[0-9a-f-]{36}$/.test(idOrSlug);
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("*")
+    .eq(isUuid ? "id" : "slug", idOrSlug)
+    .single();
+  if (!ev) return null;
+
+  const [playersRes, groupsRes, matchesRes] = await Promise.all([
+    svc.from("pic_players").select("*").eq("event_id", ev.id),
+    svc.from("pic_groups").select("*").eq("event_id", ev.id).order("label"),
+    svc.from("pic_matches").select("*").eq("event_id", ev.id).order("round"),
+  ]);
+
+  const players: PicPlayer[] = (playersRes.data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+  }));
+  const dbGroups = groupsRes.data ?? [];
+  const dbMatches = matchesRes.data ?? [];
+
+  const groupIds = dbGroups.map((g) => g.id);
+  const gpRes =
+    groupIds.length > 0
+      ? await svc.from("pic_group_players").select("*").in("group_id", groupIds)
+      : { data: [] };
+  const dbGP = gpRes.data ?? [];
+
+  const groups: PicGroup[] = dbGroups.map((g) => {
+    const playerIds = dbGP
+      .filter((gp) => gp.group_id === g.id)
+      .sort((a, b) => (a.seed ?? 0) - (b.seed ?? 0))
+      .map((gp) => gp.player_id);
+
+    const matches: PicMatch[] = dbMatches
+      .filter((m) => m.group_id === g.id)
+      .map((m) => ({
+        id: m.id,
+        round: m.round,
+        stage: "group" as const,
+        a1: m.a1_id ?? "",
+        a2: m.a2_id ?? "",
+        b1: m.b1_id ?? "",
+        b2: m.b2_id ?? "",
+        scoreA: m.score_a,
+        scoreB: m.score_b,
+        status: m.status as "pending" | "completed",
+      }));
+
+    return { id: g.id, label: g.label, playerIds, matches };
+  });
+
+  const knockoutMatches: PicMatch[] = dbMatches
+    .filter((m) => m.group_id === null)
+    .map((m) => ({
+      id: m.id,
+      round: m.round,
+      stage: m.stage as "semifinal" | "final" | "third",
+      a1: m.a1_id ?? "",
+      a2: m.a2_id ?? "",
+      b1: m.b1_id ?? "",
+      b2: m.b2_id ?? "",
+      scoreA: m.score_a,
+      scoreB: m.score_b,
+      status: m.status as "pending" | "completed",
+    }));
+
+  return {
+    id: ev.id,
+    config: ev.config as PicConfig,
+    players,
+    groups,
+    knockoutMatches,
+    stage: ev.stage as PicStage,
+    createdAt: new Date(ev.created_at).getTime(),
+    updatedAt: new Date(ev.updated_at).getTime(),
+    referee_token: ev.referee_token ?? null,
+    ownerId: ev.owner_id ?? null,
+  };
+}
+
+// ── Create event ───────────────────────────────────────────────────────────────
+
+export async function createPicEvent(
+  config: PicConfig,
+  playerNames: string[],
+  groupCount: number,
+): Promise<{ slug: string } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  // Create event
+  let slug = ensureSafeSlug(config.name);
+  if (!slug || slug === "tour") slug = "pic";
+  slug = withRandomSuffix(slug);
+
+  const { data: ev, error: evErr } = await svc
+    .from("pic_events")
+    .insert({
+      name: config.name,
+      slug,
+      owner_id: user.id,
+      config: {
+        targetGroup: config.targetGroup,
+        targetKnockout: config.targetKnockout,
+        advancePerGroup: config.advancePerGroup,
+        hasThirdPlace: config.hasThirdPlace,
+      },
+      stage: "group",
+    })
+    .select("id")
+    .single();
+  if (evErr || !ev) return { error: evErr?.message ?? "create_failed" };
+
+  // Insert players
+  const { data: players, error: plErr } = await svc
+    .from("pic_players")
+    .insert(playerNames.map((name) => ({ event_id: ev.id, name: name.trim() })))
+    .select("id");
+  if (plErr || !players) return { error: plErr?.message ?? "players_failed" };
+
+  // Snake-distribute player IDs into groups
+  const playerIds = players.map((p) => p.id);
+  const groupSlots = snakeDistribute(playerIds, groupCount);
+
+  for (let gi = 0; gi < groupSlots.length; gi++) {
+    const label = String.fromCharCode(65 + gi);
+    const { data: grp, error: grpErr } = await svc
+      .from("pic_groups")
+      .insert({ event_id: ev.id, label })
+      .select("id")
+      .single();
+    if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
+
+    const slotIds = groupSlots[gi]!;
+    await svc.from("pic_group_players").insert(
+      slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
+
+    const n = slotIds.length;
+    if (n < 4) continue;
+    const schedule = generateGroupSchedule(Math.min(n, 6));
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: ev.id,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
+    );
+  }
+
+  revalidatePath("/dashboard");
+  return { slug };
+}
+
+// ── Score a match ──────────────────────────────────────────────────────────────
+
+export async function scorePicMatch({
+  eventId,
+  matchId,
+  scoreA,
+  scoreB,
+  token,
+}: {
+  eventId: string;
+  matchId: string;
+  scoreA: number;
+  scoreB: number;
+  token?: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const svc = createServiceClient();
+
+  // Auth: token (referee) or owner
+  if (token) {
+    const { data: ev } = await svc
+      .from("pic_events")
+      .select("id, referee_token")
+      .eq("id", eventId)
+      .single();
+    if (!ev || ev.referee_token !== token) return { error: "invalid_token" };
+  } else {
+    const { user } = await requireUser();
+    const { data: ev } = await svc
+      .from("pic_events")
+      .select("owner_id")
+      .eq("id", eventId)
+      .single();
+    if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+  }
+
+  // Score the match
+  const { error: upErr } = await svc
+    .from("pic_matches")
+    .update({
+      score_a: scoreA,
+      score_b: scoreB,
+      status: "completed",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", matchId)
+    .eq("event_id", eventId);
+  if (upErr) return { error: upErr.message };
+
+  // Load match stage for transition logic
+  const { data: match } = await svc
+    .from("pic_matches")
+    .select("stage")
+    .eq("id", matchId)
+    .single();
+  if (!match) return { error: "match_not_found" };
+
+  if (match.stage === "group") {
+    const { data: all } = await svc
+      .from("pic_matches")
+      .select("status")
+      .eq("event_id", eventId)
+      .eq("stage", "group");
+    if (all?.every((m) => m.status === "completed")) {
+      await svc
+        .from("pic_events")
+        .update({ stage: "draw", updated_at: new Date().toISOString() })
+        .eq("id", eventId);
+    }
+  } else if (match.stage === "semifinal") {
+    const { data: semis } = await svc
+      .from("pic_matches")
+      .select("*")
+      .eq("event_id", eventId)
+      .eq("stage", "semifinal");
+    if (semis && semis.length >= 2 && semis.every((m) => m.status === "completed")) {
+      const finalM = await svc
+        .from("pic_matches")
+        .select("id, a1_id")
+        .eq("event_id", eventId)
+        .eq("stage", "final")
+        .maybeSingle();
+      if (finalM.data && !finalM.data.a1_id) {
+        const winners = semis.map((m) =>
+          m.score_a > m.score_b
+            ? [m.a1_id, m.a2_id]
+            : [m.b1_id, m.b2_id],
+        );
+        const losers = semis.map((m) =>
+          m.score_a > m.score_b
+            ? [m.b1_id, m.b2_id]
+            : [m.a1_id, m.a2_id],
+        );
+        await svc
+          .from("pic_matches")
+          .update({
+            a1_id: winners[0]![0],
+            a2_id: winners[0]![1],
+            b1_id: winners[1]![0],
+            b2_id: winners[1]![1],
+          })
+          .eq("id", finalM.data.id);
+
+        const thirdM = await svc
+          .from("pic_matches")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("stage", "third")
+          .maybeSingle();
+        if (thirdM.data) {
+          await svc
+            .from("pic_matches")
+            .update({
+              a1_id: losers[0]![0],
+              a2_id: losers[0]![1],
+              b1_id: losers[1]![0],
+              b2_id: losers[1]![1],
+            })
+            .eq("id", thirdM.data.id);
+        }
+      }
+    }
+  } else if (match.stage === "final" || match.stage === "third") {
+    const { data: ev } = await svc
+      .from("pic_events")
+      .select("config")
+      .eq("id", eventId)
+      .single();
+    const hasThird = (ev?.config as Record<string, unknown>)?.hasThirdPlace ?? false;
+    const { data: ko } = await svc
+      .from("pic_matches")
+      .select("stage, status")
+      .eq("event_id", eventId)
+      .neq("stage", "group");
+    const relevant = hasThird ? ko ?? [] : (ko ?? []).filter((m) => m.stage !== "third");
+    if (relevant.every((m) => m.status === "completed")) {
+      await svc
+        .from("pic_events")
+        .update({ stage: "done", updated_at: new Date().toISOString() })
+        .eq("id", eventId);
+    }
+  }
+
+  revalidatePath(`/pic/${eventId}`);
+  return { ok: true };
+}
+
+// ── Draw knockout bracket ──────────────────────────────────────────────────────
+
+export async function picDrawKnockout(
+  eventId: string,
+  pairs: [string, string][],
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+  const hasThird = (ev.config as Record<string, unknown>)?.hasThirdPlace ?? false;
+
+  const matches: {
+    event_id: string;
+    round: number;
+    stage: string;
+    a1_id?: string | null;
+    a2_id?: string | null;
+    b1_id?: string | null;
+    b2_id?: string | null;
+  }[] = [];
+
+  if (pairs.length === 2) {
+    // Direct final
+    matches.push({
+      event_id: eventId,
+      round: 1,
+      stage: "final",
+      a1_id: pairs[0]![0],
+      a2_id: pairs[0]![1],
+      b1_id: pairs[1]![0],
+      b2_id: pairs[1]![1],
+    });
+  } else {
+    // Semis (pairs 0v1, 2v3) + final + optional 3rd
+    for (let i = 0; i < pairs.length - 1; i += 2) {
+      matches.push({
+        event_id: eventId,
+        round: i / 2 + 1,
+        stage: "semifinal",
+        a1_id: pairs[i]![0],
+        a2_id: pairs[i]![1],
+        b1_id: pairs[i + 1]![0],
+        b2_id: pairs[i + 1]![1],
+      });
+    }
+    // Final and 3rd — player slots filled after semis
+    matches.push({ event_id: eventId, round: 99, stage: "final" });
+    if (hasThird) {
+      matches.push({ event_id: eventId, round: 98, stage: "third" });
+    }
+  }
+
+  const { error } = await svc.from("pic_matches").insert(matches);
+  if (error) return { error: error.message };
+
+  await svc
+    .from("pic_events")
+    .update({ stage: "knockout", updated_at: new Date().toISOString() })
+    .eq("id", eventId);
+
+  revalidatePath(`/pic/${eventId}`);
+  return { ok: true };
+}
+
+// ── Referee token ──────────────────────────────────────────────────────────────
+
+export async function getPicRefereeToken(
+  eventId: string,
+): Promise<{ token: string } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, referee_token")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+  if (ev.referee_token) return { token: ev.referee_token };
+
+  const token = newToken();
+  const { error } = await svc
+    .from("pic_events")
+    .update({ referee_token: token })
+    .eq("id", eventId);
+  if (error) return { error: error.message };
+  return { token };
+}
