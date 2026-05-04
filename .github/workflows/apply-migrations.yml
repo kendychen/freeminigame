@@ -1,0 +1,36 @@
+name: Apply DB Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_file:
+        description: "Migration SQL file (in supabase/migrations/)"
+        required: false
+        default: "latest"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply latest migration
+        env:
+          PGHOST: ${{ secrets.SUPABASE_DB_HOST }}
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
+        run: |
+          if [ "${{ inputs.migration_file }}" = "latest" ]; then
+            LATEST=$(ls supabase/migrations/*.sql | sort | tail -n1)
+            echo "Applying: $LATEST"
+            psql -f "$LATEST"
+          else
+            psql -f "supabase/migrations/${{ inputs.migration_file }}"
+          fi
+          echo "✅ Migration applied"
