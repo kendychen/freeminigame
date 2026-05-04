@@ -35,6 +35,7 @@ export interface PicConfig {
   hasThirdPlace: boolean;
   pointsForWin: number;
   pointsForLoss: number;
+  tiebreakerOrder?: "diff_first" | "wins_first";
   drawCode?: string | null;
   drawGroupCount?: number;
   drawAdvancePerGroup?: number;
@@ -85,6 +86,7 @@ export function computeStandings(
   matches: PicMatch[],
   pointsForWin = 2,
   pointsForLoss = 0,
+  tiebreakerOrder: "diff_first" | "wins_first" = "diff_first",
 ): PicStanding[] {
   const done = matches.filter((m) => m.status === "completed");
   const stats = new Map(players.map((p) => [p.id, { wins: 0, losses: 0, pf: 0, pa: 0 }]));
@@ -109,7 +111,17 @@ export function computeStandings(
       const pts = s.wins * pointsForWin + s.losses * pointsForLoss;
       return { rank: 0, playerId: p.id, name: p.name, wins: s.wins, losses: s.losses, pf: s.pf, pa: s.pa, diff: s.pf - s.pa, pts };
     })
-    .sort((a, b) => b.pts - a.pts || b.diff - a.diff || b.wins - a.wins || a.name.localeCompare(b.name))
+    .sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      if (tiebreakerOrder === "wins_first") {
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        if (b.diff !== a.diff) return b.diff - a.diff;
+      } else {
+        if (b.diff !== a.diff) return b.diff - a.diff;
+        if (b.wins !== a.wins) return b.wins - a.wins;
+      }
+      return a.name.localeCompare(b.name);
+    })
     .map((s, i) => ({ ...s, rank: i + 1 }));
 }
 

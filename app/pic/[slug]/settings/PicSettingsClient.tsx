@@ -27,6 +27,7 @@ export default function PicSettingsClient({ state }: { state: PicEventFull }) {
   const [hasThirdPlace, setHasThirdPlace] = useState(config.hasThirdPlace);
   const [pointsForWin, setPointsForWin] = useState(config.pointsForWin ?? 2);
   const [pointsForLoss, setPointsForLoss] = useState(config.pointsForLoss ?? 0);
+  const [tiebreakerOrder, setTiebreakerOrder] = useState<"diff_first" | "wins_first">(config.tiebreakerOrder ?? "diff_first");
 
   const save = () => {
     startTransition(async () => {
@@ -37,6 +38,7 @@ export default function PicSettingsClient({ state }: { state: PicEventFull }) {
         hasThirdPlace,
         pointsForWin,
         pointsForLoss,
+        tiebreakerOrder,
       });
       if ("error" in res) {
         toast({ title: "Lỗi", description: res.error, variant: "destructive" });
@@ -136,9 +138,23 @@ export default function PicSettingsClient({ state }: { state: PicEventFull }) {
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Thứ tự xếp hạng: Điểm → Hiệu số → Số thắng → Tên A–Z
-          </p>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Thứ tự phân thứ khi bằng điểm</p>
+            <div className="flex gap-2">
+              {([
+                { value: "diff_first", label: "Hiệu số trước", sub: "Điểm → Hiệu số → Thắng → Tên" },
+                { value: "wins_first", label: "Số thắng trước", sub: "Điểm → Thắng → Hiệu số → Tên" },
+              ] as const).map((opt) => (
+                <button key={opt.value} onClick={() => setTiebreakerOrder(opt.value)}
+                  className={`flex-1 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                    tiebreakerOrder === opt.value ? "border-primary bg-primary/10" : "hover:border-primary/50"
+                  }`}>
+                  <p className={`text-sm font-semibold ${tiebreakerOrder === opt.value ? "text-primary" : ""}`}>{opt.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{opt.sub}</p>
+                </button>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
 

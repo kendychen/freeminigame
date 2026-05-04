@@ -105,9 +105,10 @@ export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull 
       status: m.status as "pending" | "completed",
     }));
 
+  const cfg = ev.config as PicConfig;
   return {
     id: ev.id,
-    config: ev.config as PicConfig,
+    config: { ...cfg, name: ev.name ?? cfg?.name ?? "" },
     players,
     groups,
     knockoutMatches,
@@ -159,7 +160,7 @@ export async function createPicEvent(
 
 export async function updatePicConfig(
   eventId: string,
-  patch: Partial<Pick<PicConfig, "name" | "targetGroup" | "targetKnockout" | "hasThirdPlace" | "pointsForWin" | "pointsForLoss">>,
+  patch: Partial<Pick<PicConfig, "name" | "targetGroup" | "targetKnockout" | "hasThirdPlace" | "pointsForWin" | "pointsForLoss" | "tiebreakerOrder">>,
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();

@@ -217,14 +217,15 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore }: {
 
 // ── StandingsTable ─────────────────────────────────────────────────────────────
 
-function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss }: {
+function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder }: {
   group: PicGroup; players: PicPlayer[]; advancePerGroup: number;
   pointsForWin: number; pointsForLoss: number;
+  tiebreakerOrder?: "diff_first" | "wins_first";
 }) {
   const gPlayers = group.playerIds
     .map((id) => players.find((p) => p.id === id))
     .filter((p): p is PicPlayer => !!p);
-  const standings = computeStandings(gPlayers, group.matches, pointsForWin, pointsForLoss);
+  const standings = computeStandings(gPlayers, group.matches, pointsForWin, pointsForLoss, tiebreakerOrder);
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <div className="border-b bg-muted/40 px-3 py-2 text-xs font-bold text-primary">
@@ -287,10 +288,11 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
   const W = config.pointsForWin ?? 2;
   const L = config.pointsForLoss ?? 0;
+  const TB = config.tiebreakerOrder ?? "diff_first";
 
   const advancingIds = groups.flatMap((g) => {
     const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
-    return computeStandings(gPlayers, g.matches, W, L).slice(0, config.advancePerGroup).map((s) => s.playerId);
+    return computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup).map((s) => s.playerId);
   });
 
   const doDraw = () => {
@@ -329,7 +331,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người đi tiếp</h2>
               {groups.map((g) => {
                 const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
-                const top = computeStandings(gPlayers, g.matches, W, L).slice(0, config.advancePerGroup);
+                const top = computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup);
                 return (
                   <div key={g.id} className="rounded-xl border bg-card px-3 py-2">
                     <p className="mb-1 text-xs font-bold text-primary">Bảng {g.label}</p>
@@ -521,7 +523,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       {stage === "group" && viewTab === "standings" && (
         <div className="space-y-4">
           {groups.map((g) => (
-            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} />
+            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} />
           ))}
           {allGroupDone && (
             <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="w-full">
