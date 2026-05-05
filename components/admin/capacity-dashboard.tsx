@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useTransition } from "react";
-import { createBrowserClient } from "@supabase/ssr";
 import { fetchDbMetrics, type DbMetrics } from "@/app/actions/admin/metrics";
+import { usePresenceStore } from "@/stores/presence";
 import {
   Card,
   CardContent,
@@ -81,44 +81,12 @@ export function CapacityDashboard({
   initialMetrics: DbMetrics | null;
 }) {
   const [metrics, setMetrics] = useState<DbMetrics | null>(initialMetrics);
-  const [onlineUsers, setOnlineUsers] = useState<number>(0);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isPending, startTransition] = useTransition();
 
-  // ── Realtime Presence: count connected users ─────────────
-  // Use a fresh client (not the singleton) so the channel is independent
-  // from the SitePresenceTracker that already subscribed on the same singleton.
-  useEffect(() => {
-    const sb = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
-    const adminId = "__admin__" + Math.random().toString(36).slice(2);
-    const channel = sb.channel("site-presence", {
-      config: { presence: { key: adminId } },
-    });
-
-    const sync = () => {
-      const state = channel.presenceState();
-      // Exclude this admin observer tab from the count
-      const count = Object.keys(state).filter((k) => !k.startsWith("__admin__")).length;
-      setOnlineUsers(count);
-    };
-
-    channel
-      .on("presence", { event: "sync" }, sync)
-      .on("presence", { event: "join" }, sync)
-      .on("presence", { event: "leave" }, sync)
-      .subscribe((status: string) => {
-        if (status === "SUBSCRIBED") {
-          channel.track({ pid: adminId });
-        }
-      });
-
-    return () => {
-      void sb.removeChannel(channel);
-    };
-  }, []);
+  // Read online count from shared Zustand store written by SitePresenceTracker.
+  // This avoids creating a second Realtime subscription to the same channel.
+  const onlineUsers = usePresenceStore((s) => s.onlineCount);
 
   // ── Refresh DB metrics via server action ─────────────────
   const refresh = useCallback(() => {
