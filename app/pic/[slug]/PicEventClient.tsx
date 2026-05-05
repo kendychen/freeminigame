@@ -3,12 +3,12 @@
 import { useState, useEffect, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Trophy, Shuffle, CheckCircle2, Check, Pencil, X, Link2, Lock, Unlock,
+  Trophy, Shuffle, CheckCircle2, Check, Pencil, X, Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
 import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore, getPicRefereeToken, picDrawFinalPairs } from "@/app/actions/pic";
-import { buildDrawPairs, reDrawUnlocked, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
+import { buildDrawPairs, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
 import type { PicEventFull } from "@/app/actions/pic";
 import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
@@ -241,8 +241,6 @@ function FinalDraw({
   const [isDrawing, setIsDrawing] = useState(false);
   const [animTick, setAnimTick] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [locked, setLocked] = useState<Set<number>>(new Set());
-  const [isReDrawing, setIsReDrawing] = useState(false);
 
   const byId = (id: string) => players.find((p) => p.id === id);
 
@@ -257,7 +255,7 @@ function FinalDraw({
 
   const doDraw = () => {
     if (isDone || isDrawing || pool.length < 4) return;
-    setIsDrawing(true); setProgress(0); setLocked(new Set());
+    setIsDrawing(true); setProgress(0);
     const DURATION = 2500;
     const start = Date.now();
     const tickId = setInterval(() => setAnimTick((t) => t + 1), 80);
@@ -270,27 +268,6 @@ function FinalDraw({
       localStorage.setItem(storageKey, JSON.stringify(result));
       setProgress(100); setIsDrawing(false); setIsDone(true);
     }, DURATION);
-  };
-
-  const doReDraw = () => {
-    if (!pairs || isReDrawing) return;
-    setIsReDrawing(true);
-    setTimeout(() => {
-      const lockedIds = new Set<string>();
-      for (const i of locked) {
-        const p = pairs[i as 0 | 1];
-        if (p) { lockedIds.add(p[0]); lockedIds.add(p[1]); }
-      }
-      const available = pool.filter((id) => !lockedIds.has(id)).sort(() => Math.random() - 0.5);
-      const result = [...pairs] as [[string, string], [string, string]];
-      let idx = 0;
-      for (let i = 0; i < 2; i++) {
-        if (!locked.has(i)) { result[i] = [available[idx]!, available[idx + 1]!]; idx += 2; }
-      }
-      setPairs(result);
-      localStorage.setItem(storageKey, JSON.stringify(result));
-      setIsReDrawing(false);
-    }, 600);
   };
 
   return (
@@ -341,28 +318,14 @@ function FinalDraw({
 
       {isDone && pairs && (
         <div className="space-y-2">
-          {pairs.map((pair, pi) => {
-            const isLocked = locked.has(pi);
-            return (
-              <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
-                <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
-                  {pi === 0 ? "A" : "B"}
-                </span>
-                <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
-                <button onClick={() => setLocked((prev) => { const n = new Set(prev); if (isLocked) n.delete(pi); else n.add(pi); return n; })}
-                  title={isLocked ? "Bỏ chốt" : "Chốt cặp"}
-                  className={`flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${isLocked ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:border-primary/60"}`}>
-                  {isLocked ? <Lock className="size-3" /> : <Unlock className="size-3" />}
-                </button>
-              </div>
-            );
-          })}
-          {locked.size < 2 && (
-            <Button variant="outline" onClick={doReDraw} disabled={isReDrawing || confirming} className="w-full">
-              <Shuffle className={`size-4 ${isReDrawing ? "animate-spin" : ""}`} />
-              {isReDrawing ? "Đang quay..." : "🎲 Quay lại cặp chưa chốt"}
-            </Button>
-          )}
+          {pairs.map((pair, pi) => (
+            <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
+              <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
+                {pi === 0 ? "A" : "B"}
+              </span>
+              <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
+            </div>
+          ))}
           <Button disabled={confirming} onClick={() => onConfirm(pairs)} size="lg" className="w-full">
             <CheckCircle2 className="size-4" />
             {confirming ? "Đang cập nhật…" : "✅ Xác nhận cặp & Bắt đầu"}
@@ -444,8 +407,6 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const [drawProgress, setDrawProgress] = useState(0);
   const [refToken, setRefToken] = useState<string | null>(null);
   const [copiedRefKey, setCopiedRefKey] = useState<string | null>(null);
-  const [lockedPairIndices, setLockedPairIndices] = useState<Set<number>>(new Set());
-  const [isReDrawing, setIsReDrawing] = useState(false);
 
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
 
@@ -487,7 +448,6 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     setIsDrawing(true);
     setDrawProgress(0);
     setAnimTick(0);
-    setLockedPairIndices(new Set());
     const DURATION = 3000;
     const start = Date.now();
     const tickId = setInterval(() => setAnimTick((t) => t + 1), 80);
@@ -504,17 +464,6 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       setIsDrawing(false);
       setDrawDone(true);
     }, DURATION);
-  };
-
-  const doReDraw = () => {
-    if (!drawnPairs || isReDrawing || isDrawing) return;
-    setIsReDrawing(true);
-    setTimeout(() => {
-      const newPairs = reDrawUnlocked(drawnPairs, lockedPairIndices, advancingIds);
-      setDrawnPairs(newPairs);
-      localStorage.setItem(`pic-draw-${eventId}`, JSON.stringify(newPairs));
-      setIsReDrawing(false);
-    }, 800);
   };
 
   const doConfirm = () => {
@@ -640,54 +589,31 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               </div>
             )}
 
-            {/* Results with lock toggles */}
+            {/* Results */}
             {drawDone && matchups.map((mu, i) => (
               <div key={i} className="rounded-xl border bg-card p-3">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {matchups.length > 1 ? `Bán kết ${i + 1}` : "Chung kết"}
                 </p>
                 <div className="space-y-1.5">
-                  {([mu.a, mu.b] as [string, string][]).map((pair, pi) => {
-                    const pairIdx = i * 2 + pi;
-                    const isLocked = lockedPairIndices.has(pairIdx);
-                    return (
-                      <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
-                        <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
-                          {pi === 0 ? "A" : "B"}
-                        </span>
-                        <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
-                        <button
-                          onClick={() => setLockedPairIndices((prev) => {
-                            const next = new Set(prev);
-                            if (isLocked) next.delete(pairIdx); else next.add(pairIdx);
-                            return next;
-                          })}
-                          title={isLocked ? "Bỏ chốt" : "Chốt cặp này"}
-                          className={`flex size-7 shrink-0 items-center justify-center rounded-lg border text-xs transition-colors ${isLocked ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:border-primary/60 hover:text-primary"}`}
-                        >
-                          {isLocked ? <Lock className="size-3" /> : <Unlock className="size-3" />}
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {([mu.a, mu.b] as [string, string][]).map((pair, pi) => (
+                    <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
+                      <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
+                        {pi === 0 ? "A" : "B"}
+                      </span>
+                      <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
 
           {drawDone && drawnPairs && (
-            <div className="space-y-2">
-              {lockedPairIndices.size < drawnPairs.length && (
-                <Button variant="outline" onClick={doReDraw} disabled={isReDrawing || pending} className="w-full">
-                  <Shuffle className={`size-4 ${isReDrawing ? "animate-spin" : ""}`} />
-                  {isReDrawing ? "Đang quay..." : "🎲 Quay lại cặp chưa chốt"}
-                </Button>
-              )}
-              <Button disabled={pending} onClick={doConfirm} size="lg" className="w-full">
-                <CheckCircle2 className="size-4" />
-                {pending ? "Đang lưu…" : "✅ Bắt đầu Knockout"}
-              </Button>
-            </div>
+            <Button disabled={pending} onClick={doConfirm} size="lg" className="w-full">
+              <CheckCircle2 className="size-4" />
+              {pending ? "Đang lưu…" : "✅ Bắt đầu Knockout"}
+            </Button>
           )}
       </div>
     );
