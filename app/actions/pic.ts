@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/auth";
 import { ensureSafeSlug, withRandomSuffix } from "@/lib/slug";
-import { generateGroupSchedule } from "@/lib/pic-schedule";
+import { generateGroupSchedule, generateCrossSchedule } from "@/lib/pic-schedule";
 import type { PicConfig, PicPlayer, PicGroup, PicMatch, PicState, PicStage } from "@/stores/pic-tournament";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -288,6 +288,8 @@ export async function generatePicGroups(
   eventId: string,
   groupCount: number,
   advancePerGroup: number,
+  crossTierMode = false,
+  playerCategories: Record<string, "A" | "B"> = {},
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -312,14 +314,38 @@ export async function generatePicGroups(
     .eq("event_id", eventId);
   if (!players || players.length < 4) return { error: "need_at_least_4_players" };
 
-  // Random shuffle
-  const ids = players.map((p) => p.id);
-  for (let i = ids.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+  function shuffle(arr: string[]) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+    }
   }
 
-  const groupSlots = snakeDistribute(ids, groupCount);
+  let groupSlots: string[][];
+
+  if (crossTierMode) {
+    const allIds = players.map((p) => p.id);
+    const aIds = allIds.filter((id) => playerCategories[id] === "A");
+    const bIds = allIds.filter((id) => playerCategories[id] === "B");
+
+    if (aIds.length !== bIds.length) return { error: "Số VĐV hạng A và B phải bằng nhau" };
+    if (aIds.length === 0) return { error: "Chưa phân hạng A/B cho VĐV" };
+
+    const nPerTier = aIds.length / groupCount;
+    if (!Number.isInteger(nPerTier) || (nPerTier !== 2 && nPerTier !== 4))
+      return { error: "Chế độ A/B chỉ hỗ trợ 2 hoặc 4 VĐV mỗi trình mỗi bảng" };
+
+    shuffle(aIds);
+    shuffle(bIds);
+    const aGroups = snakeDistribute(aIds, groupCount);
+    const bGroups = snakeDistribute(bIds, groupCount);
+    // A-players occupy first nPerTier seeds, B-players the rest
+    groupSlots = aGroups.map((ag, i) => [...ag, ...bGroups[i]!]);
+  } else {
+    const ids = players.map((p) => p.id);
+    shuffle(ids);
+    groupSlots = snakeDistribute(ids, groupCount);
+  }
 
   for (let gi = 0; gi < groupSlots.length; gi++) {
     const label = String.fromCharCode(65 + gi);
@@ -337,22 +363,41 @@ export async function generatePicGroups(
 
     const n = slotIds.length;
     if (n < 4) continue;
-    const schedule = generateGroupSchedule(Math.min(n, 8));
-    await svc.from("pic_matches").insert(
-      schedule.map((slot, i) => ({
-        event_id: eventId,
-        group_id: grp.id,
-        round: i + 1,
-        stage: "group",
-        a1_id: slotIds[slot.a[0]]!,
-        a2_id: slotIds[slot.a[1]]!,
-        b1_id: slotIds[slot.b[0]]!,
-        b2_id: slotIds[slot.b[1]]!,
-      })),
-    );
+
+    if (crossTierMode) {
+      const nPerTier = n / 2;
+      const aPlayers = slotIds.slice(0, nPerTier);
+      const bPlayers = slotIds.slice(nPerTier);
+      const schedule = generateCrossSchedule(nPerTier);
+      await svc.from("pic_matches").insert(
+        schedule.map((slot, i) => ({
+          event_id: eventId,
+          group_id: grp.id,
+          round: i + 1,
+          stage: "group",
+          a1_id: aPlayers[slot.teamA[0]]!,
+          a2_id: bPlayers[slot.teamA[1]]!,
+          b1_id: aPlayers[slot.teamB[0]]!,
+          b2_id: bPlayers[slot.teamB[1]]!,
+        })),
+      );
+    } else {
+      const schedule = generateGroupSchedule(Math.min(n, 8));
+      await svc.from("pic_matches").insert(
+        schedule.map((slot, i) => ({
+          event_id: eventId,
+          group_id: grp.id,
+          round: i + 1,
+          stage: "group",
+          a1_id: slotIds[slot.a[0]]!,
+          a2_id: slotIds[slot.a[1]]!,
+          b1_id: slotIds[slot.b[0]]!,
+          b2_id: slotIds[slot.b[1]]!,
+        })),
+      );
+    }
   }
 
-  // Update advancePerGroup in config
   const cfg = ev.config as Record<string, unknown>;
   await svc
     .from("pic_events")
