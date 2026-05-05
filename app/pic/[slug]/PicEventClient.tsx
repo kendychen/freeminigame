@@ -108,10 +108,46 @@ function AdminMatchScore({
 
 // ── MatchCard ──────────────────────────────────────────────────────────────────
 
-function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl }: {
+function TierBadge({ cat }: { cat: "A" | "B" | undefined }) {
+  if (!cat) return null;
+  return (
+    <span className={`inline-flex h-3.5 w-4 shrink-0 items-center justify-center rounded text-[8px] font-bold ${
+      cat === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"
+    }`}>{cat}</span>
+  );
+}
+
+function PairLabel({ id1, id2, players, categories, won, align }: {
+  id1: string; id2: string; players: PicPlayer[];
+  categories?: Record<string, "A" | "B">;
+  won: boolean; align: "left" | "right";
+}) {
+  const p1 = players.find(p => p.id === id1);
+  const p2 = players.find(p => p.id === id2);
+  const cat1 = categories?.[id1];
+  const cat2 = categories?.[id2];
+  const nameClass = `text-xs font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`;
+  if (!categories) {
+    return <p className={`truncate text-sm font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`}>{p1?.name ?? "?"} & {p2?.name ?? "?"}</p>;
+  }
+  return (
+    <div className={`space-y-0.5 ${align === "right" ? "items-end" : "items-start"} flex flex-col`}>
+      <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <TierBadge cat={cat1} />
+        <span className={nameClass}>{p1?.name ?? "?"}</span>
+      </span>
+      <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <TierBadge cat={cat2} />
+        <span className={nameClass}>{p2?.name ?? "?"}</span>
+      </span>
+    </div>
+  );
+}
+
+function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl, playerCategories }: {
   match: PicMatch; players: PicPlayer[]; groupLabel?: string;
   onClick?: () => void; onDirectScore?: (scoreA: number, scoreB: number) => void;
-  refUrl?: string;
+  refUrl?: string; playerCategories?: Record<string, "A" | "B">;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftA, setDraftA] = useState("");
@@ -194,15 +230,23 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl 
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-sm font-semibold leading-tight ${aWon ? "text-primary" : ""}`}>
-          {aName}{aWon && <Trophy className="ml-1 inline size-3.5 text-primary" />}
-        </p>
+        {match.a1 && playerCategories ? (
+          <PairLabel id1={match.a1} id2={match.a2} players={players} categories={playerCategories} won={aWon} align="left" />
+        ) : (
+          <p className={`truncate text-sm font-semibold leading-tight ${aWon ? "text-primary" : ""}`}>
+            {aName}{aWon && <Trophy className="ml-1 inline size-3.5 text-primary" />}
+          </p>
+        )}
       </div>
       <span className="shrink-0 text-[10px] font-medium text-muted-foreground">vs</span>
       <div className="min-w-0 flex-1 text-right">
-        <p className={`truncate text-sm font-semibold leading-tight ${bWon ? "text-primary" : "text-muted-foreground"}`}>
-          {bWon && <Trophy className="mr-1 inline size-3.5 text-primary" />}{bName}
-        </p>
+        {match.b1 && playerCategories ? (
+          <PairLabel id1={match.b1} id2={match.b2} players={players} categories={playerCategories} won={bWon} align="right" />
+        ) : (
+          <p className={`truncate text-sm font-semibold leading-tight ${bWon ? "text-primary" : "text-muted-foreground"}`}>
+            {bWon && <Trophy className="mr-1 inline size-3.5 text-primary" />}{bName}
+          </p>
+        )}
       </div>
       <div className={`shrink-0 rounded-lg px-2.5 py-1 font-mono text-sm font-bold tabular-nums ${isDone ? "bg-secondary" : "border text-muted-foreground"}`}>
         {match.scoreA}–{match.scoreB}
@@ -928,7 +972,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               groupLabel={activeGroup.label}
               onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })}
               onDirectScore={handleDirectScore(m.id)}
-              refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
+              refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
+              playerCategories={config.playerCategories} />
           ))}
           {allGroupDone && (
             <Button disabled={pending} onClick={() => { startTransition(async () => { await picAdvanceToDraw(eventId); router.refresh(); }); }} size="lg" className="mt-2 w-full">
