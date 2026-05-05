@@ -1007,7 +1007,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       {stage === "group" && viewTab === "standings" && (
         <div className="space-y-4">
           {groups.map((g) => (
-            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} />
+            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} />
           ))}
           {allGroupDone && (
             <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="w-full">
