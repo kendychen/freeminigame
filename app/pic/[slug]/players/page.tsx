@@ -15,11 +15,16 @@ export default async function PicPlayersPage({
   const state = await loadPicEventState(slug);
   if (!state || state.ownerId !== user.id) notFound();
 
+  const hasCompletedMatches = state.groups.some(g =>
+    g.matches.some(m => m.status === "completed"),
+  );
+
   return (
     <PicPlayersClient
       eventId={state.id}
       initialPlayers={state.players}
       hasGroups={state.groups.length > 0}
+      hasCompletedMatches={hasCompletedMatches}
       drawCode={state.config.drawCode ?? null}
     />
   );

@@ -290,6 +290,7 @@ export async function generatePicGroups(
   advancePerGroup: number,
   crossTierMode = false,
   playerCategories: Record<string, "A" | "B"> = {},
+  precomputedGroupSlots?: string[][],
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -323,7 +324,9 @@ export async function generatePicGroups(
 
   let groupSlots: string[][];
 
-  if (crossTierMode) {
+  if (precomputedGroupSlots && precomputedGroupSlots.length === groupCount) {
+    groupSlots = precomputedGroupSlots;
+  } else if (crossTierMode) {
     const allIds = players.map((p) => p.id);
     const aIds = allIds.filter((id) => playerCategories[id] === "A");
     const bIds = allIds.filter((id) => playerCategories[id] === "B");
@@ -339,7 +342,6 @@ export async function generatePicGroups(
     shuffle(bIds);
     const aGroups = snakeDistribute(aIds, groupCount);
     const bGroups = snakeDistribute(bIds, groupCount);
-    // A-players occupy first nPerTier seeds, B-players the rest
     groupSlots = aGroups.map((ag, i) => [...ag, ...bGroups[i]!]);
   } else {
     const ids = players.map((p) => p.id);
@@ -858,6 +860,47 @@ export async function applyPicDraw(
     .from("pic_events")
     .update({ config: { ...cfg, drawCode: null, advancePerGroup }, updated_at: new Date().toISOString() })
     .eq("id", eventId);
+
+  revalidatePath(`/pic/${eventId}`);
+  return { ok: true };
+}
+
+// ── Reset groups (delete all groups + matches, back to player-list state) ────────
+
+export async function resetPicGroups(
+  eventId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, stage")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+  if (ev.stage !== "group") return { error: "Chỉ có thể đặt lại ở vòng bảng" };
+
+  const { data: completed } = await svc
+    .from("pic_matches")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("stage", "group")
+    .eq("status", "completed")
+    .limit(1);
+  if (completed && completed.length > 0)
+    return { error: "Đã có trận hoàn thành, không thể đặt lại bảng" };
+
+  const { data: groups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId);
+  if (!groups || groups.length === 0) return { ok: true };
+
+  const groupIds = groups.map((g) => g.id);
+  await svc.from("pic_matches").delete().in("group_id", groupIds);
+  await svc.from("pic_group_players").delete().in("group_id", groupIds);
+  await svc.from("pic_groups").delete().in("id", groupIds);
 
   revalidatePath(`/pic/${eventId}`);
   return { ok: true };

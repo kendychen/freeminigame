@@ -2,15 +2,21 @@
 
 import { useState, useMemo, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Upload, Shuffle, Users, Radio, ExternalLink } from "lucide-react";
+import { Plus, Trash2, Upload, Shuffle, Users, Radio, ExternalLink, RefreshCw, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
-import { addPicPlayer, removePicPlayer, bulkAddPicPlayers, generatePicGroups, createPicDraw, applyPicDraw } from "@/app/actions/pic";
+import { addPicPlayer, removePicPlayer, bulkAddPicPlayers, generatePicGroups, createPicDraw, applyPicDraw, resetPicGroups } from "@/app/actions/pic";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 interface Player { id: string; name: string }
+type Category = "A" | "B";
+
+interface PreviewGroup {
+  aPlayers: Player[];
+  bPlayers: Player[];
+}
 
 function snakePreview(count: number, groupCount: number): number[] {
   const sizes = Array.from({ length: groupCount }, () => 0);
@@ -24,17 +30,38 @@ function snakePreview(count: number, groupCount: number): number[] {
   return sizes;
 }
 
-type Category = "A" | "B";
+function clientShuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
+function clientSnake<T>(arr: T[], n: number): T[][] {
+  const groups: T[][] = Array.from({ length: n }, () => []);
+  let dir = 1, gi = 0;
+  for (const item of arr) {
+    groups[gi]!.push(item);
+    const next = gi + dir;
+    if (next >= n || next < 0) dir = -dir;
+    else gi += dir;
+  }
+  return groups;
+}
 
 export default function PicPlayersClient({
   eventId,
   initialPlayers,
   hasGroups,
+  hasCompletedMatches,
   drawCode: initialDrawCode,
 }: {
   eventId: string;
   initialPlayers: Player[];
   hasGroups: boolean;
+  hasCompletedMatches: boolean;
   drawCode: string | null;
 }) {
   const router = useRouter();
@@ -50,6 +77,10 @@ export default function PicPlayersClient({
   // Cross-tier mode
   const [crossTierMode, setCrossTierMode] = useState(false);
   const [categories, setCategories] = useState<Record<string, Category>>({});
+  // activeTier: when set, tapping a player directly assigns them to that tier
+  const [activeTier, setActiveTier] = useState<Category | null>(null);
+  // preview before confirming schedule generation
+  const [preview, setPreview] = useState<PreviewGroup[] | null>(null);
 
   const pc = players.length;
   const aCount = useMemo(() => players.filter(p => categories[p.id] === "A").length, [players, categories]);
@@ -64,7 +95,7 @@ export default function PicPlayersClient({
     } catch {}
   }, [eventId]);
 
-  // Save categories to localStorage when they change
+  // Persist categories
   useEffect(() => {
     if (Object.keys(categories).length > 0)
       localStorage.setItem(`pic-cat-${eventId}`, JSON.stringify(categories));
@@ -80,7 +111,6 @@ export default function PicPlayersClient({
       }
       return result;
     }
-    // cross-tier: only valid if aCount === bCount and aCount/g ∈ {2,4}
     if (aCount === 0 || aCount !== bCount) return [];
     const result: number[] = [];
     for (let g = 1; g <= aCount; g++) {
@@ -93,9 +123,11 @@ export default function PicPlayersClient({
 
   const effG = validGroupCounts.includes(groupCount) ? groupCount : (validGroupCounts[0] ?? 1);
 
+  // Reset preview when categories or effG changes
+  useEffect(() => { setPreview(null); }, [categories, effG]);
+
   useEffect(() => {
-    if (!crossTierMode && groupSizes.length === 0) return;
-    if (crossTierMode) return;
+    if (crossTierMode || groupSizes.length === 0) return;
     const minSize = Math.min(...groupSizes);
     const stillValid = advancePerGroup < minSize && (effG * advancePerGroup) % 2 === 0 && effG * advancePerGroup >= 2;
     if (!stillValid) setAdvancePerGroup(1);
@@ -105,8 +137,7 @@ export default function PicPlayersClient({
   const groupSizes = useMemo(() => {
     if (!crossTierMode) return snakePreview(pc, effG);
     if (aCount === 0 || aCount !== bCount || validGroupCounts.length === 0) return [];
-    const n = (aCount / effG) * 2;
-    return Array.from({ length: effG }, () => n);
+    return Array.from({ length: effG }, () => (aCount / effG) * 2);
   }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length]);
 
   const validAdvanceOptions = useMemo(() => {
@@ -119,20 +150,17 @@ export default function PicPlayersClient({
     return opts.length > 0 ? opts : [1];
   }, [groupSizes, effG, crossTierMode]);
 
-  // cross-tier specific validations
   const crossTierError = useMemo(() => {
     if (!crossTierMode) return null;
     if (untaggedCount > 0) return `Còn ${untaggedCount} VĐV chưa được phân hạng`;
-    if (aCount !== bCount) return `Hạng A: ${aCount} người, Hạng B: ${bCount} người — phải bằng nhau`;
+    if (aCount !== bCount) return `Hạng A: ${aCount} người — Hạng B: ${bCount} người — phải bằng nhau`;
     if (aCount === 0) return "Chưa phân hạng A/B";
-    if (validGroupCounts.length === 0) return "Không thể chia bảng A/B (cần 2 hoặc 4 VĐV/trình/bảng)";
+    if (validGroupCounts.length === 0) return "Không thể chia bảng A/B (cần 2 hoặc 4 VĐV mỗi trình mỗi bảng)";
     return null;
   }, [crossTierMode, untaggedCount, aCount, bCount, validGroupCounts.length]);
 
   const canGenerate = pc >= 4 && !hasGroups && (
-    crossTierMode
-      ? crossTierError === null && validGroupCounts.length > 0
-      : validGroupCounts.length > 0
+    crossTierMode ? crossTierError === null : validGroupCounts.length > 0
   );
 
   // Subscribe to pair session realtime
@@ -168,29 +196,94 @@ export default function PicPlayersClient({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawCode, hasGroups]);
 
-  const toggleCategory = (playerId: string) => {
-    setCategories((prev) => {
-      const cur = prev[playerId];
-      const next = { ...prev };
-      if (!cur) next[playerId] = "A";
-      else if (cur === "A") next[playerId] = "B";
-      else delete next[playerId];
-      return next;
+  // Tap player badge: if activeTier is set, assign directly; otherwise cycle none→A→B→none
+  const handlePlayerTap = (playerId: string) => {
+    if (activeTier) {
+      setCategories((prev) => ({ ...prev, [playerId]: activeTier }));
+    } else {
+      setCategories((prev) => {
+        const cur = prev[playerId];
+        const next = { ...prev };
+        if (!cur) next[playerId] = "A";
+        else if (cur === "A") next[playerId] = "B";
+        else delete next[playerId];
+        return next;
+      });
+    }
+  };
+
+  const computePreview = (): PreviewGroup[] => {
+    const aPs = clientShuffle(players.filter(p => categories[p.id] === "A"));
+    const bPs = clientShuffle(players.filter(p => categories[p.id] === "B"));
+    const aGroups = clientSnake(aPs, effG);
+    const bGroups = clientSnake(bPs, effG);
+    return aGroups.map((ag, i) => ({ aPlayers: ag, bPlayers: bGroups[i]! }));
+  };
+
+  const onDrawOrPreview = () => {
+    if (!canGenerate) return;
+    if (crossTierMode) {
+      setPreview(computePreview());
+      return;
+    }
+    startTransition(async () => {
+      const res = await generatePicGroups(eventId, effG, advancePerGroup);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      toast({ title: "Đã chia bảng!", description: `${effG} bảng đã được tạo.` });
+      router.refresh();
     });
   };
 
-  const quickTagTopBottom = () => {
-    const half = Math.floor(pc / 2);
-    const next: Record<string, Category> = {};
-    players.forEach((p, i) => { next[p.id] = i < half ? "A" : "B"; });
-    setCategories(next);
+  const onReshuffle = () => { setPreview(computePreview()); };
+
+  const onConfirm = () => {
+    if (!preview) return;
+    const precomputedGroupSlots = preview.map(g => [
+      ...g.aPlayers.map(p => p.id),
+      ...g.bPlayers.map(p => p.id),
+    ]);
+    startTransition(async () => {
+      const res = await generatePicGroups(
+        eventId, effG, 1,
+        true, categories,
+        precomputedGroupSlots,
+      );
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      localStorage.removeItem(`pic-cat-${eventId}`);
+      toast({ title: "Đã tạo lịch thi đấu!", description: `${effG} bảng A/B.` });
+      router.refresh();
+    });
   };
 
-  const quickTagBottomTop = () => {
-    const half = Math.floor(pc / 2);
-    const next: Record<string, Category> = {};
-    players.forEach((p, i) => { next[p.id] = i < half ? "B" : "A"; });
-    setCategories(next);
+  const onCreateLiveDraw = () => {
+    if (!canGenerate || crossTierMode) return;
+    startTransition(async () => {
+      const res = await createPicDraw(eventId, effG, advancePerGroup);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      setDrawCode(res.code);
+      setDrawStatus("locked");
+      const url = `${window.location.origin}/pair/${res.code}?host=${res.hostToken}`;
+      window.open(url, "_blank");
+      toast({ title: "Phòng bốc thăm đã tạo!" });
+    });
+  };
+
+  const onApplyDraw = () => {
+    startTransition(async () => {
+      const res = await applyPicDraw(eventId);
+      if ("ok" in res) { toast({ title: "Đã áp dụng!" }); router.refresh(); }
+      else toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+    });
+  };
+
+  const onReset = () => {
+    startTransition(async () => {
+      const res = await resetPicGroups(eventId);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      setPreview(null);
+      toast({ title: "Đã đặt lại bảng", description: "Phân hạng A/B và tạo lịch lại." });
+      router.refresh();
+    });
   };
 
   const onAdd = (e: React.FormEvent) => {
@@ -222,42 +315,7 @@ export default function PicPlayersClient({
       const res = await removePicPlayer(eventId, id);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setPlayers((prev) => prev.filter((p) => p.id !== id));
-      setCategories((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    });
-  };
-
-  const onGenerate = () => {
-    if (!canGenerate) return;
-    startTransition(async () => {
-      const res = await generatePicGroups(
-        eventId, effG, crossTierMode ? 1 : advancePerGroup,
-        crossTierMode, crossTierMode ? categories : {},
-      );
-      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
-      if (crossTierMode) localStorage.removeItem(`pic-cat-${eventId}`);
-      toast({ title: "Đã chia bảng!", description: `${effG} bảng đã được tạo.` });
-      router.refresh();
-    });
-  };
-
-  const onCreateLiveDraw = () => {
-    if (!canGenerate || crossTierMode) return;
-    startTransition(async () => {
-      const res = await createPicDraw(eventId, effG, advancePerGroup);
-      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
-      setDrawCode(res.code);
-      setDrawStatus("locked");
-      const url = `${window.location.origin}/pair/${res.code}?host=${res.hostToken}`;
-      window.open(url, "_blank");
-      toast({ title: "Phòng bốc thăm đã tạo!", description: "Chia sẻ link để mọi người cùng xem." });
-    });
-  };
-
-  const onApplyDraw = () => {
-    startTransition(async () => {
-      const res = await applyPicDraw(eventId);
-      if ("ok" in res) { toast({ title: "Đã áp dụng!" }); router.refresh(); }
-      else toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+      setCategories((prev) => { const n = { ...prev }; delete n[id]; return n; });
     });
   };
 
@@ -265,103 +323,67 @@ export default function PicPlayersClient({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="size-5 text-primary" />
-            VĐV ({pc})
-          </CardTitle>
-          <CardDescription>
-            {hasGroups
-              ? "Bảng đấu đã được tạo. Danh sách VĐV đã cố định."
-              : "Thêm VĐV rồi chia bảng ngẫu nhiên ở phần bên dưới."}
-          </CardDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="size-5 text-primary" />
+                VĐV ({pc})
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {hasGroups ? "Bảng đấu đã được tạo. Danh sách VĐV đã cố định." : "Thêm VĐV rồi chia bảng ở phần bên dưới."}
+              </CardDescription>
+            </div>
+            {hasGroups && !hasCompletedMatches && (
+              <Button size="sm" variant="outline" onClick={onReset} disabled={pending} className="shrink-0 text-destructive hover:text-destructive">
+                <RefreshCw className="size-3.5" />Đặt lại bảng
+              </Button>
+            )}
+          </div>
         </CardHeader>
       </Card>
 
       {!hasGroups && (
         <>
-          {/* Add one */}
           <Card>
             <CardHeader><CardTitle className="text-base">Thêm VĐV</CardTitle></CardHeader>
             <CardContent>
               <form onSubmit={onAdd} className="flex gap-2">
-                <Input
-                  placeholder="Tên VĐV"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  maxLength={100}
-                  required
-                  className="flex-1"
-                />
-                <Button type="submit" disabled={pending || !name.trim()}>
-                  <Plus className="size-4" />Thêm
-                </Button>
+                <Input placeholder="Tên VĐV" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required className="flex-1" />
+                <Button type="submit" disabled={pending || !name.trim()}><Plus className="size-4" />Thêm</Button>
               </form>
             </CardContent>
           </Card>
 
-          {/* Bulk import */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Import danh sách</CardTitle>
               <CardDescription>Mỗi dòng 1 tên</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              <textarea
-                className="w-full rounded-md border bg-background p-2 font-mono text-sm"
-                rows={6}
-                value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-                placeholder={"Nguyễn Văn A\nTrần Thị B\nLê Văn C\n..."}
-              />
-              <Button onClick={onImport} variant="outline" disabled={pending || !csvText.trim()}>
-                <Upload className="size-4" />Import
-              </Button>
+              <textarea className="w-full rounded-md border bg-background p-2 font-mono text-sm" rows={6} value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={"Nguyễn Văn A\nTrần Thị B\n..."} />
+              <Button onClick={onImport} variant="outline" disabled={pending || !csvText.trim()}><Upload className="size-4" />Import</Button>
             </CardContent>
           </Card>
 
-          {/* Live draw session */}
           {drawCode && (
             <Card className="border-red-400/40 bg-red-500/5">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-500">
-                  <Radio className="size-4 animate-pulse" />
-                  Phòng bốc thăm đang hoạt động
-                </CardTitle>
-                <CardDescription>
-                  {drawStatus === "shuffled"
-                    ? "Đã có kết quả! Đang áp dụng vào giải…"
-                    : "Chia sẻ link bên dưới để mọi người cùng xem quay bảng."}
-                </CardDescription>
+                <CardTitle className="flex items-center gap-2 text-red-500"><Radio className="size-4 animate-pulse" />Phòng bốc thăm đang hoạt động</CardTitle>
+                <CardDescription>{drawStatus === "shuffled" ? "Đã có kết quả! Đang áp dụng…" : "Chia sẻ link để mọi người cùng xem."}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <a
-                  href={`/pair/${drawCode}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-mono text-primary hover:bg-accent"
-                >
-                  <ExternalLink className="size-3.5 shrink-0" />
-                  /pair/{drawCode}
+                <a href={`/pair/${drawCode}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-mono text-primary hover:bg-accent">
+                  <ExternalLink className="size-3.5 shrink-0" />/pair/{drawCode}
                 </a>
-                {drawStatus === "shuffled" && (
-                  <Button onClick={onApplyDraw} disabled={pending} className="w-full">
-                    Áp dụng kết quả bốc thăm
-                  </Button>
-                )}
+                {drawStatus === "shuffled" && <Button onClick={onApplyDraw} disabled={pending} className="w-full">Áp dụng kết quả bốc thăm</Button>}
               </CardContent>
             </Card>
           )}
 
-          {/* Group generation */}
+          {/* ── Group generation ── */}
           <Card className="border-primary/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shuffle className="size-5 text-primary" />
-                Chia bảng đấu
-              </CardTitle>
-              <CardDescription>
-                Chọn số bảng, rồi quay ngay hoặc tạo phòng bốc thăm realtime để mọi người cùng xem.
-              </CardDescription>
+              <CardTitle className="flex items-center gap-2"><Shuffle className="size-5 text-primary" />Chia bảng đấu</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
 
@@ -371,122 +393,160 @@ export default function PicPlayersClient({
                   <p className="text-sm font-medium">Chế độ chia trình A/B</p>
                   <p className="text-xs text-muted-foreground">Mỗi đội = 1 VĐV hạng A + 1 VĐV hạng B</p>
                 </div>
-                <div
-                  onClick={() => setCrossTierMode((v) => !v)}
-                  className={`relative h-6 w-11 rounded-full transition-colors ${crossTierMode ? "bg-primary" : "bg-muted"}`}
-                >
+                <div onClick={() => { setCrossTierMode(v => !v); setPreview(null); setActiveTier(null); }} className={`relative h-6 w-11 rounded-full transition-colors ${crossTierMode ? "bg-primary" : "bg-muted"}`}>
                   <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${crossTierMode ? "translate-x-5" : "translate-x-0.5"}`} />
                 </div>
               </label>
 
-              {/* Cross-tier: quick tag buttons */}
-              {crossTierMode && (
+              {/* Cross-tier: active tier selector */}
+              {crossTierMode && !preview && (
                 <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-                  <p className="text-xs font-semibold text-primary">Tag nhanh theo thứ tự danh sách</p>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={quickTagTopBottom} disabled={pc === 0}>
-                      Top = A / Bottom = B
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={quickTagBottomTop} disabled={pc === 0}>
-                      Top = B / Bottom = A
-                    </Button>
+                  <p className="text-xs font-semibold text-primary">Chọn hạng để gán nhanh — tap VĐV trong danh sách bên dưới</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveTier(v => v === "A" ? null : "A")}
+                      className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "A" ? "bg-blue-500 text-white ring-2 ring-blue-500 ring-offset-1" : "border bg-white text-blue-600 hover:bg-blue-50"}`}
+                    >
+                      A
+                    </button>
+                    <button
+                      onClick={() => setActiveTier(v => v === "B" ? null : "B")}
+                      className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "B" ? "bg-orange-500 text-white ring-2 ring-orange-500 ring-offset-1" : "border bg-white text-orange-600 hover:bg-orange-50"}`}
+                    >
+                      B
+                    </button>
+                    {activeTier && (
+                      <span className="text-xs text-muted-foreground">
+                        Đang gán hạng <strong>{activeTier}</strong> — tap VĐV hoặc nhấn lại nút để thoát
+                      </span>
+                    )}
+                    {!activeTier && (
+                      <span className="text-xs text-muted-foreground">hoặc tap thẳng badge từng VĐV để chuyển A→B→bỏ</span>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground">hoặc tap badge từng VĐV trong danh sách để đổi thủ công</p>
-                  {/* Status bar */}
                   <div className="flex items-center gap-3 text-sm font-medium">
                     <span className="rounded bg-blue-500/15 px-2 py-0.5 text-blue-600">A: {aCount}</span>
                     <span className="rounded bg-orange-500/15 px-2 py-0.5 text-orange-600">B: {bCount}</span>
                     {untaggedCount > 0 && <span className="text-xs text-muted-foreground">chưa tag: {untaggedCount}</span>}
                   </div>
-                  {crossTierError && (
-                    <p className="text-xs font-medium text-destructive">{crossTierError}</p>
-                  )}
+                  {crossTierError && <p className="text-xs font-medium text-destructive">{crossTierError}</p>}
                 </div>
               )}
 
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Tổng VĐV</p>
-                  <div className="flex h-10 items-center rounded-md border bg-secondary/30 px-3 text-sm">
-                    {pc} người
+              {/* Preview: show group distribution before confirming */}
+              {preview && (
+                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                  <p className="text-sm font-semibold text-primary">Xem trước phân bảng — kiểm tra rồi xác nhận</p>
+                  <div className={`grid gap-3 ${effG <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
+                    {preview.map((g, gi) => (
+                      <div key={gi} className="rounded-lg border bg-card p-3 space-y-2">
+                        <p className="text-xs font-bold text-primary">Bảng {String.fromCharCode(65 + gi)} — {g.aPlayers.length}A + {g.bPlayers.length}B</p>
+                        <div className="space-y-1">
+                          {g.aPlayers.map(p => (
+                            <div key={p.id} className="flex items-center gap-1.5 text-xs">
+                              <span className="flex h-4 w-5 items-center justify-center rounded bg-blue-500 text-[9px] font-bold text-white">A</span>
+                              <span className="truncate">{p.name}</span>
+                            </div>
+                          ))}
+                          {g.bPlayers.map(p => (
+                            <div key={p.id} className="flex items-center gap-1.5 text-xs">
+                              <span className="flex h-4 w-5 items-center justify-center rounded bg-orange-500 text-[9px] font-bold text-white">B</span>
+                              <span className="truncate">{p.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Số bảng</p>
-                  {validGroupCounts.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {validGroupCounts.map((g) => {
-                        const sizes = crossTierMode
-                          ? Array.from({ length: g }, () => (aCount / g) * 2)
-                          : snakePreview(pc, g);
-                        const unique = [...new Set(sizes)].sort((a, b) => a - b);
-                        const tag = unique.length === 1 ? `${unique[0]}ng` : `${unique[0]}–${unique[unique.length - 1]}ng`;
-                        return (
-                          <button key={g} onClick={() => setGroupCount(g)}
-                            className={`rounded-md border px-2.5 py-1.5 text-sm font-semibold transition-colors ${
-                              effG === g ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
-                            }`}>
-                            {g} bảng <span className="text-xs font-normal opacity-60">{tag}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {crossTierMode ? "Tag đủ A=B trước" : "Cần ít nhất 4 VĐV"}
-                    </p>
-                  )}
-                </div>
-                {!crossTierMode && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Vào vòng trong</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {validAdvanceOptions.map((v) => {
-                        const total = effG * v;
-                        return (
-                          <button key={v} onClick={() => setAdvancePerGroup(v)}
-                            className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                              advancePerGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
-                            }`}>
-                            <span className="block">Top {v}/bảng</span>
-                            <span className="block text-xs font-normal opacity-60">→ {total} người tổng</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={onReshuffle} disabled={pending} className="flex-1">
+                      <RefreshCw className="size-3.5" />Xáo lại
+                    </Button>
+                    <Button onClick={onConfirm} disabled={pending} className="flex-1">
+                      <Check className="size-3.5" />{pending ? "Đang tạo…" : "Xác nhận & Tạo lịch"}
+                    </Button>
                   </div>
-                )}
-              </div>
-
-              {/* Group preview */}
-              {groupSizes.length > 0 && (
-                <div className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${effG <= 2 ? "grid-cols-2" : effG <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
-                  {groupSizes.map((size, gi) => (
-                    <div key={gi} className="space-y-0.5">
-                      <p className="text-xs font-bold text-primary">Bảng {String.fromCharCode(65 + gi)}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {crossTierMode ? `${size / 2}A + ${size / 2}B` : `${size} người`}
-                      </p>
-                    </div>
-                  ))}
+                  <button onClick={() => setPreview(null)} className="text-xs text-muted-foreground underline">← Quay lại chỉnh hạng</button>
                 </div>
               )}
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button onClick={onGenerate} disabled={!canGenerate || pending || !!drawCode} variant="outline" size="lg">
-                  <Shuffle className="size-4" />
-                  {pending ? "Đang tạo…" : "🎲 Quay ngay (local)"}
-                </Button>
-                {!crossTierMode && (
-                  <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode} size="lg">
-                    <Radio className="size-4" />
-                    {pending ? "Đang tạo…" : "📺 Quay LIVE (realtime)"}
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                ⚠️ Chia bảng 1 lần duy nhất. Sau khi quay, sang tab <strong>Trận đấu</strong> để nhập điểm.
-              </p>
+              {!preview && (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Tổng VĐV</p>
+                      <div className="flex h-10 items-center rounded-md border bg-secondary/30 px-3 text-sm">{pc} người</div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Số bảng</p>
+                      {validGroupCounts.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {validGroupCounts.map((g) => {
+                            const sizes = crossTierMode
+                              ? Array.from({ length: g }, () => (aCount / g) * 2)
+                              : snakePreview(pc, g);
+                            const unique = [...new Set(sizes)].sort((a, b) => a - b);
+                            const tag = unique.length === 1 ? `${unique[0]}ng` : `${unique[0]}–${unique[unique.length - 1]}ng`;
+                            return (
+                              <button key={g} onClick={() => setGroupCount(g)}
+                                className={`rounded-md border px-2.5 py-1.5 text-sm font-semibold transition-colors ${effG === g ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}>
+                                {g} bảng <span className="text-xs font-normal opacity-60">{tag}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{crossTierMode ? "Tag đủ A=B trước" : "Cần ít nhất 4 VĐV"}</p>
+                      )}
+                    </div>
+                    {!crossTierMode && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Vào vòng trong</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {validAdvanceOptions.map((v) => {
+                            const total = effG * v;
+                            return (
+                              <button key={v} onClick={() => setAdvancePerGroup(v)}
+                                className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${advancePerGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}>
+                                <span className="block">Top {v}/bảng</span>
+                                <span className="block text-xs font-normal opacity-60">→ {total} người tổng</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {groupSizes.length > 0 && (
+                    <div className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${effG <= 2 ? "grid-cols-2" : effG <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
+                      {groupSizes.map((size, gi) => (
+                        <div key={gi} className="space-y-0.5">
+                          <p className="text-xs font-bold text-primary">Bảng {String.fromCharCode(65 + gi)}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {crossTierMode ? `${size / 2}A + ${size / 2}B` : `${size} người`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button onClick={onDrawOrPreview} disabled={!canGenerate || pending || !!drawCode} variant="outline" size="lg">
+                      <Shuffle className="size-4" />
+                      {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : "🎲 Quay ngay (local)"}
+                    </Button>
+                    {!crossTierMode && (
+                      <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode} size="lg">
+                        <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 Quay LIVE (realtime)"}
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    ⚠️ Chia bảng 1 lần duy nhất. Sau khi quay, sang tab <strong>Trận đấu</strong> để nhập điểm.
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
         </>
@@ -497,46 +557,37 @@ export default function PicPlayersClient({
         <CardHeader><CardTitle className="text-base">Danh sách</CardTitle></CardHeader>
         <CardContent>
           {players.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              Chưa có VĐV nào. Thêm ở trên hoặc import danh sách.
-            </p>
+            <p className="py-8 text-center text-sm text-muted-foreground">Chưa có VĐV nào. Thêm ở trên hoặc import danh sách.</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {players.map((p, i) => {
                 const cat = categories[p.id];
+                const isActive = !hasGroups && crossTierMode && !preview;
                 return (
-                  <div key={p.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
+                  <div key={p.id}
+                    onClick={isActive ? () => handlePlayerTap(p.id) : undefined}
+                    className={`flex items-center justify-between gap-2 rounded-md border p-2 text-sm ${isActive ? "cursor-pointer select-none active:scale-95 transition-transform" : ""} ${isActive && activeTier ? "hover:bg-accent" : ""}`}
+                  >
                     <span className="flex flex-1 items-center gap-2 truncate">
-                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                        {i + 1}
-                      </span>
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">{i + 1}</span>
                       <span className="truncate">{p.name}</span>
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
-                      {!hasGroups && crossTierMode && (
-                        <button
-                          onClick={() => toggleCategory(p.id)}
-                          className={`flex h-6 w-7 items-center justify-center rounded text-xs font-bold transition-colors ${
-                            cat === "A"
-                              ? "bg-blue-500 text-white"
-                              : cat === "B"
-                              ? "bg-orange-500 text-white"
-                              : "border bg-muted text-muted-foreground"
-                          }`}
-                          title="Tap để đổi hạng"
-                        >
-                          {cat ?? "—"}
-                        </button>
-                      )}
-                      {hasGroups && cat && (
-                        <span className={`flex h-5 w-6 items-center justify-center rounded text-[10px] font-bold ${
-                          cat === "A" ? "bg-blue-500/15 text-blue-600" : "bg-orange-500/15 text-orange-600"
+                      {/* Category badge */}
+                      {(crossTierMode && !preview) && (
+                        <span className={`flex h-6 w-7 items-center justify-center rounded text-xs font-bold transition-colors ${
+                          cat === "A" ? "bg-blue-500 text-white"
+                          : cat === "B" ? "bg-orange-500 text-white"
+                          : "border bg-muted text-muted-foreground"
                         }`}>
-                          {cat}
+                          {cat ?? "—"}
                         </span>
                       )}
-                      {!hasGroups && (
-                        <Button size="sm" variant="ghost" onClick={() => onDelete(p.id)} disabled={pending}>
+                      {hasGroups && cat && (
+                        <span className={`flex h-5 w-6 items-center justify-center rounded text-[10px] font-bold ${cat === "A" ? "bg-blue-500/15 text-blue-600" : "bg-orange-500/15 text-orange-600"}`}>{cat}</span>
+                      )}
+                      {!hasGroups && !preview && (
+                        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} disabled={pending}>
                           <Trash2 className="size-3" />
                         </Button>
                       )}
