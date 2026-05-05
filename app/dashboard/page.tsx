@@ -60,30 +60,19 @@ export default async function DashboardPage() {
 
         {/* PIC xoay cặp section */}
         <section>
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Users className="size-5 text-primary" />
-                PIC xoay cặp
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">Giải đấu xoay cặp đôi cá nhân</p>
-            </div>
-            <Link href="/pic/new">
-              <Button size="sm">
-                <Plus className="size-4" />
-                Tạo giải PIC
-              </Button>
-            </Link>
+          <div className="mb-4">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Users className="size-5 text-primary" />
+              PIC xoay cặp
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Giải đấu xoay cặp đôi cá nhân</p>
           </div>
           {picList.length === 0 ? (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Chưa có giải PIC nào</CardTitle>
-                <CardDescription>Tạo giải đấu xoay cặp đầu tiên của bạn.</CardDescription>
+                <CardDescription>Tạo giải đấu xoay cặp từ trang Tạo giải mới.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <Link href="/pic/new"><Button size="sm">Tạo giải PIC</Button></Link>
-              </CardContent>
             </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
