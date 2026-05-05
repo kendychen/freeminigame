@@ -289,8 +289,6 @@ export async function generatePicGroups(
   groupCount: number,
   advancePerGroup: number,
   crossTierMode = false,
-  playerCategories: Record<string, "A" | "B"> = {},
-  precomputedGroupSlots?: string[][],
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -315,39 +313,12 @@ export async function generatePicGroups(
     .eq("event_id", eventId);
   if (!players || players.length < 4) return { error: "need_at_least_4_players" };
 
-  function shuffle(arr: string[]) {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j]!, arr[i]!];
-    }
+  const ids = players.map((p) => p.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
   }
-
-  let groupSlots: string[][];
-
-  if (precomputedGroupSlots && precomputedGroupSlots.length === groupCount) {
-    groupSlots = precomputedGroupSlots;
-  } else if (crossTierMode) {
-    const allIds = players.map((p) => p.id);
-    const aIds = allIds.filter((id) => playerCategories[id] === "A");
-    const bIds = allIds.filter((id) => playerCategories[id] === "B");
-
-    if (aIds.length !== bIds.length) return { error: "Số VĐV hạng A và B phải bằng nhau" };
-    if (aIds.length === 0) return { error: "Chưa phân hạng A/B cho VĐV" };
-
-    const nPerTier = aIds.length / groupCount;
-    if (!Number.isInteger(nPerTier) || (nPerTier !== 2 && nPerTier !== 4))
-      return { error: "Chế độ A/B chỉ hỗ trợ 2 hoặc 4 VĐV mỗi trình mỗi bảng" };
-
-    shuffle(aIds);
-    shuffle(bIds);
-    const aGroups = snakeDistribute(aIds, groupCount);
-    const bGroups = snakeDistribute(bIds, groupCount);
-    groupSlots = aGroups.map((ag, i) => [...ag, ...bGroups[i]!]);
-  } else {
-    const ids = players.map((p) => p.id);
-    shuffle(ids);
-    groupSlots = snakeDistribute(ids, groupCount);
-  }
+  const groupSlots = snakeDistribute(ids, groupCount);
 
   for (let gi = 0; gi < groupSlots.length; gi++) {
     const label = String.fromCharCode(65 + gi);
@@ -363,41 +334,24 @@ export async function generatePicGroups(
       slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
     );
 
+    // In crossTierMode: skip match generation — admin will assign A/B then call generateCrossTierGroupMatches
+    if (crossTierMode) continue;
+
     const n = slotIds.length;
     if (n < 4) continue;
-
-    if (crossTierMode) {
-      const nPerTier = n / 2;
-      const aPlayers = slotIds.slice(0, nPerTier);
-      const bPlayers = slotIds.slice(nPerTier);
-      const schedule = generateCrossSchedule(nPerTier);
-      await svc.from("pic_matches").insert(
-        schedule.map((slot, i) => ({
-          event_id: eventId,
-          group_id: grp.id,
-          round: i + 1,
-          stage: "group",
-          a1_id: aPlayers[slot.teamA[0]]!,
-          a2_id: bPlayers[slot.teamA[1]]!,
-          b1_id: aPlayers[slot.teamB[0]]!,
-          b2_id: bPlayers[slot.teamB[1]]!,
-        })),
-      );
-    } else {
-      const schedule = generateGroupSchedule(Math.min(n, 8));
-      await svc.from("pic_matches").insert(
-        schedule.map((slot, i) => ({
-          event_id: eventId,
-          group_id: grp.id,
-          round: i + 1,
-          stage: "group",
-          a1_id: slotIds[slot.a[0]]!,
-          a2_id: slotIds[slot.a[1]]!,
-          b1_id: slotIds[slot.b[0]]!,
-          b2_id: slotIds[slot.b[1]]!,
-        })),
-      );
-    }
+    const schedule = generateGroupSchedule(Math.min(n, 8));
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
+    );
   }
 
   const cfg = ev.config as Record<string, unknown>;
@@ -410,6 +364,165 @@ export async function generatePicGroups(
     .eq("id", eventId);
 
   revalidatePath(`/pic`);
+  return { ok: true };
+}
+
+// ── Generate cross-tier matches after admin assigns A/B within each group ────────
+
+export async function generateCrossTierGroupMatches(
+  eventId: string,
+  playerCategories: Record<string, "A" | "B">,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingMatches } = await svc
+    .from("pic_matches")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("stage", "group")
+    .limit(1);
+  if (existingMatches && existingMatches.length > 0)
+    return { error: "Lịch đấu đã tồn tại" };
+
+  const { data: groups } = await svc
+    .from("pic_groups")
+    .select("id, label")
+    .eq("event_id", eventId)
+    .order("label");
+  if (!groups || groups.length === 0) return { error: "Chưa có bảng đấu" };
+
+  const groupIds = groups.map((g) => g.id);
+  const { data: gps } = await svc
+    .from("pic_group_players")
+    .select("group_id, player_id, seed")
+    .in("group_id", groupIds)
+    .order("seed");
+  if (!gps) return { error: "Không đọc được danh sách VĐV" };
+
+  const matchRows: {
+    event_id: string; group_id: string; round: number; stage: string;
+    a1_id: string; a2_id: string; b1_id: string; b2_id: string;
+  }[] = [];
+
+  for (const grp of groups) {
+    const slotIds = gps
+      .filter((gp) => gp.group_id === grp.id)
+      .sort((a, b) => (a.seed ?? 0) - (b.seed ?? 0))
+      .map((gp) => gp.player_id as string);
+
+    const aPlayers = slotIds.filter((id) => playerCategories[id] === "A");
+    const bPlayers = slotIds.filter((id) => playerCategories[id] === "B");
+
+    if (aPlayers.length !== bPlayers.length)
+      return { error: `Bảng ${grp.label}: số VĐV hạng A (${aPlayers.length}) ≠ hạng B (${bPlayers.length})` };
+
+    const nPerTier = aPlayers.length;
+    if (nPerTier !== 2 && nPerTier !== 4)
+      return { error: `Bảng ${grp.label}: chỉ hỗ trợ 2 hoặc 4 VĐV mỗi trình (hiện có ${nPerTier})` };
+
+    const schedule = generateCrossSchedule(nPerTier);
+    for (let i = 0; i < schedule.length; i++) {
+      const slot = schedule[i]!;
+      matchRows.push({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: aPlayers[slot.teamA[0]]!,
+        a2_id: bPlayers[slot.teamA[1]]!,
+        b1_id: aPlayers[slot.teamB[0]]!,
+        b2_id: bPlayers[slot.teamB[1]]!,
+      });
+    }
+  }
+
+  const { error } = await svc.from("pic_matches").insert(matchRows);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic/${eventId}`);
+  return { ok: true };
+}
+
+// ── Generate normal (random) matches for existing groups (no matches yet) ────────
+
+export async function generateNormalGroupMatches(
+  eventId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingMatches } = await svc
+    .from("pic_matches")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("stage", "group")
+    .limit(1);
+  if (existingMatches && existingMatches.length > 0)
+    return { error: "Lịch đấu đã tồn tại" };
+
+  const { data: groups } = await svc
+    .from("pic_groups")
+    .select("id, label")
+    .eq("event_id", eventId)
+    .order("label");
+  if (!groups || groups.length === 0) return { error: "Chưa có bảng đấu" };
+
+  const groupIds = groups.map((g) => g.id);
+  const { data: gps } = await svc
+    .from("pic_group_players")
+    .select("group_id, player_id, seed")
+    .in("group_id", groupIds)
+    .order("seed");
+  if (!gps) return { error: "Không đọc được danh sách VĐV" };
+
+  const matchRows: {
+    event_id: string; group_id: string; round: number; stage: string;
+    a1_id: string; a2_id: string; b1_id: string; b2_id: string;
+  }[] = [];
+
+  for (const grp of groups) {
+    const slotIds = gps
+      .filter((gp) => gp.group_id === grp.id)
+      .sort((a, b) => (a.seed ?? 0) - (b.seed ?? 0))
+      .map((gp) => gp.player_id as string);
+
+    const n = slotIds.length;
+    if (n < 4) continue;
+    const schedule = generateGroupSchedule(Math.min(n, 8));
+    for (let i = 0; i < schedule.length; i++) {
+      const slot = schedule[i]!;
+      matchRows.push({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      });
+    }
+  }
+
+  const { error } = await svc.from("pic_matches").insert(matchRows);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic/${eventId}`);
   return { ok: true };
 }
 
@@ -862,6 +975,92 @@ export async function applyPicDraw(
     .eq("id", eventId);
 
   revalidatePath(`/pic/${eventId}`);
+  return { ok: true };
+}
+
+// ── Generate cross-tier groups + matches in one step (old pre-split flow) ────────
+
+export async function generateCrossTierGroupsFull(
+  eventId: string,
+  groupSlots: string[][],
+  playerCategories: Record<string, "A" | "B">,
+  advancePerGroup: number,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingGroups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId);
+  if (existingGroups && existingGroups.length > 0)
+    return { error: "schedule_already_generated" };
+
+  const matchRows: {
+    event_id: string; group_id: string; round: number; stage: string;
+    a1_id: string; a2_id: string; b1_id: string; b2_id: string;
+  }[] = [];
+
+  for (let gi = 0; gi < groupSlots.length; gi++) {
+    const label = String.fromCharCode(65 + gi);
+    const slotIds = groupSlots[gi]!;
+
+    const { data: grp, error: grpErr } = await svc
+      .from("pic_groups")
+      .insert({ event_id: eventId, label })
+      .select("id")
+      .single();
+    if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
+
+    await svc.from("pic_group_players").insert(
+      slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
+
+    const aPlayers = slotIds.filter((id) => playerCategories[id] === "A");
+    const bPlayers = slotIds.filter((id) => playerCategories[id] === "B");
+
+    if (aPlayers.length !== bPlayers.length)
+      return { error: `Bảng ${label}: số VĐV hạng A (${aPlayers.length}) ≠ hạng B (${bPlayers.length})` };
+
+    const nPerTier = aPlayers.length;
+    if (nPerTier !== 2 && nPerTier !== 4)
+      return { error: `Bảng ${label}: chỉ hỗ trợ 2 hoặc 4 VĐV mỗi trình` };
+
+    const schedule = generateCrossSchedule(nPerTier);
+    for (let i = 0; i < schedule.length; i++) {
+      const slot = schedule[i]!;
+      matchRows.push({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: aPlayers[slot.teamA[0]]!,
+        a2_id: bPlayers[slot.teamA[1]]!,
+        b1_id: aPlayers[slot.teamB[0]]!,
+        b2_id: bPlayers[slot.teamB[1]]!,
+      });
+    }
+  }
+
+  if (matchRows.length > 0) {
+    const { error } = await svc.from("pic_matches").insert(matchRows);
+    if (error) return { error: error.message };
+  }
+
+  const cfg = ev.config as Record<string, unknown>;
+  await svc
+    .from("pic_events")
+    .update({ config: { ...cfg, advancePerGroup }, updated_at: new Date().toISOString() })
+    .eq("id", eventId);
+
+  revalidatePath(`/pic`);
   return { ok: true };
 }
 

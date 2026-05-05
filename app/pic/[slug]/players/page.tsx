@@ -18,12 +18,14 @@ export default async function PicPlayersPage({
   const hasCompletedMatches = state.groups.some(g =>
     g.matches.some(m => m.status === "completed"),
   );
+  const hasMatches = state.groups.some(g => g.matches.length > 0);
 
   return (
     <PicPlayersClient
       eventId={state.id}
       initialPlayers={state.players}
-      hasGroups={state.groups.length > 0}
+      initialGroups={state.groups.map(g => ({ id: g.id, label: g.label, playerIds: g.playerIds }))}
+      hasMatches={hasMatches}
       hasCompletedMatches={hasCompletedMatches}
       drawCode={state.config.drawCode ?? null}
     />

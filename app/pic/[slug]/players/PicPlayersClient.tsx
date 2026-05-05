@@ -7,16 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
-import { addPicPlayer, removePicPlayer, bulkAddPicPlayers, generatePicGroups, createPicDraw, applyPicDraw, resetPicGroups } from "@/app/actions/pic";
+import {
+  addPicPlayer, removePicPlayer, bulkAddPicPlayers,
+  generatePicGroups, generateCrossTierGroupMatches, generateNormalGroupMatches,
+  generateCrossTierGroupsFull, createPicDraw, applyPicDraw, resetPicGroups,
+} from "@/app/actions/pic";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 interface Player { id: string; name: string }
+interface Group { id: string; label: string; playerIds: string[] }
 type Category = "A" | "B";
-
-interface PreviewGroup {
-  aPlayers: Player[];
-  bPlayers: Player[];
-}
+interface PreviewGroup { aPlayers: Player[]; bPlayers: Player[] }
 
 function snakePreview(count: number, groupCount: number): number[] {
   const sizes = Array.from({ length: groupCount }, () => 0);
@@ -54,17 +55,27 @@ function clientSnake<T>(arr: T[], n: number): T[][] {
 export default function PicPlayersClient({
   eventId,
   initialPlayers,
-  hasGroups,
+  initialGroups,
+  hasMatches,
   hasCompletedMatches,
   drawCode: initialDrawCode,
 }: {
   eventId: string;
   initialPlayers: Player[];
-  hasGroups: boolean;
+  initialGroups: Group[];
+  hasMatches: boolean;
   hasCompletedMatches: boolean;
   drawCode: string | null;
 }) {
   const router = useRouter();
+  const hasGroups = initialGroups.length > 0;
+
+  const playerMap = useMemo(() => {
+    const m: Record<string, Player> = {};
+    for (const p of initialPlayers) m[p.id] = p;
+    return m;
+  }, [initialPlayers]);
+
   const [players, setPlayers] = useState<Player[]>(initialPlayers);
   const [name, setName] = useState("");
   const [csvText, setCsvText] = useState("");
@@ -74,12 +85,12 @@ export default function PicPlayersClient({
   const [drawCode, setDrawCode] = useState<string | null>(initialDrawCode);
   const [drawStatus, setDrawStatus] = useState<string | null>(null);
 
-  // Cross-tier mode
+  // Old pre-split A/B flow toggle
   const [crossTierMode, setCrossTierMode] = useState(false);
+  // Shared A/B categories (State 1 old flow + State 2 post-split)
   const [categories, setCategories] = useState<Record<string, Category>>({});
-  // activeTier: when set, tapping a player directly assigns them to that tier
   const [activeTier, setActiveTier] = useState<Category | null>(null);
-  // preview before confirming schedule generation
+  // Preview for old flow
   const [preview, setPreview] = useState<PreviewGroup[] | null>(null);
 
   const pc = players.length;
@@ -87,7 +98,6 @@ export default function PicPlayersClient({
   const bCount = useMemo(() => players.filter(p => categories[p.id] === "B").length, [players, categories]);
   const untaggedCount = pc - aCount - bCount;
 
-  // Restore categories from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(`pic-cat-${eventId}`);
@@ -95,7 +105,6 @@ export default function PicPlayersClient({
     } catch {}
   }, [eventId]);
 
-  // Persist categories
   useEffect(() => {
     if (Object.keys(categories).length > 0)
       localStorage.setItem(`pic-cat-${eventId}`, JSON.stringify(categories));
@@ -123,8 +132,13 @@ export default function PicPlayersClient({
 
   const effG = validGroupCounts.includes(groupCount) ? groupCount : (validGroupCounts[0] ?? 1);
 
-  // Reset preview when categories or effG changes
   useEffect(() => { setPreview(null); }, [categories, effG]);
+
+  const groupSizes = useMemo(() => {
+    if (!crossTierMode) return snakePreview(pc, effG);
+    if (aCount === 0 || aCount !== bCount || validGroupCounts.length === 0) return [];
+    return Array.from({ length: effG }, () => (aCount / effG) * 2);
+  }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length]);
 
   useEffect(() => {
     if (crossTierMode || groupSizes.length === 0) return;
@@ -133,12 +147,6 @@ export default function PicPlayersClient({
     if (!stillValid) setAdvancePerGroup(1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effG, crossTierMode]);
-
-  const groupSizes = useMemo(() => {
-    if (!crossTierMode) return snakePreview(pc, effG);
-    if (aCount === 0 || aCount !== bCount || validGroupCounts.length === 0) return [];
-    return Array.from({ length: effG }, () => (aCount / effG) * 2);
-  }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length]);
 
   const validAdvanceOptions = useMemo(() => {
     if (crossTierMode || groupSizes.length === 0) return [1];
@@ -153,9 +161,9 @@ export default function PicPlayersClient({
   const crossTierError = useMemo(() => {
     if (!crossTierMode) return null;
     if (untaggedCount > 0) return `Còn ${untaggedCount} VĐV chưa được phân hạng`;
-    if (aCount !== bCount) return `Hạng A: ${aCount} người — Hạng B: ${bCount} người — phải bằng nhau`;
+    if (aCount !== bCount) return `Hạng A: ${aCount} — Hạng B: ${bCount} — phải bằng nhau`;
     if (aCount === 0) return "Chưa phân hạng A/B";
-    if (validGroupCounts.length === 0) return "Không thể chia bảng A/B (cần 2 hoặc 4 VĐV mỗi trình mỗi bảng)";
+    if (validGroupCounts.length === 0) return "Không thể chia bảng (cần 2 hoặc 4 VĐV mỗi trình mỗi bảng)";
     return null;
   }, [crossTierMode, untaggedCount, aCount, bCount, validGroupCounts.length]);
 
@@ -163,7 +171,25 @@ export default function PicPlayersClient({
     crossTierMode ? crossTierError === null : validGroupCounts.length > 0
   );
 
-  // Subscribe to pair session realtime
+  // State 2: validate A/B per group
+  const groupCategoryErrors = useMemo(() => {
+    if (!hasGroups || hasMatches) return {} as Record<string, string>;
+    const errors: Record<string, string> = {};
+    for (const g of initialGroups) {
+      const aPs = g.playerIds.filter(id => categories[id] === "A");
+      const bPs = g.playerIds.filter(id => categories[id] === "B");
+      const untagged = g.playerIds.filter(id => !categories[id]);
+      if (untagged.length > 0) errors[g.id] = `Còn ${untagged.length} VĐV chưa phân hạng`;
+      else if (aPs.length !== bPs.length) errors[g.id] = `A: ${aPs.length} ≠ B: ${bPs.length}`;
+      else if (aPs.length !== 2 && aPs.length !== 4) errors[g.id] = `Cần 2 hoặc 4 VĐV mỗi trình`;
+    }
+    return errors;
+  }, [hasGroups, hasMatches, initialGroups, categories]);
+
+  const canGenerateCrossTier = hasGroups && !hasMatches && initialGroups.length > 0 &&
+    Object.keys(groupCategoryErrors).length === 0;
+
+  // Realtime draw
   useEffect(() => {
     if (!drawCode || hasGroups) return;
     const sb = getSupabaseBrowser();
@@ -172,36 +198,28 @@ export default function PicPlayersClient({
     });
     const ch = sb
       .channel(`pic-draw:${drawCode}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "pair_sessions", filter: `code=eq.${drawCode}` },
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "pair_sessions", filter: `code=eq.${drawCode}` },
         (payload: { new: { status: string } }) => {
           const status = payload.new.status;
           setDrawStatus(status);
           if (status === "shuffled") {
             startTransition(async () => {
               const res = await applyPicDraw(eventId);
-              if ("ok" in res) {
-                toast({ title: "Đã áp dụng kết quả bốc thăm!" });
-                router.refresh();
-              } else {
-                toast({ title: "Lỗi áp dụng", description: res.error, variant: "destructive" });
-              }
+              if ("ok" in res) { toast({ title: "Đã áp dụng kết quả bốc thăm!" }); router.refresh(); }
+              else toast({ title: "Lỗi áp dụng", description: res.error, variant: "destructive" });
             });
           }
-        },
-      )
+        })
       .subscribe();
     return () => { void sb.removeChannel(ch); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawCode, hasGroups]);
 
-  // Tap player badge: if activeTier is set, assign directly; otherwise cycle none→A→B→none
   const handlePlayerTap = (playerId: string) => {
     if (activeTier) {
-      setCategories((prev) => ({ ...prev, [playerId]: activeTier }));
+      setCategories(prev => ({ ...prev, [playerId]: activeTier }));
     } else {
-      setCategories((prev) => {
+      setCategories(prev => {
         const cur = prev[playerId];
         const next = { ...prev };
         if (!cur) next[playerId] = "A";
@@ -220,12 +238,10 @@ export default function PicPlayersClient({
     return aGroups.map((ag, i) => ({ aPlayers: ag, bPlayers: bGroups[i]! }));
   };
 
+  // State 1 handlers
   const onDrawOrPreview = () => {
     if (!canGenerate) return;
-    if (crossTierMode) {
-      setPreview(computePreview());
-      return;
-    }
+    if (crossTierMode) { setPreview(computePreview()); return; }
     startTransition(async () => {
       const res = await generatePicGroups(eventId, effG, advancePerGroup);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
@@ -234,20 +250,23 @@ export default function PicPlayersClient({
     });
   };
 
-  const onReshuffle = () => { setPreview(computePreview()); };
+  const onDrawRandomThenAB = () => {
+    if (!canGenerate || crossTierMode) return;
+    startTransition(async () => {
+      const res = await generatePicGroups(eventId, effG, advancePerGroup, true);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      toast({ title: "Đã chia bảng!", description: "Phân hạng A/B trong từng bảng để tạo lịch." });
+      router.refresh();
+    });
+  };
+
+  const onReshuffle = () => setPreview(computePreview());
 
   const onConfirm = () => {
     if (!preview) return;
-    const precomputedGroupSlots = preview.map(g => [
-      ...g.aPlayers.map(p => p.id),
-      ...g.bPlayers.map(p => p.id),
-    ]);
+    const groupSlots = preview.map(g => [...g.aPlayers.map(p => p.id), ...g.bPlayers.map(p => p.id)]);
     startTransition(async () => {
-      const res = await generatePicGroups(
-        eventId, effG, 1,
-        true, categories,
-        precomputedGroupSlots,
-      );
+      const res = await generateCrossTierGroupsFull(eventId, groupSlots, categories, 1);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       localStorage.removeItem(`pic-cat-${eventId}`);
       toast({ title: "Đã tạo lịch thi đấu!", description: `${effG} bảng A/B.` });
@@ -281,24 +300,46 @@ export default function PicPlayersClient({
       const res = await resetPicGroups(eventId);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setPreview(null);
-      toast({ title: "Đã đặt lại bảng", description: "Phân hạng A/B và tạo lịch lại." });
+      setCategories({});
+      toast({ title: "Đã đặt lại bảng" });
       router.refresh();
     });
   };
 
+  // State 2 handlers
+  const onGenerateCrossTierMatches = () => {
+    startTransition(async () => {
+      const res = await generateCrossTierGroupMatches(eventId, categories);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      localStorage.removeItem(`pic-cat-${eventId}`);
+      toast({ title: "Đã tạo lịch A/B!" });
+      router.refresh();
+    });
+  };
+
+  const onGenerateNormalMatches = () => {
+    startTransition(async () => {
+      const res = await generateNormalGroupMatches(eventId);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      toast({ title: "Đã tạo lịch đấu!" });
+      router.refresh();
+    });
+  };
+
+  // Player management
   const onAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || hasGroups) return;
     startTransition(async () => {
       const res = await addPicPlayer(eventId, name.trim());
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
-      setPlayers((prev) => [...prev, { id: res.id, name: name.trim() }]);
+      setPlayers(prev => [...prev, { id: res.id, name: name.trim() }]);
       setName("");
     });
   };
 
   const onImport = () => {
-    const names = csvText.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    const names = csvText.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     if (!names.length || hasGroups) return;
     startTransition(async () => {
       const res = await bulkAddPicPlayers(eventId, names);
@@ -314,23 +355,28 @@ export default function PicPlayersClient({
     startTransition(async () => {
       const res = await removePicPlayer(eventId, id);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
-      setPlayers((prev) => prev.filter((p) => p.id !== id));
-      setCategories((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      setPlayers(prev => prev.filter(p => p.id !== id));
+      setCategories(prev => { const n = { ...prev }; delete n[id]; return n; });
     });
   };
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-2">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Users className="size-5 text-primary" />
-                VĐV ({pc})
+                VĐV ({players.length})
               </CardTitle>
               <CardDescription className="mt-1">
-                {hasGroups ? "Bảng đấu đã được tạo. Danh sách VĐV đã cố định." : "Thêm VĐV rồi chia bảng ở phần bên dưới."}
+                {!hasGroups
+                  ? "Thêm VĐV rồi chia bảng ở phần bên dưới."
+                  : hasMatches
+                  ? "Bảng đấu và lịch thi đấu đã được tạo."
+                  : "Bảng đã chia. Phân hạng A/B trong từng bảng để tạo lịch."}
               </CardDescription>
             </div>
             {hasGroups && !hasCompletedMatches && (
@@ -342,13 +388,14 @@ export default function PicPlayersClient({
         </CardHeader>
       </Card>
 
+      {/* ── STATE 1: No groups ── */}
       {!hasGroups && (
         <>
           <Card>
             <CardHeader><CardTitle className="text-base">Thêm VĐV</CardTitle></CardHeader>
             <CardContent>
               <form onSubmit={onAdd} className="flex gap-2">
-                <Input placeholder="Tên VĐV" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required className="flex-1" />
+                <Input placeholder="Tên VĐV" value={name} onChange={e => setName(e.target.value)} maxLength={100} required className="flex-1" />
                 <Button type="submit" disabled={pending || !name.trim()}><Plus className="size-4" />Thêm</Button>
               </form>
             </CardContent>
@@ -360,7 +407,7 @@ export default function PicPlayersClient({
               <CardDescription>Mỗi dòng 1 tên</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              <textarea className="w-full rounded-md border bg-background p-2 font-mono text-sm" rows={6} value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder={"Nguyễn Văn A\nTrần Thị B\n..."} />
+              <textarea className="w-full rounded-md border bg-background p-2 font-mono text-sm" rows={6} value={csvText} onChange={e => setCsvText(e.target.value)} placeholder={"Nguyễn Văn A\nTrần Thị B\n..."} />
               <Button onClick={onImport} variant="outline" disabled={pending || !csvText.trim()}><Upload className="size-4" />Import</Button>
             </CardContent>
           </Card>
@@ -380,49 +427,37 @@ export default function PicPlayersClient({
             </Card>
           )}
 
-          {/* ── Group generation ── */}
+          {/* Group generation card */}
           <Card className="border-primary/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Shuffle className="size-5 text-primary" />Chia bảng đấu</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
 
-              {/* Cross-tier toggle */}
+              {/* Old flow toggle: pre-tag A/B */}
               <label className="flex cursor-pointer items-center justify-between rounded-lg border bg-card p-3">
                 <div>
-                  <p className="text-sm font-medium">Chế độ chia trình A/B</p>
-                  <p className="text-xs text-muted-foreground">Mỗi đội = 1 VĐV hạng A + 1 VĐV hạng B</p>
+                  <p className="text-sm font-medium">Chế độ A/B (phân hạng trước khi chia bảng)</p>
+                  <p className="text-xs text-muted-foreground">Tag A/B toàn bộ VĐV → chia bảng + tạo lịch 1 bước</p>
                 </div>
-                <div onClick={() => { setCrossTierMode(v => !v); setPreview(null); setActiveTier(null); }} className={`relative h-6 w-11 rounded-full transition-colors ${crossTierMode ? "bg-primary" : "bg-muted"}`}>
+                <div onClick={() => { setCrossTierMode(v => !v); setPreview(null); setActiveTier(null); }}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${crossTierMode ? "bg-primary" : "bg-muted"}`}>
                   <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${crossTierMode ? "translate-x-5" : "translate-x-0.5"}`} />
                 </div>
               </label>
 
-              {/* Cross-tier: active tier selector */}
+              {/* Old flow: A/B tagger */}
               {crossTierMode && !preview && (
                 <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-                  <p className="text-xs font-semibold text-primary">Chọn hạng để gán nhanh — tap VĐV trong danh sách bên dưới</p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setActiveTier(v => v === "A" ? null : "A")}
-                      className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "A" ? "bg-blue-500 text-white ring-2 ring-blue-500 ring-offset-1" : "border bg-white text-blue-600 hover:bg-blue-50"}`}
-                    >
-                      A
-                    </button>
-                    <button
-                      onClick={() => setActiveTier(v => v === "B" ? null : "B")}
-                      className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "B" ? "bg-orange-500 text-white ring-2 ring-orange-500 ring-offset-1" : "border bg-white text-orange-600 hover:bg-orange-50"}`}
-                    >
-                      B
-                    </button>
-                    {activeTier && (
-                      <span className="text-xs text-muted-foreground">
-                        Đang gán hạng <strong>{activeTier}</strong> — tap VĐV hoặc nhấn lại nút để thoát
-                      </span>
-                    )}
-                    {!activeTier && (
-                      <span className="text-xs text-muted-foreground">hoặc tap thẳng badge từng VĐV để chuyển A→B→bỏ</span>
-                    )}
+                  <p className="text-xs font-semibold text-primary">Chọn hạng rồi tap VĐV trong danh sách bên dưới</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={() => setActiveTier(v => v === "A" ? null : "A")}
+                      className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "A" ? "bg-blue-500 text-white ring-2 ring-blue-500 ring-offset-1" : "border bg-white text-blue-600 hover:bg-blue-50"}`}>A</button>
+                    <button onClick={() => setActiveTier(v => v === "B" ? null : "B")}
+                      className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "B" ? "bg-orange-500 text-white ring-2 ring-orange-500 ring-offset-1" : "border bg-white text-orange-600 hover:bg-orange-50"}`}>B</button>
+                    <span className="text-xs text-muted-foreground">
+                      {activeTier ? <>Đang gán <strong>{activeTier}</strong> — nhấn lại để thoát</> : "hoặc tap badge từng VĐV để chuyển A→B→bỏ"}
+                    </span>
                   </div>
                   <div className="flex items-center gap-3 text-sm font-medium">
                     <span className="rounded bg-blue-500/15 px-2 py-0.5 text-blue-600">A: {aCount}</span>
@@ -433,7 +468,7 @@ export default function PicPlayersClient({
                 </div>
               )}
 
-              {/* Preview: show group distribution before confirming */}
+              {/* Preview (old flow) */}
               {preview && (
                 <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
                   <p className="text-sm font-semibold text-primary">Xem trước phân bảng — kiểm tra rồi xác nhận</p>
@@ -459,12 +494,8 @@ export default function PicPlayersClient({
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={onReshuffle} disabled={pending} className="flex-1">
-                      <RefreshCw className="size-3.5" />Xáo lại
-                    </Button>
-                    <Button onClick={onConfirm} disabled={pending} className="flex-1">
-                      <Check className="size-3.5" />{pending ? "Đang tạo…" : "Xác nhận & Tạo lịch"}
-                    </Button>
+                    <Button variant="outline" onClick={onReshuffle} disabled={pending} className="flex-1"><RefreshCw className="size-3.5" />Xáo lại</Button>
+                    <Button onClick={onConfirm} disabled={pending} className="flex-1"><Check className="size-3.5" />{pending ? "Đang tạo…" : "Xác nhận & Tạo lịch"}</Button>
                   </div>
                   <button onClick={() => setPreview(null)} className="text-xs text-muted-foreground underline">← Quay lại chỉnh hạng</button>
                 </div>
@@ -481,7 +512,7 @@ export default function PicPlayersClient({
                       <p className="text-sm font-medium">Số bảng</p>
                       {validGroupCounts.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
-                          {validGroupCounts.map((g) => {
+                          {validGroupCounts.map(g => {
                             const sizes = crossTierMode
                               ? Array.from({ length: g }, () => (aCount / g) * 2)
                               : snakePreview(pc, g);
@@ -503,23 +534,20 @@ export default function PicPlayersClient({
                       <div className="space-y-2">
                         <p className="text-sm font-medium">Vào vòng trong</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {validAdvanceOptions.map((v) => {
-                            const total = effG * v;
-                            return (
-                              <button key={v} onClick={() => setAdvancePerGroup(v)}
-                                className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${advancePerGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}>
-                                <span className="block">Top {v}/bảng</span>
-                                <span className="block text-xs font-normal opacity-60">→ {total} người tổng</span>
-                              </button>
-                            );
-                          })}
+                          {validAdvanceOptions.map(v => (
+                            <button key={v} onClick={() => setAdvancePerGroup(v)}
+                              className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${advancePerGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}>
+                              <span className="block">Top {v}/bảng</span>
+                              <span className="block text-xs font-normal opacity-60">→ {effG * v} người tổng</span>
+                            </button>
+                          ))}
                         </div>
                       </div>
                     )}
                   </div>
 
                   {groupSizes.length > 0 && (
-                    <div className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${effG <= 2 ? "grid-cols-2" : effG <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
+                    <div className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${effG <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
                       {groupSizes.map((size, gi) => (
                         <div key={gi} className="space-y-0.5">
                           <p className="text-xs font-bold text-primary">Bảng {String.fromCharCode(65 + gi)}</p>
@@ -542,6 +570,14 @@ export default function PicPlayersClient({
                       </Button>
                     )}
                   </div>
+
+                  {/* New flow: random split → assign A/B in groups after */}
+                  {!crossTierMode && (
+                    <Button onClick={onDrawRandomThenAB} disabled={!canGenerate || pending || !!drawCode} variant="outline" size="lg" className="w-full border-dashed">
+                      <Shuffle className="size-4" />🎲 Chia bảng ngẫu nhiên → phân A/B trong bảng sau
+                    </Button>
+                  )}
+
                   <p className="text-xs text-muted-foreground">
                     ⚠️ Chia bảng 1 lần duy nhất. Sau khi quay, sang tab <strong>Trận đấu</strong> để nhập điểm.
                   </p>
@@ -552,12 +588,90 @@ export default function PicPlayersClient({
         </>
       )}
 
-      {/* Player list */}
+      {/* ── STATE 2: Groups exist, no matches → A/B assignment ── */}
+      {hasGroups && !hasMatches && (
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shuffle className="size-5 text-primary" />
+              Phân hạng A/B trong từng bảng
+            </CardTitle>
+            <CardDescription>Mỗi bảng cần số VĐV hạng A = hạng B (2+2 hoặc 4+4)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Batch mode */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-muted-foreground">Gán nhanh:</span>
+              <button onClick={() => setActiveTier(v => v === "A" ? null : "A")}
+                className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "A" ? "bg-blue-500 text-white ring-2 ring-blue-500 ring-offset-1" : "border bg-white text-blue-600 hover:bg-blue-50"}`}>A</button>
+              <button onClick={() => setActiveTier(v => v === "B" ? null : "B")}
+                className={`flex h-8 w-12 items-center justify-center rounded-md text-sm font-bold transition-colors ${activeTier === "B" ? "bg-orange-500 text-white ring-2 ring-orange-500 ring-offset-1" : "border bg-white text-orange-600 hover:bg-orange-50"}`}>B</button>
+              <span className="text-xs text-muted-foreground">
+                {activeTier ? <>Đang gán <strong>{activeTier}</strong> — nhấn lại để thoát</> : "hoặc tap badge từng VĐV để chuyển A→B→bỏ"}
+              </span>
+            </div>
+
+            {/* Groups grid */}
+            <div className={`grid gap-3 ${initialGroups.length <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
+              {initialGroups.map(g => {
+                const err = groupCategoryErrors[g.id];
+                const aPs = g.playerIds.filter(id => categories[id] === "A");
+                const bPs = g.playerIds.filter(id => categories[id] === "B");
+                const allTagged = !err && aPs.length > 0;
+                return (
+                  <div key={g.id} className={`rounded-lg border p-3 space-y-2 ${err ? "border-destructive/40" : allTagged ? "border-green-500/40 bg-green-500/5" : ""}`}>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-primary">Bảng {g.label}</p>
+                      <div className="flex gap-1 text-xs">
+                        <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-blue-600">A:{aPs.length}</span>
+                        <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-orange-600">B:{bPs.length}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {g.playerIds.map(id => {
+                        const p = playerMap[id];
+                        const cat = categories[id];
+                        return (
+                          <div key={id} onClick={() => handlePlayerTap(id)}
+                            className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 text-xs hover:bg-accent active:scale-95 transition-transform select-none">
+                            <span className="truncate">{p?.name ?? id}</span>
+                            <span className={`flex h-5 w-7 shrink-0 items-center justify-center rounded text-[10px] font-bold transition-colors ${
+                              cat === "A" ? "bg-blue-500 text-white"
+                              : cat === "B" ? "bg-orange-500 text-white"
+                              : "border bg-muted text-muted-foreground"
+                            }`}>{cat ?? "—"}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {err && <p className="text-[10px] text-destructive">{err}</p>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Actions */}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button onClick={onGenerateCrossTierMatches} disabled={!canGenerateCrossTier || pending}>
+                <Check className="size-4" />{pending ? "Đang tạo…" : "Tạo lịch A/B"}
+              </Button>
+              <Button variant="outline" onClick={onGenerateNormalMatches} disabled={pending}>
+                <Shuffle className="size-4" />{pending ? "Đang tạo…" : "Tạo lịch ngẫu nhiên"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lịch A/B: mỗi đội = 1 VĐV hạng A + 1 VĐV hạng B (cần phân hạng đủ). Lịch ngẫu nhiên: bỏ qua phân hạng.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Player list (all states) ── */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Danh sách</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Danh sách VĐV</CardTitle></CardHeader>
         <CardContent>
           {players.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Chưa có VĐV nào. Thêm ở trên hoặc import danh sách.</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">Chưa có VĐV nào.</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {players.map((p, i) => {
@@ -566,28 +680,21 @@ export default function PicPlayersClient({
                 return (
                   <div key={p.id}
                     onClick={isActive ? () => handlePlayerTap(p.id) : undefined}
-                    className={`flex items-center justify-between gap-2 rounded-md border p-2 text-sm ${isActive ? "cursor-pointer select-none active:scale-95 transition-transform" : ""} ${isActive && activeTier ? "hover:bg-accent" : ""}`}
-                  >
+                    className={`flex items-center justify-between gap-2 rounded-md border p-2 text-sm ${isActive ? "cursor-pointer select-none active:scale-95 transition-transform" : ""} ${isActive && activeTier ? "hover:bg-accent" : ""}`}>
                     <span className="flex flex-1 items-center gap-2 truncate">
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">{i + 1}</span>
                       <span className="truncate">{p.name}</span>
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
-                      {/* Category badge */}
-                      {(crossTierMode && !preview) && (
+                      {isActive && (
                         <span className={`flex h-6 w-7 items-center justify-center rounded text-xs font-bold transition-colors ${
                           cat === "A" ? "bg-blue-500 text-white"
                           : cat === "B" ? "bg-orange-500 text-white"
                           : "border bg-muted text-muted-foreground"
-                        }`}>
-                          {cat ?? "—"}
-                        </span>
-                      )}
-                      {hasGroups && cat && (
-                        <span className={`flex h-5 w-6 items-center justify-center rounded text-[10px] font-bold ${cat === "A" ? "bg-blue-500/15 text-blue-600" : "bg-orange-500/15 text-orange-600"}`}>{cat}</span>
+                        }`}>{cat ?? "—"}</span>
                       )}
                       {!hasGroups && !preview && (
-                        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); onDelete(p.id); }} disabled={pending}>
+                        <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); onDelete(p.id); }} disabled={pending}>
                           <Trash2 className="size-3" />
                         </Button>
                       )}
