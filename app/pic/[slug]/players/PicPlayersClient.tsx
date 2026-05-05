@@ -242,16 +242,7 @@ export default function PicPlayersClient({
   const onDrawOrPreview = () => {
     if (!canGenerate) return;
     if (crossTierMode) { setPreview(computePreview()); return; }
-    startTransition(async () => {
-      const res = await generatePicGroups(eventId, effG, advancePerGroup);
-      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
-      toast({ title: "Đã chia bảng!", description: `${effG} bảng đã được tạo.` });
-      router.refresh();
-    });
-  };
-
-  const onDrawRandomThenAB = () => {
-    if (!canGenerate || crossTierMode) return;
+    // Always crossTierMode=true for random draw — goes to State 2 for A/B assignment
     startTransition(async () => {
       const res = await generatePicGroups(eventId, effG, advancePerGroup, true);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
@@ -570,13 +561,6 @@ export default function PicPlayersClient({
                       </Button>
                     )}
                   </div>
-
-                  {/* New flow: random split → assign A/B in groups after */}
-                  {!crossTierMode && (
-                    <Button onClick={onDrawRandomThenAB} disabled={!canGenerate || pending || !!drawCode} variant="outline" size="lg" className="w-full border-dashed">
-                      <Shuffle className="size-4" />🎲 Chia bảng ngẫu nhiên → phân A/B trong bảng sau
-                    </Button>
-                  )}
 
                   <p className="text-xs text-muted-foreground">
                     ⚠️ Chia bảng 1 lần duy nhất. Sau khi quay, sang tab <strong>Trận đấu</strong> để nhập điểm.

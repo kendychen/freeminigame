@@ -39,6 +39,7 @@ export interface PicConfig {
   drawCode?: string | null;
   drawGroupCount?: number;
   drawAdvancePerGroup?: number;
+  playerCategories?: Record<string, "A" | "B">;
 }
 
 export type PicStage = "group" | "draw" | "knockout" | "done";

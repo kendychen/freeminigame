@@ -447,6 +447,14 @@ export async function generateCrossTierGroupMatches(
   const { error } = await svc.from("pic_matches").insert(matchRows);
   if (error) return { error: error.message };
 
+  const { data: evCfg } = await svc.from("pic_events").select("config").eq("id", eventId).single();
+  if (evCfg) {
+    await svc.from("pic_events").update({
+      config: { ...(evCfg.config as Record<string, unknown>), playerCategories },
+      updated_at: new Date().toISOString(),
+    }).eq("id", eventId);
+  }
+
   revalidatePath(`/pic/${eventId}`);
   return { ok: true };
 }
@@ -951,22 +959,6 @@ export async function applyPicDraw(
     await svc.from("pic_group_players").insert(
       slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
     );
-
-    const n = slotIds.length;
-    if (n < 4) continue;
-    const schedule = generateGroupSchedule(Math.min(n, 8));
-    await svc.from("pic_matches").insert(
-      schedule.map((slot, i) => ({
-        event_id: eventId,
-        group_id: grp.id,
-        round: i + 1,
-        stage: "group",
-        a1_id: slotIds[slot.a[0]]!,
-        a2_id: slotIds[slot.a[1]]!,
-        b1_id: slotIds[slot.b[0]]!,
-        b2_id: slotIds[slot.b[1]]!,
-      })),
-    );
   }
 
   await svc
@@ -1057,7 +1049,7 @@ export async function generateCrossTierGroupsFull(
   const cfg = ev.config as Record<string, unknown>;
   await svc
     .from("pic_events")
-    .update({ config: { ...cfg, advancePerGroup }, updated_at: new Date().toISOString() })
+    .update({ config: { ...cfg, advancePerGroup, playerCategories }, updated_at: new Date().toISOString() })
     .eq("id", eventId);
 
   revalidatePath(`/pic`);

@@ -355,10 +355,11 @@ function FinalDraw({
 
 // ── StandingsTable ─────────────────────────────────────────────────────────────
 
-function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder }: {
+function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder, playerCategories }: {
   group: PicGroup; players: PicPlayer[]; advancePerGroup: number;
   pointsForWin: number; pointsForLoss: number;
   tiebreakerOrder?: "diff_first" | "wins_first";
+  playerCategories?: Record<string, "A" | "B">;
 }) {
   const gPlayers = group.playerIds
     .map((id) => players.find((p) => p.id === id))
@@ -382,7 +383,9 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
           </tr>
         </thead>
         <tbody>
-          {standings.map((s, i) => (
+          {standings.map((s, i) => {
+            const cat = playerCategories?.[s.playerId];
+            return (
             <tr key={s.playerId} className={`border-b last:border-0 ${i >= advancePerGroup ? "opacity-50" : ""}`}>
               <td className="px-3 py-2.5">
                 <span className={`flex size-6 items-center justify-center rounded-full text-xs font-bold ${
@@ -391,7 +394,16 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
                   i < advancePerGroup ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
                 }`}>{s.rank}</span>
               </td>
-              <td className="px-3 py-2.5 font-medium">{s.name}</td>
+              <td className="px-3 py-2.5 font-medium">
+                <span className="flex items-center gap-1.5">
+                  {cat && (
+                    <span className={`flex h-4 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold ${
+                      cat === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"
+                    }`}>{cat}</span>
+                  )}
+                  {s.name}
+                </span>
+              </td>
               <td className="px-3 py-2.5 text-center font-mono font-bold text-primary">{s.pts}</td>
               <td className="px-3 py-2.5 text-center font-mono">{s.wins}</td>
               <td className="px-3 py-2.5 text-center font-mono text-muted-foreground">{s.losses}</td>
@@ -399,7 +411,8 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
                 {s.diff > 0 ? "+" : ""}{s.diff}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -711,7 +724,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
           {groups.map((g) => (
             <div key={g.id} className="space-y-2">
-              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} />
+              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={config.playerCategories} />
               <div className="overflow-hidden rounded-xl border bg-card">
                 <div className="border-b bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground">
                   Kết quả trận — Bảng {g.label}
