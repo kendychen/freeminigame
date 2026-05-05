@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Trophy, Shuffle, CheckCircle2, Check, Pencil, X,
+  Trophy, Shuffle, CheckCircle2, Check, Pencil, X, Link2, Lock, Unlock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
-import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore } from "@/app/actions/pic";
-import { buildDrawPairs, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
+import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore, getPicRefereeToken } from "@/app/actions/pic";
+import { buildDrawPairs, reDrawUnlocked, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
 import type { PicEventFull } from "@/app/actions/pic";
 import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
@@ -108,13 +108,23 @@ function AdminMatchScore({
 
 // ── MatchCard ──────────────────────────────────────────────────────────────────
 
-function MatchCard({ match, players, groupLabel, onClick, onDirectScore }: {
+function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl }: {
   match: PicMatch; players: PicPlayer[]; groupLabel?: string;
   onClick?: () => void; onDirectScore?: (scoreA: number, scoreB: number) => void;
+  refUrl?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftA, setDraftA] = useState("");
   const [draftB, setDraftB] = useState("");
+  const [copiedRef, setCopiedRef] = useState(false);
+
+  const copyRef = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!refUrl) return;
+    navigator.clipboard.writeText(refUrl).catch(() => prompt("Copy link:", refUrl));
+    setCopiedRef(true);
+    setTimeout(() => setCopiedRef(false), 2000);
+  };
 
   const byId = (id: string) => players.find((p) => p.id === id);
   const aName = match.a1 ? pairName(byId(match.a1), byId(match.a2)) : "TBD";
@@ -203,6 +213,12 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore }: {
           <Pencil className="size-3.5" />
         </button>
       )}
+      {refUrl && canEdit && (
+        <button onClick={copyRef}
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground hover:border-blue-500/60 hover:text-blue-500">
+          {copiedRef ? <Check className="size-3.5 text-green-500" /> : <Link2 className="size-3.5" />}
+        </button>
+      )}
     </div>
   );
 }
@@ -276,8 +292,31 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const [drawDone, setDrawDone] = useState(false);
   const [animTick, setAnimTick] = useState(0);
   const [drawProgress, setDrawProgress] = useState(0);
+  const [refToken, setRefToken] = useState<string | null>(null);
+  const [copiedRefKey, setCopiedRefKey] = useState<string | null>(null);
+  const [lockedPairIndices, setLockedPairIndices] = useState<Set<number>>(new Set());
+  const [isReDrawing, setIsReDrawing] = useState(false);
 
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
+
+  // Fetch referee token on mount
+  useEffect(() => {
+    getPicRefereeToken(eventId).then((res) => {
+      if ("token" in res) setRefToken(res.token);
+    });
+  }, [eventId]);
+
+  // Restore draw from localStorage so F5 doesn't reset it
+  useEffect(() => {
+    if (stage !== "draw") return;
+    const saved = localStorage.getItem(`pic-draw-${eventId}`);
+    if (!saved) return;
+    try {
+      const pairs = JSON.parse(saved) as [string, string][];
+      setDrawnPairs(pairs);
+      setDrawDone(true);
+    } catch {}
+  }, [eventId, stage]);
   const byId = (id: string) => players.find((p) => p.id === id);
   const multiGroup = groups.length > 1;
   const allGroupDone = groups.every((g) => g.matches.every((m) => m.status === "completed"));
@@ -298,6 +337,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     setIsDrawing(true);
     setDrawProgress(0);
     setAnimTick(0);
+    setLockedPairIndices(new Set());
     const DURATION = 3000;
     const start = Date.now();
     const tickId = setInterval(() => setAnimTick((t) => t + 1), 80);
@@ -307,11 +347,41 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     setTimeout(() => {
       clearInterval(tickId);
       clearInterval(progId);
-      setDrawnPairs(buildDrawPairs(drawMode, advancingByGroup));
+      const pairs = buildDrawPairs(drawMode, advancingByGroup);
+      setDrawnPairs(pairs);
+      localStorage.setItem(`pic-draw-${eventId}`, JSON.stringify(pairs));
       setDrawProgress(100);
       setIsDrawing(false);
       setDrawDone(true);
     }, DURATION);
+  };
+
+  const doReDraw = () => {
+    if (!drawnPairs || isReDrawing || isDrawing) return;
+    setIsReDrawing(true);
+    setTimeout(() => {
+      const newPairs = reDrawUnlocked(drawnPairs, lockedPairIndices, advancingIds);
+      setDrawnPairs(newPairs);
+      localStorage.setItem(`pic-draw-${eventId}`, JSON.stringify(newPairs));
+      setIsReDrawing(false);
+    }, 800);
+  };
+
+  const doConfirm = () => {
+    if (!drawnPairs) return;
+    startTransition(async () => {
+      await picDrawKnockout(eventId, drawnPairs);
+      localStorage.removeItem(`pic-draw-${eventId}`);
+      router.refresh();
+    });
+  };
+
+  const copyGroupRef = (label: string) => {
+    if (!refToken) return;
+    const url = `${window.location.origin}/pic/r/${refToken}?g=${label}`;
+    navigator.clipboard.writeText(url).catch(() => prompt("Copy link:", url));
+    setCopiedRefKey(`g-${label}`);
+    setTimeout(() => setCopiedRefKey(null), 2000);
   };
 
   const handleDirectScore = (matchId: string) => (scoreA: number, scoreB: number) => {
@@ -366,7 +436,11 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
             {/* Draw mode selector — hidden after draw */}
             {!drawDone && !isDrawing && (
               <div className="space-y-1.5">
-                {DRAW_MODES.filter((m) => multiGroup || m.value === "random_all").map((m) => (
+                {DRAW_MODES.filter((m) => {
+                  if (m.value === "cross_group" || m.value === "cross_rank") return multiGroup;
+                  if (m.value === "final_four") return advancingIds.length > 4;
+                  return true; // random_all always shown
+                }).map((m) => (
                   <button key={m.value} onClick={() => setDrawMode(m.value)}
                     className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
                       drawMode === m.value ? "border-primary bg-primary/10" : "hover:border-primary/50"
@@ -418,36 +492,54 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               </div>
             )}
 
-            {/* Results */}
+            {/* Results with lock toggles */}
             {drawDone && matchups.map((mu, i) => (
               <div key={i} className="rounded-xl border bg-card p-3">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {matchups.length > 1 ? `Bán kết ${i + 1}` : "Chung kết"}
                 </p>
                 <div className="space-y-1.5">
-                  {([mu.a, mu.b] as [string, string][]).map((pair, pi) => (
-                    <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
-                      <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
-                        {pi === 0 ? "A" : "B"}
-                      </span>
-                      <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
-                    </div>
-                  ))}
+                  {([mu.a, mu.b] as [string, string][]).map((pair, pi) => {
+                    const pairIdx = i * 2 + pi;
+                    const isLocked = lockedPairIndices.has(pairIdx);
+                    return (
+                      <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
+                        <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
+                          {pi === 0 ? "A" : "B"}
+                        </span>
+                        <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
+                        <button
+                          onClick={() => setLockedPairIndices((prev) => {
+                            const next = new Set(prev);
+                            if (isLocked) next.delete(pairIdx); else next.add(pairIdx);
+                            return next;
+                          })}
+                          title={isLocked ? "Bỏ chốt" : "Chốt cặp này"}
+                          className={`flex size-7 shrink-0 items-center justify-center rounded-lg border text-xs transition-colors ${isLocked ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:border-primary/60 hover:text-primary"}`}
+                        >
+                          {isLocked ? <Lock className="size-3" /> : <Unlock className="size-3" />}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
           </div>
 
           {drawDone && drawnPairs && (
-            <Button disabled={pending} onClick={() => {
-              startTransition(async () => {
-                await picDrawKnockout(eventId, drawnPairs);
-                router.refresh();
-              });
-            }} size="lg" className="w-full">
-              <CheckCircle2 className="size-4" />
-              {pending ? "Đang lưu…" : "Xác nhận & Bắt đầu"}
-            </Button>
+            <div className="space-y-2">
+              {lockedPairIndices.size < drawnPairs.length && (
+                <Button variant="outline" onClick={doReDraw} disabled={isReDrawing || pending} className="w-full">
+                  <Shuffle className={`size-4 ${isReDrawing ? "animate-spin" : ""}`} />
+                  {isReDrawing ? "Đang quay..." : "🎲 Quay lại cặp chưa chốt"}
+                </Button>
+              )}
+              <Button disabled={pending} onClick={doConfirm} size="lg" className="w-full">
+                <CheckCircle2 className="size-4" />
+                {pending ? "Đang lưu…" : "✅ Bắt đầu Knockout"}
+              </Button>
+            </div>
           )}
       </div>
     );
@@ -615,7 +707,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                 <MatchCard key={m.id} match={m} players={players}
                   groupLabel={`1/16-${i + 1}`}
                   onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
-                  onDirectScore={handleDirectScore(m.id)} />
+                  onDirectScore={handleDirectScore(m.id)}
+                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
               ))}
             </div>
           )}
@@ -626,7 +719,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                 <MatchCard key={m.id} match={m} players={players}
                   groupLabel={`TK${i + 1}`}
                   onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
-                  onDirectScore={handleDirectScore(m.id)} />
+                  onDirectScore={handleDirectScore(m.id)}
+                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
               ))}
             </div>
           )}
@@ -636,7 +730,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               {semiMatches.map((m) => (
                 <MatchCard key={m.id} match={m} players={players}
                   onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
-                  onDirectScore={handleDirectScore(m.id)} />
+                  onDirectScore={handleDirectScore(m.id)}
+                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
               ))}
             </div>
           )}
@@ -645,7 +740,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">🏆 Chung kết — chạm {config.targetKnockout}</h2>
               <MatchCard match={finalMatchKO} players={players}
                 onClick={() => setActiveMatch({ match: finalMatchKO, stage: "knockout" })}
-                onDirectScore={handleDirectScore(finalMatchKO.id)} />
+                onDirectScore={handleDirectScore(finalMatchKO.id)}
+                refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${finalMatchKO.id}` : undefined} />
             </div>
           )}
           {thirdMatchKO && (
@@ -653,7 +749,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tranh hạng 3–4 — chạm {config.targetKnockout}</h2>
               <MatchCard match={thirdMatchKO} players={players}
                 onClick={() => setActiveMatch({ match: thirdMatchKO, stage: "knockout" })}
-                onDirectScore={handleDirectScore(thirdMatchKO.id)} />
+                onDirectScore={handleDirectScore(thirdMatchKO.id)}
+                refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${thirdMatchKO.id}` : undefined} />
             </div>
           )}
         </div>
@@ -661,11 +758,22 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
       {stage === "group" && viewTab === "matches" && activeGroup && (
         <div className="space-y-2">
+          {refToken && (
+            <button
+              onClick={() => copyGroupRef(activeGroup.label)}
+              className="flex w-full items-center gap-2 rounded-xl border border-dashed px-3 py-2 text-xs text-muted-foreground hover:border-blue-500/60 hover:text-blue-500 transition-colors"
+            >
+              {copiedRefKey === `g-${activeGroup.label}`
+                ? <><Check className="size-3.5 text-green-500" />Đã copy link trọng tài Bảng {activeGroup.label}</>
+                : <><Link2 className="size-3.5" />Link trọng tài Bảng {activeGroup.label}</>}
+            </button>
+          )}
           {activeGroup.matches.map((m) => (
             <MatchCard key={m.id} match={m} players={players}
               groupLabel={activeGroup.label}
               onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })}
-              onDirectScore={handleDirectScore(m.id)} />
+              onDirectScore={handleDirectScore(m.id)}
+              refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
           ))}
           {allGroupDone && (
             <Button disabled={pending} onClick={() => { startTransition(async () => { await picAdvanceToDraw(eventId); router.refresh(); }); }} size="lg" className="mt-2 w-full">

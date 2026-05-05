@@ -4,7 +4,6 @@ import { requireUser } from "@/lib/auth";
 import { loadPicEventState } from "@/app/actions/pic";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import RefereeButton from "./RefereeButton";
 import ShareViewerButton from "./ShareViewerButton";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +68,6 @@ export default async function PicOverviewPage({
           <Link href={`/pic/${slug}/matches`}>
             <Button>Quản lý trận đấu</Button>
           </Link>
-          <RefereeButton eventId={state.id} groupLabels={state.groups.map((g) => g.label)} />
           <ShareViewerButton slug={slug} />
         </CardContent>
       </Card>

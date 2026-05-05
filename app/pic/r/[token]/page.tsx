@@ -10,10 +10,10 @@ export default async function PicRefereePage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ g?: string }>;
+  searchParams: Promise<{ g?: string; m?: string }>;
 }) {
   const { token } = await params;
-  const { g } = await searchParams;
+  const { g, m } = await searchParams;
 
   const svc = createServiceClient();
   const { data: ev } = await svc
@@ -32,6 +32,7 @@ export default async function PicRefereePage({
       state={state}
       token={token}
       groupFilter={g ?? null}
+      matchFilter={m ?? null}
     />
   );
 }

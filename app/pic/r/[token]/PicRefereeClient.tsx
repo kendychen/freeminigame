@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Pencil, Trophy, X } from "lucide-react";
 import { type PicMatch, type PicPlayer } from "@/stores/pic-tournament";
@@ -243,15 +243,29 @@ export default function PicRefereeClient({
   state,
   token,
   groupFilter,
+  matchFilter,
 }: {
   state: PicEventFull;
   token: string;
   groupFilter: string | null;
+  matchFilter: string | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [activeMatch, setActiveMatch] = useState<PicMatch | null>(null);
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
+
+  // Auto-open the match from ?m= param
+  const allMatches = useMemo(
+    () => [...groups.flatMap((g) => g.matches), ...knockoutMatches],
+    [groups, knockoutMatches],
+  );
+  useEffect(() => {
+    if (!matchFilter) return;
+    const found = allMatches.find((m) => m.id === matchFilter);
+    if (found && found.a1 && found.b1) setActiveMatch(found);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchFilter]);
 
   // Tire = target score, editable per session (no DB persistence)
   const [tireGroup, setTireGroup] = useState<number>(config.targetGroup);
