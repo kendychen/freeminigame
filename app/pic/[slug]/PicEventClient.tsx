@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useCallback } from "react";
+import { useState, useEffect, useTransition, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Trophy, Shuffle, CheckCircle2, Check, Pencil, X, Link2,
@@ -484,6 +484,27 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
 
+  // Derive A/B tier from cross-tier match structure (a1/b1=A-tier, a2/b2=B-tier)
+  // Falls back to config.playerCategories if stored, otherwise derives from matches
+  const playerCategories = useMemo<Record<string, "A" | "B"> | undefined>(() => {
+    if (config.playerCategories && Object.keys(config.playerCategories).length > 0)
+      return config.playerCategories;
+    const cats: Record<string, "A" | "B"> = {};
+    for (const g of groups) {
+      for (const m of g.matches) {
+        if (m.a1) cats[m.a1] = "A";
+        if (m.a2) cats[m.a2] = "B";
+        if (m.b1) cats[m.b1] = "A";
+        if (m.b2) cats[m.b2] = "B";
+      }
+    }
+    // Only return if all group players have exactly 2 distinct tiers (cross-tier format)
+    const vals = Object.values(cats);
+    const aCount = vals.filter(v => v === "A").length;
+    const bCount = vals.filter(v => v === "B").length;
+    return aCount > 0 && bCount > 0 && aCount === bCount ? cats : undefined;
+  }, [config.playerCategories, groups]);
+
   // Fetch referee token on mount
   useEffect(() => {
     getPicRefereeToken(eventId).then((res) => {
@@ -768,7 +789,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
           {groups.map((g) => (
             <div key={g.id} className="space-y-2">
-              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={config.playerCategories} />
+              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} />
               <div className="overflow-hidden rounded-xl border bg-card">
                 <div className="border-b bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground">
                   Kết quả trận — Bảng {g.label}
@@ -973,7 +994,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })}
               onDirectScore={handleDirectScore(m.id)}
               refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
-              playerCategories={config.playerCategories} />
+              playerCategories={playerCategories} />
           ))}
           {allGroupDone && (
             <Button disabled={pending} onClick={() => { startTransition(async () => { await picAdvanceToDraw(eventId); router.refresh(); }); }} size="lg" className="mt-2 w-full">
