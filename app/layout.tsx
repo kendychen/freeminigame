@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { InAppBrowserBanner } from "@/components/pwa/InAppBrowserBanner";
+import { SitePresenceTracker } from "@/components/admin/site-presence-tracker";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -117,6 +118,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <InAppBrowserBanner />
+          <SitePresenceTracker />
           {children}
           <Toaster />
         </ThemeProvider>
