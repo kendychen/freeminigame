@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useTransition } from "react";
-import { getSupabaseBrowser } from "@/lib/supabase/client";
+import { createBrowserClient } from "@supabase/ssr";
 import { fetchDbMetrics, type DbMetrics } from "@/app/actions/admin/metrics";
 import {
   Card,
@@ -86,8 +86,13 @@ export function CapacityDashboard({
   const [isPending, startTransition] = useTransition();
 
   // ── Realtime Presence: count connected users ─────────────
+  // Use a fresh client (not the singleton) so the channel is independent
+  // from the SitePresenceTracker that already subscribed on the same singleton.
   useEffect(() => {
-    const sb = getSupabaseBrowser();
+    const sb = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
     const adminId = "__admin__" + Math.random().toString(36).slice(2);
     const channel = sb.channel("site-presence", {
       config: { presence: { key: adminId } },
