@@ -318,6 +318,10 @@ export default function PicPage() {
   const [viewTab, setViewTab] = useState<"matches" | "standings">("matches");
   const [drawnPairs, setDrawnPairs] = useState<[string, string][] | null>(null);
   const [drawMode, setDrawMode] = useState<DrawMode>("random_all");
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawDone, setDrawDone] = useState(false);
+  const [animTick, setAnimTick] = useState(0);
+  const [drawProgress, setDrawProgress] = useState(0);
   const [groupTarget, setGroupTarget] = useState(current?.config.targetGroup ?? 11);
   const [koTarget, setKoTarget] = useState(current?.config.targetKnockout ?? 15);
 
@@ -359,7 +363,26 @@ export default function PicPage() {
   });
   const advancingIds = advancingByGroup.flat();
 
-  const doDraw = () => setDrawnPairs(buildDrawPairs(drawMode, advancingByGroup));
+  const doDraw = () => {
+    if (drawDone || isDrawing) return;
+    setIsDrawing(true);
+    setDrawProgress(0);
+    setAnimTick(0);
+    const DURATION = 3000;
+    const start = Date.now();
+    const tickId = setInterval(() => setAnimTick((t) => t + 1), 80);
+    const progId = setInterval(() => {
+      setDrawProgress(Math.min(99, ((Date.now() - start) / DURATION) * 100));
+    }, 50);
+    setTimeout(() => {
+      clearInterval(tickId);
+      clearInterval(progId);
+      setDrawnPairs(buildDrawPairs(drawMode, advancingByGroup));
+      setDrawProgress(100);
+      setIsDrawing(false);
+      setDrawDone(true);
+    }, DURATION);
+  };
 
   // ── Stage: draw ───────────────────────────────────────────────────────────────
   if (stage === "draw") {
@@ -431,26 +454,69 @@ export default function PicPage() {
               Bốc thăm cặp đôi
             </h2>
 
-            {/* Draw mode selector */}
-            <div className="space-y-1.5">
-              {DRAW_MODES.filter((m) => multiGroup || m.value === "random_all").map((m) => (
-                <button key={m.value} onClick={() => { setDrawMode(m.value); setDrawnPairs(null); }}
-                  className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
-                    drawMode === m.value ? "border-primary bg-primary/10" : "hover:border-primary/50"
-                  }`}>
-                  <p className={`text-sm font-semibold ${drawMode === m.value ? "text-primary" : ""}`}>{m.label}</p>
-                  <p className="text-[11px] text-muted-foreground">{m.desc}</p>
-                </button>
-              ))}
-            </div>
+            {/* Draw mode selector — hidden after draw done */}
+            {!drawDone && !isDrawing && (
+              <div className="space-y-1.5">
+                {DRAW_MODES.filter((m) => multiGroup || m.value === "random_all").map((m) => (
+                  <button key={m.value} onClick={() => setDrawMode(m.value)}
+                    className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                      drawMode === m.value ? "border-primary bg-primary/10" : "hover:border-primary/50"
+                    }`}>
+                    <p className={`text-sm font-semibold ${drawMode === m.value ? "text-primary" : ""}`}>{m.label}</p>
+                    <p className="text-[11px] text-muted-foreground">{m.desc}</p>
+                  </button>
+                ))}
+              </div>
+            )}
 
-            <Button onClick={doDraw} variant="outline" className="w-full">
-              <Shuffle className="size-4" />
-              {drawnPairs ? "Bốc thăm lại" : "Bốc thăm ngẫu nhiên"}
-            </Button>
+            {/* One-time draw button */}
+            {!drawDone && (
+              <Button onClick={doDraw} disabled={isDrawing} className="w-full">
+                <Shuffle className={`size-4 ${isDrawing ? "animate-spin" : ""}`} />
+                {isDrawing ? "Đang bốc thăm..." : "🎲 Bốc thăm"}
+              </Button>
+            )}
 
-            {drawnPairs && matchups.length > 0 && (
+            {/* Live animation */}
+            {isDrawing && (
+              <div className="rounded-xl border bg-gradient-to-br from-primary/10 via-card to-primary/5 p-6 text-center">
+                <div className="mb-4 flex items-center justify-center gap-2 text-lg font-bold">
+                  <span className="inline-block animate-spin">🎲</span>
+                  <span className="animate-pulse text-primary">ĐANG BỐC THĂM...</span>
+                  <span className="inline-block animate-spin" style={{ animationDirection: "reverse" }}>🎰</span>
+                </div>
+                <div className="mb-4 flex flex-wrap justify-center gap-2">
+                  {Array.from({ length: Math.min(4, advancingIds.length) }, (_, i) => {
+                    const pid = advancingIds[(animTick + i * 5) % advancingIds.length];
+                    return (
+                      <div key={i}
+                        className="min-w-[110px] rounded-lg border-2 border-primary/40 bg-background px-3 py-2.5 text-center shadow-md"
+                        style={{ transform: `rotate(${(animTick * 2 + i * 90) % 6 - 3}deg)`, transition: "transform 0.08s" }}
+                      >
+                        <div className="text-[10px] text-muted-foreground">👤 Người {i + 1}</div>
+                        <div className="mt-0.5 truncate text-sm font-bold text-primary">
+                          {players.find((p) => p.id === pid)?.name ?? "..."}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mx-auto h-2.5 max-w-xs overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-primary via-primary/80 to-primary transition-all duration-100"
+                    style={{ width: `${drawProgress}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {Math.round(drawProgress)}% · Kết quả sẽ hiện sau...
+                </p>
+              </div>
+            )}
+
+            {/* Results — shown after draw, no re-draw */}
+            {drawDone && drawnPairs && matchups.length > 0 && (
               <div className="space-y-3">
+                <p className="text-center text-xs font-semibold text-green-600">✅ Bốc thăm hoàn tất</p>
                 {matchups.map((mu, i) => (
                   <div key={i} className="rounded-xl border bg-card p-3">
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
