@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
-import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore, getPicRefereeToken } from "@/app/actions/pic";
+import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore, getPicRefereeToken, picDrawFinalPairs } from "@/app/actions/pic";
 import { buildDrawPairs, reDrawUnlocked, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
 import type { PicEventFull } from "@/app/actions/pic";
 import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
@@ -218,6 +218,156 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl 
           className="flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground hover:border-blue-500/60 hover:text-blue-500">
           {copiedRef ? <Check className="size-3.5 text-green-500" /> : <Link2 className="size-3.5" />}
         </button>
+      )}
+    </div>
+  );
+}
+
+// ── FinalDraw: xoay cặp trước Chung Kết / Hạng 3 ──────────────────────────────
+
+function FinalDraw({
+  label, pool, players, storageKey, currentPairs, onConfirm, confirming,
+}: {
+  label: string;
+  pool: string[];
+  players: PicPlayer[];
+  storageKey: string;
+  currentPairs?: [[string, string], [string, string]];
+  onConfirm: (pairs: [[string, string], [string, string]]) => void;
+  confirming: boolean;
+}) {
+  const [pairs, setPairs] = useState<[[string, string], [string, string]] | null>(null);
+  const [isDone, setIsDone] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [animTick, setAnimTick] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [locked, setLocked] = useState<Set<number>>(new Set());
+  const [isReDrawing, setIsReDrawing] = useState(false);
+
+  const byId = (id: string) => players.find((p) => p.id === id);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try { setPairs(JSON.parse(saved)); setIsDone(true); return; } catch {}
+    }
+    if (currentPairs) { setPairs(currentPairs); setIsDone(true); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  const doDraw = () => {
+    if (isDone || isDrawing || pool.length < 4) return;
+    setIsDrawing(true); setProgress(0); setLocked(new Set());
+    const DURATION = 2500;
+    const start = Date.now();
+    const tickId = setInterval(() => setAnimTick((t) => t + 1), 80);
+    const progId = setInterval(() => setProgress(Math.min(99, ((Date.now() - start) / DURATION) * 100)), 50);
+    setTimeout(() => {
+      clearInterval(tickId); clearInterval(progId);
+      const s = [...pool].sort(() => Math.random() - 0.5);
+      const result: [[string, string], [string, string]] = [[s[0]!, s[1]!], [s[2]!, s[3]!]];
+      setPairs(result);
+      localStorage.setItem(storageKey, JSON.stringify(result));
+      setProgress(100); setIsDrawing(false); setIsDone(true);
+    }, DURATION);
+  };
+
+  const doReDraw = () => {
+    if (!pairs || isReDrawing) return;
+    setIsReDrawing(true);
+    setTimeout(() => {
+      const lockedIds = new Set<string>();
+      for (const i of locked) {
+        const p = pairs[i as 0 | 1];
+        if (p) { lockedIds.add(p[0]); lockedIds.add(p[1]); }
+      }
+      const available = pool.filter((id) => !lockedIds.has(id)).sort(() => Math.random() - 0.5);
+      const result = [...pairs] as [[string, string], [string, string]];
+      let idx = 0;
+      for (let i = 0; i < 2; i++) {
+        if (!locked.has(i)) { result[i] = [available[idx]!, available[idx + 1]!]; idx += 2; }
+      }
+      setPairs(result);
+      localStorage.setItem(storageKey, JSON.stringify(result));
+      setIsReDrawing(false);
+    }, 600);
+  };
+
+  return (
+    <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Shuffle className="size-4 text-primary" />
+        <h3 className="text-sm font-bold text-primary">{label}</h3>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {pool.map((id) => (
+          <span key={id} className="rounded-full border bg-background px-2.5 py-0.5 text-xs font-medium">
+            {byId(id)?.name ?? id}
+          </span>
+        ))}
+      </div>
+
+      {!isDone && (
+        <Button onClick={doDraw} disabled={isDrawing || pool.length < 4} className="w-full">
+          <Shuffle className={`size-4 ${isDrawing ? "animate-spin" : ""}`} />
+          {isDrawing ? "Đang bốc thăm..." : "🎲 Bốc thăm xoay cặp"}
+        </Button>
+      )}
+
+      {isDrawing && (
+        <div className="rounded-xl border bg-card p-4 text-center">
+          <div className="mb-3 flex items-center justify-center gap-2 font-bold">
+            <span className="inline-block animate-spin">🎲</span>
+            <span className="animate-pulse text-sm text-primary">ĐANG XOAY CẶP...</span>
+            <span className="inline-block animate-spin" style={{ animationDirection: "reverse" }}>🎰</span>
+          </div>
+          <div className="mb-3 flex justify-center gap-1.5">
+            {pool.map((_, i) => {
+              const pid = pool[(animTick + i * 3) % pool.length]!;
+              return (
+                <div key={i} className="min-w-[70px] rounded-lg border-2 border-primary/40 bg-background px-2 py-2 text-center shadow"
+                  style={{ transform: `rotate(${(animTick * 2 + i * 90) % 6 - 3}deg)`, transition: "transform 0.08s" }}>
+                  <div className="text-[10px] text-muted-foreground">👤</div>
+                  <div className="truncate text-xs font-bold text-primary">{byId(pid)?.name ?? "..."}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mx-auto h-2 max-w-xs overflow-hidden rounded-full bg-secondary">
+            <div className="h-full rounded-full bg-primary transition-all duration-100" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {isDone && pairs && (
+        <div className="space-y-2">
+          {pairs.map((pair, pi) => {
+            const isLocked = locked.has(pi);
+            return (
+              <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
+                <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
+                  {pi === 0 ? "A" : "B"}
+                </span>
+                <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
+                <button onClick={() => setLocked((prev) => { const n = new Set(prev); if (isLocked) n.delete(pi); else n.add(pi); return n; })}
+                  title={isLocked ? "Bỏ chốt" : "Chốt cặp"}
+                  className={`flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${isLocked ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:border-primary/60"}`}>
+                  {isLocked ? <Lock className="size-3" /> : <Unlock className="size-3" />}
+                </button>
+              </div>
+            );
+          })}
+          {locked.size < 2 && (
+            <Button variant="outline" onClick={doReDraw} disabled={isReDrawing || confirming} className="w-full">
+              <Shuffle className={`size-4 ${isReDrawing ? "animate-spin" : ""}`} />
+              {isReDrawing ? "Đang quay..." : "🎲 Quay lại cặp chưa chốt"}
+            </Button>
+          )}
+          <Button disabled={confirming} onClick={() => onConfirm(pairs)} size="lg" className="w-full">
+            <CheckCircle2 className="size-4" />
+            {confirming ? "Đang cập nhật…" : "✅ Xác nhận cặp & Bắt đầu"}
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -436,11 +586,9 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
             {/* Draw mode selector — hidden after draw */}
             {!drawDone && !isDrawing && (
               <div className="space-y-1.5">
-                {DRAW_MODES.filter((m) => {
-                  if (m.value === "cross_group" || m.value === "cross_rank") return multiGroup;
-                  if (m.value === "final_four") return advancingIds.length > 4;
-                  return true; // random_all always shown
-                }).map((m) => (
+                {DRAW_MODES.filter((m) =>
+                  (m.value === "cross_group" || m.value === "cross_rank") ? multiGroup : true
+                ).map((m) => (
                   <button key={m.value} onClick={() => setDrawMode(m.value)}
                     className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
                       drawMode === m.value ? "border-primary bg-primary/10" : "hover:border-primary/50"
@@ -671,6 +819,16 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const finalMatchKO = knockoutMatches.find((m) => m.stage === "final");
   const thirdMatchKO = knockoutMatches.find((m) => m.stage === "third");
 
+  // Xoay cặp final: compute semi-winners/losers for re-draw
+  const allSemisComplete = semiMatches.length >= 2 && semiMatches.every((m) => m.status === "completed");
+  const completedSemisWithPlayers = semiMatches.filter((m) => m.status === "completed" && m.a1 !== "");
+  const semiWinners = completedSemisWithPlayers.flatMap((m) =>
+    m.scoreA > m.scoreB ? [m.a1, m.a2] : [m.b1, m.b2]
+  );
+  const semiLosers = completedSemisWithPlayers.flatMap((m) =>
+    m.scoreA > m.scoreB ? [m.b1, m.b2] : [m.a1, m.a2]
+  );
+
   type TabId = number | "standings";
   const allTabs: { id: TabId; label: string }[] = multiGroup
     ? [...groups.map((g, i) => ({ id: i as TabId, label: `Bảng ${g.label}` })), { id: "standings", label: "Xếp hạng" }]
@@ -735,6 +893,47 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               ))}
             </div>
           )}
+          {/* Xoay cặp option when both semis complete */}
+          {allSemisComplete && finalMatchKO?.status !== "completed" && semiWinners.length === 4 && (
+            <div className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                🎲 Xoay cặp Chung Kết — tuỳ chọn
+              </h2>
+              <FinalDraw
+                label="Bốc thăm cặp đôi Chung Kết"
+                pool={semiWinners}
+                players={players}
+                storageKey={`pic-final-draw-${eventId}`}
+                currentPairs={finalMatchKO?.a1 ? [[finalMatchKO.a1, finalMatchKO.a2], [finalMatchKO.b1, finalMatchKO.b2]] : undefined}
+                confirming={pending}
+                onConfirm={(newPairs) => {
+                  startTransition(async () => {
+                    await picDrawFinalPairs(eventId, newPairs, "final");
+                    localStorage.removeItem(`pic-final-draw-${eventId}`);
+                    router.refresh();
+                  });
+                }}
+              />
+              {thirdMatchKO && thirdMatchKO.status !== "completed" && semiLosers.length === 4 && (
+                <FinalDraw
+                  label="Bốc thăm cặp đôi Tranh Hạng 3–4"
+                  pool={semiLosers}
+                  players={players}
+                  storageKey={`pic-third-draw-${eventId}`}
+                  currentPairs={thirdMatchKO.a1 ? [[thirdMatchKO.a1, thirdMatchKO.a2], [thirdMatchKO.b1, thirdMatchKO.b2]] : undefined}
+                  confirming={pending}
+                  onConfirm={(newPairs) => {
+                    startTransition(async () => {
+                      await picDrawFinalPairs(eventId, newPairs, "third");
+                      localStorage.removeItem(`pic-third-draw-${eventId}`);
+                      router.refresh();
+                    });
+                  }}
+                />
+              )}
+            </div>
+          )}
+
           {finalMatchKO && (
             <div className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">🏆 Chung kết — chạm {config.targetKnockout}</h2>

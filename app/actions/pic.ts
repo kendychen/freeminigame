@@ -628,6 +628,50 @@ export async function picDrawKnockout(
   return { ok: true };
 }
 
+// ── Xoay cặp: re-draw final/3rd pairs from semi winners/losers ───────────────
+
+export async function picDrawFinalPairs(
+  eventId: string,
+  pairs: [[string, string], [string, string]],
+  matchStage: "final" | "third",
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: match } = await svc
+    .from("pic_matches")
+    .select("id")
+    .eq("event_id", eventId)
+    .eq("stage", matchStage)
+    .maybeSingle();
+  if (!match) return { error: "match_not_found" };
+
+  const { error } = await svc
+    .from("pic_matches")
+    .update({
+      a1_id: pairs[0][0],
+      a2_id: pairs[0][1],
+      b1_id: pairs[1][0],
+      b2_id: pairs[1][1],
+      score_a: 0,
+      score_b: 0,
+      status: "pending",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", match.id);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic/${eventId}`);
+  return { ok: true };
+}
+
 // ── Realtime group draw via pair_sessions ─────────────────────────────────────
 
 export async function createPicDraw(

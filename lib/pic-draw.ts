@@ -1,4 +1,4 @@
-export type DrawMode = "random_all" | "final_four" | "cross_group" | "cross_rank";
+export type DrawMode = "random_all" | "cross_group" | "cross_rank";
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -20,12 +20,6 @@ export function buildDrawPairs(
   advancingByGroup: string[][],
 ): [string, string][] {
   const allIds = advancingByGroup.flat();
-
-  if (mode === "final_four") {
-    // Pick 4 random players from all advancing, regardless of how many advance
-    const top4 = shuffle(allIds).slice(0, 4);
-    return [[top4[0]!, top4[1]!], [top4[2]!, top4[3]!]];
-  }
 
   if (mode === "cross_group" && advancingByGroup.length >= 2) {
     const sA = shuffle(advancingByGroup[0]!);
@@ -85,11 +79,6 @@ export const DRAW_MODES: { value: DrawMode; label: string; desc: string }[] = [
     value: "random_all",
     label: "Random toàn bộ",
     desc: "Xáo trộn ngẫu nhiên tất cả người chơi",
-  },
-  {
-    value: "final_four",
-    label: "Chung kết 4 VĐV",
-    desc: "Quay random chọn 4 người bất kỳ vào chung kết trực tiếp",
   },
   {
     value: "cross_group",
