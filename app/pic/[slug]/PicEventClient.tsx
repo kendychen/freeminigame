@@ -247,9 +247,11 @@ function FinalDraw({
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
     if (saved) {
+      // User already spun → locked in
       try { setPairs(JSON.parse(saved)); setIsDone(true); return; } catch {}
     }
-    if (currentPairs) { setPairs(currentPairs); setIsDone(true); }
+    // Auto-filled from semis → show as preview, still allow spinning
+    if (currentPairs) { setPairs(currentPairs); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
@@ -283,6 +285,21 @@ function FinalDraw({
           </span>
         ))}
       </div>
+
+      {/* Preview current pairs (auto-filled) before spinning */}
+      {!isDone && pairs && !isDrawing && (
+        <div className="space-y-1.5 opacity-60">
+          <p className="text-[11px] text-muted-foreground">Cặp bán kết (giữ nguyên nếu không xoay):</p>
+          {pairs.map((pair, pi) => (
+            <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
+              <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
+                {pi === 0 ? "A" : "B"}
+              </span>
+              <span className="flex-1 text-sm font-medium">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!isDone && (
         <Button onClick={doDraw} disabled={isDrawing || pool.length < 4} className="w-full">
