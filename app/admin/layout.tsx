@@ -3,11 +3,11 @@ import {
   Trophy,
   LayoutDashboard,
   Users,
-  Calendar,
   Activity,
   ScrollText,
   Settings,
   Zap,
+  Shuffle,
 } from "lucide-react";
 import { requireSiteAdmin } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -17,6 +17,7 @@ const NAV = [
   { href: "/admin/tournaments", label: "Giải đấu", icon: Trophy },
   { href: "/admin/users", label: "Người dùng", icon: Users },
   { href: "/admin/quick-brackets", label: "Quick Shares", icon: Zap },
+  { href: "/admin/pic", label: "PIC Xoay Cặp", icon: Shuffle },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText },
   { href: "/admin/health", label: "Health", icon: Activity },
   { href: "/admin/settings", label: "Cài đặt", icon: Settings },
