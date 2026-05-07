@@ -81,7 +81,7 @@ export default function PicAdminClient({ initial }: { initial: Row[] }) {
                 </td>
                 <td className="px-3 py-2">
                   <Link
-                    href={`/pic/${r.slug}/matches`}
+                    href={`/pic/v/${r.slug}`}
                     target="_blank"
                     className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
                   >
