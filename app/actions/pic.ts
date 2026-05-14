@@ -1332,13 +1332,30 @@ export async function tapPicIndividualDraw(
   if (playerToken && tokens[playerId] !== playerToken)
     return { error: "wrong_player_token" };
 
-  const assignments = session.assignments as Record<string, number>;
+  const groupSizes = session.group_sizes as number[];
+
+  // Use atomic Postgres function (handles race conditions via SELECT FOR UPDATE).
+  // Falls back to JS-level read-modify-write if RPC not yet deployed.
+  const { data: rpcResult, error: rpcErr } = await svc.rpc(
+    "pic_individual_draw_tap",
+    { p_code: code, p_player_id: playerId },
+  );
+
+  if (!rpcErr && rpcResult !== null && typeof rpcResult === "number") {
+    return { ok: true, groupIdx: rpcResult };
+  }
+
+  // Fallback: re-read fresh state right before write (smaller race window).
+  const { data: fresh } = await svc
+    .from("pic_individual_sessions")
+    .select("assignments")
+    .eq("code", code)
+    .single();
+  const assignments = (fresh?.assignments ?? {}) as Record<string, number>;
   if (playerId in assignments) return { error: "already_drawn" };
 
-  const groupSizes = session.group_sizes as number[];
   const counts = Array(groupSizes.length).fill(0);
   for (const gi of Object.values(assignments)) counts[gi]++;
-
   const available: number[] = [];
   for (let i = 0; i < groupSizes.length; i++) {
     if (counts[i] < groupSizes[i]!) available.push(i);
@@ -1348,13 +1365,10 @@ export async function tapPicIndividualDraw(
   const chosen = available[Math.floor(Math.random() * available.length)]!;
   const newAssignments = { ...assignments, [playerId]: chosen };
 
-  // Atomic-ish: only update if assignments hasn't changed since read.
-  // (Supabase: filter on jsonb equality.)
   const { error } = await svc
     .from("pic_individual_sessions")
     .update({ assignments: newAssignments, updated_at: new Date().toISOString() })
-    .eq("code", code)
-    .eq("assignments", assignments);
+    .eq("code", code);
 
   if (error) return { error: error.message };
   return { ok: true, groupIdx: chosen };
