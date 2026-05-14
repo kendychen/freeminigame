@@ -24,7 +24,7 @@ export default async function PicLiveDrawPage({
 
   const { data: ev } = await svc
     .from("pic_events")
-    .select("config, slug")
+    .select("name, config, slug")
     .eq("id", session.event_id)
     .single();
   if (!ev) notFound();
@@ -44,7 +44,7 @@ export default async function PicLiveDrawPage({
   }
 
   const cfg = ev.config as { name?: string };
-  const eventName = cfg?.name ?? "PIC tournament";
+  const eventName = (ev.name as string | null | undefined) || cfg?.name || "PIC tournament";
 
   return (
     <PicLiveDrawClient

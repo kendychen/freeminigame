@@ -96,14 +96,16 @@ async function generateResultImage(opts: {
   ctx.fillStyle = "rgba(255,255,255,0.9)";
   ctx.fillText(`VĐV ${opts.position}`, 540, 510);
 
-  // Huge group letter card
-  ctx.fillStyle = "rgba(255,255,255,0.2)";
-  roundRect(ctx, 290, 580, 500, 320, 36);
-  ctx.fill();
-
+  // Huge group letter — clean with subtle text shadow
   ctx.fillStyle = "#ffffff";
   ctx.font = '900 240px system-ui, sans-serif';
+  ctx.shadowColor = "rgba(0,0,0,0.25)";
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 8;
   ctx.fillText(`Bảng ${opts.groupLetter}`, 540, 740);
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
 
   // Bottom watermark
   ctx.font = '500 28px system-ui, sans-serif';
