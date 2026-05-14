@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Upload, Shuffle, Users, Radio, ExternalLink, RefreshCw, Check } from "lucide-react";
+import { Plus, Trash2, Upload, Shuffle, Users, Radio, ExternalLink, RefreshCw, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import {
   generateCrossTierGroupsFull, createPicDraw, applyPicDraw, resetPicGroups,
 } from "@/app/actions/pic";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
+import IndividualDrawClient from "./IndividualDrawClient";
 
 interface Player { id: string; name: string }
 interface Group { id: string; label: string; playerIds: string[] }
@@ -87,6 +88,8 @@ export default function PicPlayersClient({
 
   // Old pre-split A/B flow toggle
   const [crossTierMode, setCrossTierMode] = useState(false);
+  // Individual self-draw mode
+  const [individualDrawMode, setIndividualDrawMode] = useState(false);
   // Shared A/B categories (State 1 old flow + State 2 post-split)
   const [categories, setCategories] = useState<Record<string, Category>>({});
   const [activeTier, setActiveTier] = useState<Category | null>(null);
@@ -379,8 +382,19 @@ export default function PicPlayersClient({
         </CardHeader>
       </Card>
 
+      {/* ── STATE 1A: Individual draw mode ── */}
+      {!hasGroups && individualDrawMode && (
+        <IndividualDrawClient
+          eventId={eventId}
+          players={players}
+          groupSizes={snakePreview(pc, effG)}
+          advancePerGroup={advancePerGroup}
+          onCancel={() => setIndividualDrawMode(false)}
+        />
+      )}
+
       {/* ── STATE 1: No groups ── */}
-      {!hasGroups && (
+      {!hasGroups && !individualDrawMode && (
         <>
           <Card>
             <CardHeader><CardTitle className="text-base">Thêm VĐV</CardTitle></CardHeader>
@@ -550,17 +564,34 @@ export default function PicPlayersClient({
                     </div>
                   )}
 
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className={`grid gap-2 ${crossTierMode ? "" : "sm:grid-cols-3"}`}>
                     <Button onClick={onDrawOrPreview} disabled={!canGenerate || pending || !!drawCode} variant="outline" size="lg">
                       <Shuffle className="size-4" />
-                      {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : "🎲 Quay ngay (local)"}
+                      {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : "🎲 Quay ngay"}
                     </Button>
                     {!crossTierMode && (
-                      <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode} size="lg">
-                        <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 Quay LIVE (realtime)"}
-                      </Button>
+                      <>
+                        <Button
+                          onClick={() => setIndividualDrawMode(true)}
+                          disabled={!canGenerate || pending || !!drawCode}
+                          variant="outline"
+                          size="lg"
+                          className="border-primary/40 text-primary hover:bg-primary/10"
+                        >
+                          <Sparkles className="size-4" />
+                          ✨ Quay cá nhân
+                        </Button>
+                        <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode} size="lg">
+                          <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 Quay LIVE"}
+                        </Button>
+                      </>
                     )}
                   </div>
+                  {!crossTierMode && (
+                    <p className="text-[11px] text-muted-foreground">
+                      <strong>Quay ngay</strong>: random tức thì · <strong>Quay cá nhân</strong>: mỗi VĐV tự bấm tên mình · <strong>Quay LIVE</strong>: realtime nhiều màn hình
+                    </p>
+                  )}
 
                   <p className="text-xs text-muted-foreground">
                     ⚠️ Chia bảng 1 lần duy nhất. Sau khi quay, sang tab <strong>Trận đấu</strong> để nhập điểm.

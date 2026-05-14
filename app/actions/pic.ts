@@ -367,6 +367,76 @@ export async function generatePicGroups(
   return { ok: true };
 }
 
+// ── Apply individual self-draw: groups already determined client-side ──────────
+export async function applyIndividualDraw(
+  eventId: string,
+  groupSlots: string[][],
+  advancePerGroup: number,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingGroups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId);
+  if (existingGroups && existingGroups.length > 0)
+    return { error: "schedule_already_generated" };
+
+  const { data: players } = await svc
+    .from("pic_players")
+    .select("id")
+    .eq("event_id", eventId);
+  if (!players || players.length < 4) return { error: "need_at_least_4_players" };
+
+  const validIds = new Set(players.map((p) => p.id));
+  const seen = new Set<string>();
+  let total = 0;
+  for (const slot of groupSlots) {
+    for (const pid of slot) {
+      if (!validIds.has(pid)) return { error: "invalid_player_id" };
+      if (seen.has(pid)) return { error: "duplicate_player_id" };
+      seen.add(pid);
+      total++;
+    }
+  }
+  if (total !== players.length) return { error: "incomplete_assignment" };
+
+  for (let gi = 0; gi < groupSlots.length; gi++) {
+    const label = String.fromCharCode(65 + gi);
+    const { data: grp, error: grpErr } = await svc
+      .from("pic_groups")
+      .insert({ event_id: eventId, label })
+      .select("id")
+      .single();
+    if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
+
+    const slotIds = groupSlots[gi]!;
+    await svc.from("pic_group_players").insert(
+      slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
+  }
+
+  const cfg = ev.config as Record<string, unknown>;
+  await svc
+    .from("pic_events")
+    .update({
+      config: { ...cfg, advancePerGroup },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId);
+
+  revalidatePath(`/pic`);
+  return { ok: true };
+}
+
 // ── Generate cross-tier matches after admin assigns A/B within each group ────────
 
 export async function generateCrossTierGroupMatches(
