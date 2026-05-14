@@ -67,11 +67,6 @@ async function generateResultImage(opts: {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 1080, 1080);
 
-  // Soft white overlay box (rounded)
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
-  roundRect(ctx, 80, 80, 920, 920, 48);
-  ctx.fill();
-
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#ffffff";
@@ -118,20 +113,6 @@ async function generateResultImage(opts: {
       else reject(new Error("canvas_blob_failed"));
     }, "image/png");
   });
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
 }
 
 function truncate(s: string, max: number) {
