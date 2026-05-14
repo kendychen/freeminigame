@@ -52,7 +52,7 @@ export default function PicLiveDrawClient({
   ownerId: string;
   players: Player[];
   groupSizes: number[];
-  initialAssignments: Record<string, number>;
+  initialAssignments: Record<string, { g: number; p: number }>;
   initialStatus: string;
   lockedPlayerId: string | null;
   playerToken: string | null;
@@ -61,7 +61,7 @@ export default function PicLiveDrawClient({
   const [pending, startTransition] = useTransition();
   const [assignments, setAssignments] = useState(initialAssignments);
   const [status, setStatus] = useState(initialStatus);
-  const [animating, setAnimating] = useState<{ player: Player; result: number | null } | null>(null);
+  const [animating, setAnimating] = useState<{ player: Player; result: number | null; position: number | null } | null>(null);
   const [animTick, setAnimTick] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isOwner, setIsOwner] = useState(false);
@@ -99,7 +99,7 @@ export default function PicLiveDrawClient({
           table: "pic_individual_sessions",
           filter: `code=eq.${code}`,
         },
-        (payload: { new: { assignments: Record<string, number>; status: string } }) => {
+        (payload: { new: { assignments: Record<string, { g: number; p: number }>; status: string } }) => {
           const newA = payload.new.assignments;
           const newStatus = payload.new.status;
           setStatus(newStatus);
@@ -114,12 +114,11 @@ export default function PicLiveDrawClient({
 
           const p = newPid ? playerMap[newPid] : undefined;
           if (newPid && p) {
-            const result = newA[newPid]!;
-            triggerAnimation(p, result, () => {
+            const slot = newA[newPid]!;
+            triggerAnimation(p, slot.g, slot.p, () => {
               setAssignments(newA);
             });
           } else {
-            // Reset or bulk change (no animation needed)
             setAssignments(newA);
           }
         },
@@ -135,8 +134,8 @@ export default function PicLiveDrawClient({
     if (progRef.current) clearInterval(progRef.current);
   }, []);
 
-  const triggerAnimation = (p: Player, result: number, onDone: () => void) => {
-    setAnimating({ player: p, result: null });
+  const triggerAnimation = (p: Player, result: number, position: number, onDone: () => void) => {
+    setAnimating({ player: p, result: null, position: null });
     setProgress(0);
     setAnimTick(0);
     const start = Date.now();
@@ -148,7 +147,7 @@ export default function PicLiveDrawClient({
       if (tickRef.current) clearInterval(tickRef.current);
       if (progRef.current) clearInterval(progRef.current);
       setProgress(100);
-      setAnimating({ player: p, result });
+      setAnimating({ player: p, result, position });
       setTimeout(() => {
         setAnimating(null);
         onDone();
@@ -158,7 +157,7 @@ export default function PicLiveDrawClient({
 
   const groupCounts = useMemo(() => {
     const counts = Array(groupCount).fill(0);
-    for (const gi of Object.values(assignments)) counts[gi]++;
+    for (const v of Object.values(assignments)) counts[v.g]++;
     return counts;
   }, [assignments, groupCount]);
 
@@ -229,15 +228,22 @@ export default function PicLiveDrawClient({
         <p className="text-muted-foreground">Admin đã lưu kết quả. Đợi lịch thi đấu được tạo.</p>
         <div className={`grid gap-3 ${groupCount <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
           {groupSizes.map((size, gi) => {
-            const members = Object.entries(assignments)
-              .filter(([, g]) => g === gi)
-              .map(([pid]) => playerMap[pid]?.name ?? pid);
+            const slots: (string | null)[] = Array(size).fill(null);
+            for (const [pid, v] of Object.entries(assignments)) {
+              if (v.g === gi) slots[v.p - 1] = playerMap[pid]?.name ?? pid;
+            }
+            const filled = slots.filter((s) => s !== null).length;
             return (
               <div key={gi} className={`rounded-xl border-2 p-3 text-left ${GROUP_COLOR[gi % GROUP_COLOR.length]}`}>
                 <p className="font-bold">Bảng {String.fromCharCode(65 + gi)}</p>
-                <p className="text-xs opacity-70">{members.length}/{size}</p>
+                <p className="text-xs opacity-70">{filled}/{size}</p>
                 <ul className="mt-2 space-y-1 text-sm">
-                  {members.map((name, i) => <li key={i}>• {name}</li>)}
+                  {slots.map((name, i) => (
+                    <li key={i} className={name ? "" : "opacity-40"}>
+                      <span className="font-mono text-[10px] font-bold mr-1.5">VĐV {i + 1}</span>
+                      {name ?? <em className="text-xs">đang chờ...</em>}
+                    </li>
+                  ))}
                 </ul>
               </div>
             );
@@ -333,16 +339,19 @@ export default function PicLiveDrawClient({
                 })}
               </div>
             ) : (
-              <div
-                className={`flex size-24 items-center justify-center rounded-2xl text-5xl font-black shadow-2xl animate-bounce ${GROUP_SOLID[animating.result % GROUP_SOLID.length]}`}
-              >
-                {String.fromCharCode(65 + animating.result)}
+              <div className="flex flex-col items-center gap-2">
+                <div
+                  className={`flex flex-col items-center justify-center rounded-2xl px-6 py-4 shadow-2xl animate-bounce ${GROUP_SOLID[animating.result % GROUP_SOLID.length]}`}
+                >
+                  <span className="text-xs font-bold opacity-80">VĐV {animating.position}</span>
+                  <span className="text-3xl font-black leading-tight">Bảng {String.fromCharCode(65 + animating.result)}</span>
+                </div>
               </div>
             )}
             <p className="text-sm font-semibold">
               {animating.result === null
                 ? "Đang xác định bảng..."
-                : <>🏆 Vào <strong>Bảng {String.fromCharCode(65 + animating.result)}</strong>!</>}
+                : <>🏆 Bạn là <strong>VĐV {animating.position} - Bảng {String.fromCharCode(65 + animating.result)}</strong>!</>}
             </p>
           </div>
           <div className="mx-auto h-2 max-w-xs overflow-hidden rounded-full bg-secondary">
@@ -407,36 +416,41 @@ export default function PicLiveDrawClient({
           </div>
           <div className={`grid gap-3 ${groupCount <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
             {groupSizes.map((size, gi) => {
-              const drawnInGroup = Object.entries(assignments)
-                .filter(([, g]) => g === gi)
-                .map(([pid]) => ({ pid, name: playerMap[pid]?.name ?? pid }));
+              const slots: { pid: string; name: string }[] = [];
+              const slotArr: ({ pid: string; name: string } | null)[] = Array(size).fill(null);
+              for (const [pid, v] of Object.entries(assignments)) {
+                if (v.g === gi) {
+                  slotArr[v.p - 1] = { pid, name: playerMap[pid]?.name ?? pid };
+                }
+              }
+              for (const s of slotArr) if (s) slots.push(s);
               return (
                 <div key={gi} className={`rounded-xl border-2 p-3 ${GROUP_COLOR[gi % GROUP_COLOR.length]}`}>
                   <div className="mb-2 flex items-center justify-between">
                     <p className="font-bold">Bảng {String.fromCharCode(65 + gi)}</p>
-                    <span className="font-mono text-xs opacity-70">{drawnInGroup.length}/{size}</span>
+                    <span className="font-mono text-xs opacity-70">{slots.length}/{size}</span>
                   </div>
                   <ul className="space-y-1 text-sm">
-                    {drawnInGroup.map(({ pid, name }) => (
-                      <li key={pid} className="group flex items-center gap-1.5">
-                        <span className="size-1.5 shrink-0 rounded-full bg-current opacity-60" />
-                        <span className="truncate flex-1">{name}</span>
-                        {isOwner && (
-                          <button
-                            onClick={() => handleResetPlayer({ id: pid, name })}
-                            disabled={pending || !!animating}
-                            title="Quay lại lượt của VĐV này"
-                            className="flex size-5 shrink-0 items-center justify-center rounded-full opacity-0 group-hover:opacity-100 hover:bg-current/10 transition-opacity"
-                          >
-                            <X className="size-3" />
-                          </button>
+                    {slotArr.map((entry, i) => (
+                      <li key={i} className={`group flex items-center gap-1.5 ${entry ? "" : "opacity-40"}`}>
+                        <span className="font-mono text-[10px] font-bold w-12 shrink-0">VĐV {i + 1}</span>
+                        {entry ? (
+                          <>
+                            <span className="truncate flex-1">{entry.name}</span>
+                            {isOwner && (
+                              <button
+                                onClick={() => handleResetPlayer({ id: entry.pid, name: entry.name })}
+                                disabled={pending || !!animating}
+                                title="Quay lại lượt của VĐV này"
+                                className="flex size-5 shrink-0 items-center justify-center rounded-full opacity-0 group-hover:opacity-100 hover:bg-current/10 transition-opacity"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs italic">đang chờ...</span>
                         )}
-                      </li>
-                    ))}
-                    {Array.from({ length: size - drawnInGroup.length }, (_, i) => (
-                      <li key={`empty-${i}`} className="flex items-center gap-1.5 opacity-30">
-                        <span className="size-1.5 shrink-0 rounded-full border border-current" />
-                        <span className="text-xs italic">đang chờ...</span>
                       </li>
                     ))}
                   </ul>

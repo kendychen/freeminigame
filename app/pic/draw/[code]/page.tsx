@@ -53,7 +53,7 @@ export default async function PicLiveDrawPage({
       ownerId={session.owner_id as string}
       players={(players ?? []).map((p) => ({ id: p.id, name: p.name }))}
       groupSizes={session.group_sizes as number[]}
-      initialAssignments={session.assignments as Record<string, number>}
+      initialAssignments={session.assignments as Record<string, { g: number; p: number }>}
       initialStatus={session.status as string}
       lockedPlayerId={lockedPlayerId}
       playerToken={playerToken ?? null}

@@ -1338,7 +1338,7 @@ export async function tapPicIndividualDraw(
   code: string,
   playerId: string,
   playerToken: string | null,
-): Promise<{ ok: true; groupIdx: number } | { error: string }> {
+): Promise<{ ok: true; groupIdx: number; position: number } | { error: string }> {
   const svc = createServiceClient();
 
   const { data: session } = await svc
@@ -1359,33 +1359,46 @@ export async function tapPicIndividualDraw(
 
   const groupSizes = session.group_sizes as number[];
 
-  // Use atomic Postgres function (handles race conditions via SELECT FOR UPDATE).
-  // Falls back to JS-level read-modify-write if RPC not yet deployed.
+  // RPC returns JSONB { g, p } — atomic random slot pick.
   const { data: rpcResult, error: rpcErr } = await svc.rpc(
     "pic_individual_draw_tap",
     { p_code: code, p_player_id: playerId },
   );
 
-  if (!rpcErr && rpcResult !== null && typeof rpcResult === "number") {
-    return { ok: true, groupIdx: rpcResult };
+  if (
+    !rpcErr &&
+    rpcResult !== null &&
+    typeof rpcResult === "object" &&
+    "g" in rpcResult &&
+    "p" in rpcResult
+  ) {
+    return {
+      ok: true,
+      groupIdx: (rpcResult as { g: number }).g,
+      position: (rpcResult as { p: number }).p,
+    };
   }
 
-  // Fallback: re-read fresh state right before write (smaller race window).
+  // Fallback: JS-level read-modify-write (small race window).
   const { data: fresh } = await svc
     .from("pic_individual_sessions")
     .select("assignments")
     .eq("code", code)
     .single();
-  const assignments = (fresh?.assignments ?? {}) as Record<string, number>;
+  const assignments = (fresh?.assignments ?? {}) as Record<string, { g: number; p: number }>;
   if (playerId in assignments) return { error: "already_drawn" };
 
-  const counts = Array(groupSizes.length).fill(0);
-  for (const gi of Object.values(assignments)) counts[gi]++;
-  const available: number[] = [];
-  for (let i = 0; i < groupSizes.length; i++) {
-    if (counts[i] < groupSizes[i]!) available.push(i);
+  const occupied = new Set<string>();
+  for (const v of Object.values(assignments)) {
+    if (typeof v === "object" && v && "g" in v && "p" in v) occupied.add(`${v.g}-${v.p}`);
   }
-  if (available.length === 0) return { error: "all_groups_full" };
+  const available: { g: number; p: number }[] = [];
+  for (let g = 0; g < groupSizes.length; g++) {
+    for (let p = 1; p <= groupSizes[g]!; p++) {
+      if (!occupied.has(`${g}-${p}`)) available.push({ g, p });
+    }
+  }
+  if (available.length === 0) return { error: "all_slots_full" };
 
   const chosen = available[Math.floor(Math.random() * available.length)]!;
   const newAssignments = { ...assignments, [playerId]: chosen };
@@ -1396,7 +1409,7 @@ export async function tapPicIndividualDraw(
     .eq("code", code);
 
   if (error) return { error: error.message };
-  return { ok: true, groupIdx: chosen };
+  return { ok: true, groupIdx: chosen.g, position: chosen.p };
 }
 
 export async function applyPicIndividualDrawSession(
@@ -1415,16 +1428,23 @@ export async function applyPicIndividualDrawSession(
   if (session.status !== "active") return { error: "session_not_active" };
 
   const groupSizes = session.group_sizes as number[];
-  const assignments = session.assignments as Record<string, number>;
+  const assignments = session.assignments as Record<string, { g: number; p: number } | number>;
 
-  // Build groupSlots in expected format
-  const groupSlots: string[][] = Array.from({ length: groupSizes.length }, () => []);
-  for (const [pid, gi] of Object.entries(assignments)) {
-    groupSlots[gi]!.push(pid);
+  // Build groupSlots ordered by slot position (p) so seed in DB = slot 1..N order
+  const groupSlots: string[][] = groupSizes.map((size) => Array(size).fill(""));
+  for (const [pid, v] of Object.entries(assignments)) {
+    if (typeof v === "object" && v && "g" in v && "p" in v) {
+      groupSlots[v.g]![v.p - 1] = pid;
+    } else if (typeof v === "number") {
+      // Legacy format: append in arbitrary order
+      const gi = v;
+      const slot = groupSlots[gi]!.indexOf("");
+      if (slot !== -1) groupSlots[gi]![slot] = pid;
+    }
   }
 
-  // Verify completeness
-  const total = groupSlots.reduce((s, g) => s + g.length, 0);
+  // Verify completeness (no empty slots)
+  const total = groupSlots.reduce((s, g) => s + g.filter((x) => x !== "").length, 0);
   const { data: players } = await svc
     .from("pic_players")
     .select("id")
