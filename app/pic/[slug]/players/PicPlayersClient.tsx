@@ -505,17 +505,38 @@ export default function PicPlayersClient({
 
                 {/* Per-player links */}
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">🔐 Link riêng từng VĐV (chỉ tap được tên mình)</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground">🔐 Link riêng từng VĐV (chỉ tap được tên mình)</p>
+                    <button
+                      onClick={() => {
+                        const text = players
+                          .map((p) => {
+                            const tok = liveDraw.playerTokens[p.id];
+                            if (!tok) return null;
+                            return `${p.name}: ${window.location.origin}/pic/draw/${liveDraw.code}?p=${tok}`;
+                          })
+                          .filter(Boolean)
+                          .join("\n");
+                        copyLink(text, "all");
+                      }}
+                      className="flex items-center gap-1 rounded-md border border-primary/30 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10"
+                    >
+                      {copiedKey === "all" ? <Check className="size-3 text-green-500" /> : <ExternalLink className="size-3" />}
+                      Copy tất cả
+                    </button>
+                  </div>
                   <div className="max-h-72 overflow-y-auto rounded-lg border bg-background p-2 space-y-1">
                     {players.map((p) => {
                       const tok = liveDraw.playerTokens[p.id];
                       if (!tok) return null;
                       const url = `${window.location.origin}/pic/draw/${liveDraw.code}?p=${tok}`;
+                      const combined = `${p.name}: ${url}`;
                       return (
                         <button
                           key={p.id}
-                          onClick={() => copyLink(url, `p-${p.id}`)}
+                          onClick={() => copyLink(combined, `p-${p.id}`)}
                           className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent"
+                          title="Click để copy tên + link"
                         >
                           {copiedKey === `p-${p.id}` ? <Check className="size-3 text-green-500 shrink-0" /> : <ExternalLink className="size-3 shrink-0 text-muted-foreground" />}
                           <span className="w-24 truncate font-medium shrink-0">{p.name}</span>
