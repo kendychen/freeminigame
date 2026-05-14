@@ -28,6 +28,7 @@ export default async function PicPlayersPage({
       hasMatches={hasMatches}
       hasCompletedMatches={hasCompletedMatches}
       drawCode={state.config.drawCode ?? null}
+      initialScheduleMode={state.config.scheduleMode ?? "standard"}
     />
   );
 }

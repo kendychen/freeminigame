@@ -40,6 +40,7 @@ export interface PicConfig {
   drawGroupCount?: number;
   drawAdvancePerGroup?: number;
   playerCategories?: Record<string, "A" | "B">;
+  scheduleMode?: "standard" | "hd";
 }
 
 export type PicStage = "group" | "draw" | "knockout" | "done";

@@ -46,8 +46,38 @@ const SCHEDULES: Record<number, MatchSlot[]> = {
   ],
 };
 
-export function generateGroupSchedule(n: number): MatchSlot[] {
-  const s = SCHEDULES[n];
+// HD variant — alternative schedules (positions referred to as 1A, 2A, 3A...)
+// 5-player matches user's reference image schedule.
+const SCHEDULES_HD: Record<number, MatchSlot[]> = {
+  4: [
+    { a: [0, 1], b: [2, 3] },
+    { a: [0, 2], b: [1, 3] },
+    { a: [0, 3], b: [1, 2] },
+  ],
+  5: [
+    { a: [0, 1], b: [2, 3] }, // A-B vs C-D
+    { a: [0, 2], b: [1, 4] }, // A-C vs B-E
+    { a: [1, 2], b: [3, 4] }, // B-C vs D-E
+    { a: [0, 4], b: [1, 3] }, // A-E vs B-D
+    { a: [0, 3], b: [2, 4] }, // A-D vs C-E
+  ],
+  6: [
+    { a: [0, 1], b: [2, 3] }, // A-B vs C-D
+    { a: [4, 5], b: [0, 2] }, // E-F vs A-C
+    { a: [1, 3], b: [4, 5] }, // B-D vs E-F (rotate)
+    { a: [0, 4], b: [2, 5] }, // A-E vs C-F
+    { a: [1, 5], b: [3, 4] }, // B-F vs D-E
+    { a: [0, 3], b: [1, 2] }, // A-D vs B-C
+  ],
+  7: SCHEDULES[7]!,
+  8: SCHEDULES[8]!,
+};
+
+export type ScheduleMode = "standard" | "hd";
+
+export function generateGroupSchedule(n: number, mode: ScheduleMode = "standard"): MatchSlot[] {
+  const map = mode === "hd" ? SCHEDULES_HD : SCHEDULES;
+  const s = map[n];
   if (!s) throw new Error(`Số VĐV phải là 4, 5, 6, 7 hoặc 8`);
   return s;
 }

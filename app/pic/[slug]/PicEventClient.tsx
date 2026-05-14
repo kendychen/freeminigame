@@ -117,26 +117,38 @@ function TierBadge({ cat }: { cat: "A" | "B" | undefined }) {
   );
 }
 
-function PairLabel({ id1, id2, players, categories, won, align }: {
+function SlotTag({ slot }: { slot: string | undefined }) {
+  if (!slot) return null;
+  return (
+    <span className="font-mono text-[10px] font-bold text-muted-foreground/80">{slot}</span>
+  );
+}
+
+function PairLabel({ id1, id2, players, categories, slots, won, align }: {
   id1: string; id2: string; players: PicPlayer[];
   categories?: Record<string, "A" | "B">;
+  slots?: Record<string, string>;
   won: boolean; align: "left" | "right";
 }) {
   const p1 = players.find(p => p.id === id1);
   const p2 = players.find(p => p.id === id2);
   const cat1 = categories?.[id1];
   const cat2 = categories?.[id2];
+  const slot1 = slots?.[id1];
+  const slot2 = slots?.[id2];
   const nameClass = `text-xs font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`;
-  if (!categories) {
+  if (!categories && !slots) {
     return <p className={`truncate text-sm font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`}>{p1?.name ?? "?"} & {p2?.name ?? "?"}</p>;
   }
   return (
     <div className={`space-y-0.5 ${align === "right" ? "items-end" : "items-start"} flex flex-col`}>
       <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <SlotTag slot={slot1} />
         <TierBadge cat={cat1} />
         <span className={nameClass}>{p1?.name ?? "?"}</span>
       </span>
       <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <SlotTag slot={slot2} />
         <TierBadge cat={cat2} />
         <span className={nameClass}>{p2?.name ?? "?"}</span>
       </span>
@@ -144,10 +156,12 @@ function PairLabel({ id1, id2, players, categories, won, align }: {
   );
 }
 
-function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl, playerCategories }: {
+function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl, playerCategories, playerSlots }: {
   match: PicMatch; players: PicPlayer[]; groupLabel?: string;
   onClick?: () => void; onDirectScore?: (scoreA: number, scoreB: number) => void;
-  refUrl?: string; playerCategories?: Record<string, "A" | "B">;
+  refUrl?: string;
+  playerCategories?: Record<string, "A" | "B">;
+  playerSlots?: Record<string, string>;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftA, setDraftA] = useState("");
@@ -230,8 +244,8 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl,
         </span>
       )}
       <div className="min-w-0 flex-1">
-        {match.a1 && playerCategories ? (
-          <PairLabel id1={match.a1} id2={match.a2} players={players} categories={playerCategories} won={aWon} align="left" />
+        {match.a1 && (playerCategories || playerSlots) ? (
+          <PairLabel id1={match.a1} id2={match.a2} players={players} categories={playerCategories} slots={playerSlots} won={aWon} align="left" />
         ) : (
           <p className={`truncate text-sm font-semibold leading-tight ${aWon ? "text-primary" : ""}`}>
             {aName}{aWon && <Trophy className="ml-1 inline size-3.5 text-primary" />}
@@ -240,8 +254,8 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl,
       </div>
       <span className="shrink-0 text-[10px] font-medium text-muted-foreground">vs</span>
       <div className="min-w-0 flex-1 text-right">
-        {match.b1 && playerCategories ? (
-          <PairLabel id1={match.b1} id2={match.b2} players={players} categories={playerCategories} won={bWon} align="right" />
+        {match.b1 && (playerCategories || playerSlots) ? (
+          <PairLabel id1={match.b1} id2={match.b2} players={players} categories={playerCategories} slots={playerSlots} won={bWon} align="right" />
         ) : (
           <p className={`truncate text-sm font-semibold leading-tight ${bWon ? "text-primary" : "text-muted-foreground"}`}>
             {bWon && <Trophy className="mr-1 inline size-3.5 text-primary" />}{bName}
@@ -399,11 +413,12 @@ function FinalDraw({
 
 // ── StandingsTable ─────────────────────────────────────────────────────────────
 
-function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder, playerCategories }: {
+function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder, playerCategories, playerSlots }: {
   group: PicGroup; players: PicPlayer[]; advancePerGroup: number;
   pointsForWin: number; pointsForLoss: number;
   tiebreakerOrder?: "diff_first" | "wins_first";
   playerCategories?: Record<string, "A" | "B">;
+  playerSlots?: Record<string, string>;
 }) {
   const gPlayers = group.playerIds
     .map((id) => players.find((p) => p.id === id))
@@ -429,6 +444,7 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
         <tbody>
           {standings.map((s, i) => {
             const cat = playerCategories?.[s.playerId];
+            const slot = playerSlots?.[s.playerId];
             return (
             <tr key={s.playerId} className={`border-b last:border-0 ${i >= advancePerGroup ? "opacity-50" : ""}`}>
               <td className="px-3 py-2.5">
@@ -440,6 +456,7 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
               </td>
               <td className="px-3 py-2.5 font-medium">
                 <span className="flex items-center gap-1.5">
+                  {slot && <span className="font-mono text-[10px] font-bold text-muted-foreground/80 shrink-0">{slot}</span>}
                   {cat && (
                     <span className={`flex h-4 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold ${
                       cat === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"
@@ -504,6 +521,17 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     const bCount = vals.filter(v => v === "B").length;
     return aCount > 0 && bCount > 0 && aCount === bCount ? cats : undefined;
   }, [config.playerCategories, groups]);
+
+  // Slot labels: "VĐV 1", "VĐV 2", ... based on each group's playerIds order (=seed)
+  const playerSlots = useMemo<Record<string, string>>(() => {
+    const slots: Record<string, string> = {};
+    for (const g of groups) {
+      for (let i = 0; i < g.playerIds.length; i++) {
+        slots[g.playerIds[i]!] = `VĐV ${i + 1}`;
+      }
+    }
+    return slots;
+  }, [groups]);
 
   // Fetch referee token on mount
   useEffect(() => {
@@ -789,7 +817,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
           {groups.map((g) => (
             <div key={g.id} className="space-y-2">
-              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} />
+              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} />
               <div className="overflow-hidden rounded-xl border bg-card">
                 <div className="border-b bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground">
                   Kết quả trận — Bảng {g.label}
@@ -994,7 +1022,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })}
               onDirectScore={handleDirectScore(m.id)}
               refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
-              playerCategories={playerCategories} />
+              playerCategories={playerCategories}
+              playerSlots={playerSlots} />
           ))}
           {allGroupDone && (
             <Button disabled={pending} onClick={() => { startTransition(async () => { await picAdvanceToDraw(eventId); router.refresh(); }); }} size="lg" className="mt-2 w-full">
@@ -1007,7 +1036,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       {stage === "group" && viewTab === "standings" && (
         <div className="space-y-4">
           {groups.map((g) => (
-            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} />
+            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} />
           ))}
           {allGroupDone && (
             <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="w-full">

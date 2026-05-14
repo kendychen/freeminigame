@@ -339,7 +339,8 @@ export async function generatePicGroups(
 
     const n = slotIds.length;
     if (n < 4) continue;
-    const schedule = generateGroupSchedule(Math.min(n, 8));
+    const scheduleMode = ((ev.config as { scheduleMode?: "standard" | "hd" })?.scheduleMode) ?? "standard";
+    const schedule = generateGroupSchedule(Math.min(n, 8), scheduleMode);
     await svc.from("pic_matches").insert(
       schedule.map((slot, i) => ({
         event_id: eventId,
@@ -539,10 +540,11 @@ export async function generateNormalGroupMatches(
 
   const { data: ev } = await svc
     .from("pic_events")
-    .select("owner_id")
+    .select("owner_id, config")
     .eq("id", eventId)
     .single();
   if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+  const scheduleMode = ((ev.config as { scheduleMode?: "standard" | "hd" })?.scheduleMode) ?? "standard";
 
   const { data: existingMatches } = await svc
     .from("pic_matches")
@@ -581,7 +583,7 @@ export async function generateNormalGroupMatches(
 
     const n = slotIds.length;
     if (n < 4) continue;
-    const schedule = generateGroupSchedule(Math.min(n, 8));
+    const schedule = generateGroupSchedule(Math.min(n, 8), scheduleMode);
     for (let i = 0; i < schedule.length; i++) {
       const slot = schedule[i]!;
       matchRows.push({
@@ -1219,6 +1221,31 @@ export async function getPicRefereeToken(
     .eq("id", eventId);
   if (error) return { error: error.message };
   return { token };
+}
+
+export async function setPicScheduleMode(
+  eventId: string,
+  mode: "standard" | "hd",
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const cfg = (ev.config as Record<string, unknown>) ?? {};
+  const { error } = await svc
+    .from("pic_events")
+    .update({ config: { ...cfg, scheduleMode: mode }, updated_at: new Date().toISOString() })
+    .eq("id", eventId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic`);
+  return { ok: true };
 }
 
 // ── PIC Individual Draw LIVE (multi-device realtime) ─────────────────────────

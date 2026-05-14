@@ -12,6 +12,7 @@ import {
   generatePicGroups, generateCrossTierGroupMatches, generateNormalGroupMatches,
   generateCrossTierGroupsFull, createPicDraw, applyPicDraw, resetPicGroups,
   createPicIndividualDrawSession, cancelPicIndividualDrawSession,
+  setPicScheduleMode,
 } from "@/app/actions/pic";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import IndividualDrawClient from "./IndividualDrawClient";
@@ -61,6 +62,7 @@ export default function PicPlayersClient({
   hasMatches,
   hasCompletedMatches,
   drawCode: initialDrawCode,
+  initialScheduleMode,
 }: {
   eventId: string;
   initialPlayers: Player[];
@@ -68,6 +70,7 @@ export default function PicPlayersClient({
   hasMatches: boolean;
   hasCompletedMatches: boolean;
   drawCode: string | null;
+  initialScheduleMode: "standard" | "hd";
 }) {
   const router = useRouter();
   const hasGroups = initialGroups.length > 0;
@@ -91,6 +94,17 @@ export default function PicPlayersClient({
   const [crossTierMode, setCrossTierMode] = useState(false);
   // Individual self-draw mode
   const [individualDrawMode, setIndividualDrawMode] = useState(false);
+  // Schedule mode (standard vs HD)
+  const [scheduleMode, setScheduleMode] = useState<"standard" | "hd">(initialScheduleMode);
+  const onChangeScheduleMode = (mode: "standard" | "hd") => {
+    if (mode === scheduleMode || hasMatches) return;
+    setScheduleMode(mode);
+    startTransition(async () => {
+      const res = await setPicScheduleMode(eventId, mode);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      toast({ title: `Đã chuyển lịch ${mode === "hd" ? "HD" : "Chuẩn"}` });
+    });
+  };
   // Individual LIVE draw session (multi-device)
   const [liveDraw, setLiveDraw] = useState<{ code: string; playerTokens: Record<string, string> } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -534,6 +548,34 @@ export default function PicPlayersClient({
             </CardHeader>
             <CardContent className="space-y-4">
 
+              {/* Schedule mode selector */}
+              <div className="rounded-lg border bg-card p-3 space-y-2">
+                <div>
+                  <p className="text-sm font-medium">Kiểu lịch thi đấu</p>
+                  <p className="text-xs text-muted-foreground">Chuẩn (mặc định) hoặc HD (lịch xoay khác)</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onChangeScheduleMode("standard")}
+                    disabled={pending || hasMatches}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      scheduleMode === "standard" ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
+                    }`}
+                  >
+                    Chuẩn
+                  </button>
+                  <button
+                    onClick={() => onChangeScheduleMode("hd")}
+                    disabled={pending || hasMatches}
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      scheduleMode === "hd" ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
+                    }`}
+                  >
+                    HD ✨
+                  </button>
+                </div>
+              </div>
+
               {/* Old flow toggle: pre-tag A/B */}
               <label className="flex cursor-pointer items-center justify-between rounded-lg border bg-card p-3">
                 <div>
@@ -718,6 +760,31 @@ export default function PicPlayersClient({
             <CardDescription>Mỗi bảng cần số VĐV hạng A = hạng B (2+2 hoặc 4+4)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Schedule mode selector */}
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <p className="text-xs font-medium">Kiểu lịch thi đấu — đổi trước khi tạo lịch</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onChangeScheduleMode("standard")}
+                  disabled={pending}
+                  className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    scheduleMode === "standard" ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
+                  }`}
+                >
+                  Chuẩn
+                </button>
+                <button
+                  onClick={() => onChangeScheduleMode("hd")}
+                  disabled={pending}
+                  className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    scheduleMode === "hd" ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"
+                  }`}
+                >
+                  HD ✨
+                </button>
+              </div>
+            </div>
+
             {/* Batch mode */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-medium text-muted-foreground">Gán nhanh:</span>

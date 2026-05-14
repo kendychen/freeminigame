@@ -46,8 +46,9 @@ export default function IndividualDrawClient({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [assignments, setAssignments] = useState<Record<string, number>>({});
-  const [drawing, setDrawing] = useState<{ player: Player; result: number | null } | null>(null);
+  // Each player → { g: groupIdx, p: slotPosition (1-indexed) }. Slot is random across all empty positions.
+  const [assignments, setAssignments] = useState<Record<string, { g: number; p: number }>>({});
+  const [drawing, setDrawing] = useState<{ player: Player; result: number | null; position: number | null } | null>(null);
   const [animTick, setAnimTick] = useState(0);
   const [progress, setProgress] = useState(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -60,7 +61,16 @@ export default function IndividualDrawClient({
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      if (saved) setAssignments(JSON.parse(saved));
+      if (saved) {
+        const data = JSON.parse(saved);
+        // New format: { pid: { g, p } }
+        if (data && typeof data === "object" && !Array.isArray(data)) {
+          const first = Object.values(data)[0];
+          if (first && typeof first === "object" && "g" in first && "p" in first) {
+            setAssignments(data as Record<string, { g: number; p: number }>);
+          }
+        }
+      }
     } catch {}
   }, [storageKey]);
 
@@ -78,7 +88,7 @@ export default function IndividualDrawClient({
 
   const groupCounts = useMemo(() => {
     const counts = Array(groupCount).fill(0);
-    for (const gi of Object.values(assignments)) counts[gi]++;
+    for (const v of Object.values(assignments)) counts[v.g]++;
     return counts;
   }, [assignments, groupCount]);
 
@@ -93,15 +103,19 @@ export default function IndividualDrawClient({
   const handlePress = (p: Player) => {
     if (drawing || pending || p.id in assignments) return;
 
-    // Pick a random group with remaining capacity
-    const available: number[] = [];
-    for (let gi = 0; gi < groupCount; gi++) {
-      if (groupCounts[gi] < groupSizes[gi]!) available.push(gi);
+    // Pick a random EMPTY slot across all groups (any g, p combination not yet occupied)
+    const occupied = new Set<string>();
+    for (const v of Object.values(assignments)) occupied.add(`${v.g}-${v.p}`);
+    const available: { g: number; p: number }[] = [];
+    for (let g = 0; g < groupCount; g++) {
+      for (let pos = 1; pos <= groupSizes[g]!; pos++) {
+        if (!occupied.has(`${g}-${pos}`)) available.push({ g, p: pos });
+      }
     }
     if (available.length === 0) return;
     const chosen = available[Math.floor(Math.random() * available.length)]!;
 
-    setDrawing({ player: p, result: null });
+    setDrawing({ player: p, result: null, position: null });
     setProgress(0);
     setAnimTick(0);
     const start = Date.now();
@@ -114,7 +128,7 @@ export default function IndividualDrawClient({
       if (tickRef.current) clearInterval(tickRef.current);
       if (progRef.current) clearInterval(progRef.current);
       setProgress(100);
-      setDrawing({ player: p, result: chosen });
+      setDrawing({ player: p, result: chosen.g, position: chosen.p });
       setTimeout(() => {
         setAssignments((prev) => ({ ...prev, [p.id]: chosen }));
         setDrawing(null);
@@ -129,8 +143,11 @@ export default function IndividualDrawClient({
   };
 
   const handleSave = () => {
-    const groupSlots: string[][] = Array.from({ length: groupCount }, () => []);
-    for (const [pid, gi] of Object.entries(assignments)) groupSlots[gi]!.push(pid);
+    // Build groupSlots ordered by slot position (p), so seed in DB matches slot number
+    const groupSlots: string[][] = groupSizes.map((size) => Array(size).fill(""));
+    for (const [pid, v] of Object.entries(assignments)) {
+      groupSlots[v.g]![v.p - 1] = pid;
+    }
 
     startTransition(async () => {
       const res = await applyIndividualDraw(eventId, groupSlots, advancePerGroup);
@@ -230,17 +247,20 @@ export default function IndividualDrawClient({
                   })}
                 </div>
               ) : (
-                <div
-                  className={`flex size-24 items-center justify-center rounded-2xl text-5xl font-black shadow-2xl animate-bounce ${GROUP_SOLID[drawing.result % GROUP_SOLID.length]}`}
-                >
-                  {String.fromCharCode(65 + drawing.result)}
+                <div className="flex flex-col items-center gap-2">
+                  <div
+                    className={`flex flex-col items-center justify-center rounded-2xl px-6 py-4 shadow-2xl animate-bounce ${GROUP_SOLID[drawing.result % GROUP_SOLID.length]}`}
+                  >
+                    <span className="text-xs font-bold opacity-80">VĐV {drawing.position}</span>
+                    <span className="text-3xl font-black leading-tight">Bảng {String.fromCharCode(65 + drawing.result)}</span>
+                  </div>
                 </div>
               )}
 
               <p className="text-sm font-semibold">
                 {drawing.result === null
                   ? "Đang xác định bảng..."
-                  : <>🏆 Vào <strong>Bảng {String.fromCharCode(65 + drawing.result)}</strong>!</>}
+                  : <>🏆 Bạn là <strong>VĐV {drawing.position} - Bảng {String.fromCharCode(65 + drawing.result)}</strong>!</>}
               </p>
             </div>
 
@@ -283,29 +303,31 @@ export default function IndividualDrawClient({
             </p>
             <div className={`grid gap-3 ${groupCount <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
               {groupSizes.map((size, gi) => {
-                const members = Object.entries(assignments)
-                  .filter(([, g]) => g === gi)
-                  .map(([pid]) => byId(pid)?.name ?? pid);
+                // Build fixed slot array (length=size). Each slot holds the player drawn into it (or null).
+                const slots: (string | null)[] = Array(size).fill(null);
+                for (const [pid, v] of Object.entries(assignments)) {
+                  if (v.g === gi) slots[v.p - 1] = byId(pid)?.name ?? pid;
+                }
+                const filled = slots.filter((s) => s !== null).length;
+                const letter = String.fromCharCode(65 + gi);
                 return (
                   <div
                     key={gi}
                     className={`rounded-xl border-2 p-3 ${GROUP_COLOR[gi % GROUP_COLOR.length]}`}
                   >
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="font-bold">Bảng {String.fromCharCode(65 + gi)}</p>
-                      <span className="font-mono text-xs opacity-70">{members.length}/{size}</span>
+                      <p className="font-bold">Bảng {letter}</p>
+                      <span className="font-mono text-xs opacity-70">{filled}/{size}</span>
                     </div>
                     <ul className="space-y-1 text-sm">
-                      {members.map((name, i) => (
-                        <li key={i} className="flex items-center gap-1.5">
-                          <span className="size-1.5 shrink-0 rounded-full bg-current opacity-60" />
-                          <span className="truncate">{name}</span>
-                        </li>
-                      ))}
-                      {Array.from({ length: size - members.length }, (_, i) => (
-                        <li key={`empty-${i}`} className="flex items-center gap-1.5 opacity-30">
-                          <span className="size-1.5 shrink-0 rounded-full border border-current" />
-                          <span className="text-xs italic">đang chờ...</span>
+                      {slots.map((name, i) => (
+                        <li key={i} className={`flex items-center gap-1.5 ${name ? "" : "opacity-30"}`}>
+                          <span className={`font-mono text-[10px] w-12 shrink-0 ${name ? "font-bold opacity-80" : ""}`}>VĐV {i + 1}</span>
+                          {name ? (
+                            <span className="truncate">{name}</span>
+                          ) : (
+                            <span className="text-xs italic">đang chờ...</span>
+                          )}
                         </li>
                       ))}
                     </ul>
