@@ -71,10 +71,30 @@ async function generateResultImage(opts: {
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#ffffff";
 
-  // Top: event name
-  ctx.font = '600 38px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.fillText(truncate(opts.eventName, 30), 540, 175);
+  // Top: event name (wrap up to 2 lines, shrink font if needed)
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  let titleSize = 40;
+  ctx.font = `700 ${titleSize}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  let titleLines = wrapText(ctx, opts.eventName, 920);
+  if (titleLines.length > 2) {
+    titleSize = 34;
+    ctx.font = `700 ${titleSize}px system-ui, sans-serif`;
+    titleLines = wrapText(ctx, opts.eventName, 940);
+  }
+  if (titleLines.length > 2) {
+    titleSize = 30;
+    ctx.font = `700 ${titleSize}px system-ui, sans-serif`;
+    titleLines = wrapText(ctx, opts.eventName, 960);
+  }
+  // Truncate to max 2 lines
+  if (titleLines.length > 2) {
+    titleLines = [titleLines[0]!, truncate(titleLines.slice(1).join(" "), 40)];
+  }
+  const lineHeight = titleSize * 1.25;
+  const titleStartY = 145 - (titleLines.length - 1) * lineHeight / 2;
+  for (let i = 0; i < titleLines.length; i++) {
+    ctx.fillText(titleLines[i]!, 540, titleStartY + i * lineHeight);
+  }
 
   // "KẾT QUẢ" label
   ctx.font = '700 28px system-ui, sans-serif';
@@ -117,6 +137,23 @@ async function generateResultImage(opts: {
 
 function truncate(s: string, max: number) {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let cur = "";
+  for (const word of words) {
+    const test = cur ? cur + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && cur) {
+      lines.push(cur);
+      cur = word;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
 }
 
 // ── PersonalResultCard ─────────────────────────────────────────────────────
