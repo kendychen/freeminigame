@@ -11,6 +11,7 @@ import {
   addPicPlayer, removePicPlayer, bulkAddPicPlayers,
   generatePicGroups, generateCrossTierGroupMatches, generateNormalGroupMatches,
   generateCrossTierGroupsFull, createPicDraw, applyPicDraw, resetPicGroups,
+  createPicIndividualDrawSession, cancelPicIndividualDrawSession,
 } from "@/app/actions/pic";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import IndividualDrawClient from "./IndividualDrawClient";
@@ -90,6 +91,9 @@ export default function PicPlayersClient({
   const [crossTierMode, setCrossTierMode] = useState(false);
   // Individual self-draw mode
   const [individualDrawMode, setIndividualDrawMode] = useState(false);
+  // Individual LIVE draw session (multi-device)
+  const [liveDraw, setLiveDraw] = useState<{ code: string; playerTokens: Record<string, string> } | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   // Shared A/B categories (State 1 old flow + State 2 post-split)
   const [categories, setCategories] = useState<Record<string, Category>>({});
   const [activeTier, setActiveTier] = useState<Category | null>(null);
@@ -268,6 +272,32 @@ export default function PicPlayersClient({
     });
   };
 
+  const onCreateLiveIndividualDraw = () => {
+    if (!canGenerate || crossTierMode) return;
+    startTransition(async () => {
+      const res = await createPicIndividualDrawSession(eventId);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      setLiveDraw({ code: res.code, playerTokens: res.playerTokens });
+      toast({ title: "Đã tạo phiên LIVE!", description: "Chia sẻ link cho VĐV." });
+    });
+  };
+
+  const onCancelLiveIndividualDraw = () => {
+    if (!liveDraw) return;
+    startTransition(async () => {
+      const res = await cancelPicIndividualDrawSession(liveDraw.code);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      setLiveDraw(null);
+      toast({ title: "Đã hủy phiên LIVE" });
+    });
+  };
+
+  const copyLink = (url: string, key: string) => {
+    navigator.clipboard.writeText(url).catch(() => prompt("Copy link:", url));
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
   const onCreateLiveDraw = () => {
     if (!canGenerate || crossTierMode) return;
     startTransition(async () => {
@@ -432,6 +462,71 @@ export default function PicPlayersClient({
             </Card>
           )}
 
+          {/* Active LIVE individual draw session */}
+          {liveDraw && (
+            <Card className="border-red-400/40 bg-red-500/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-red-500">
+                  <Sparkles className="size-4 animate-pulse" />
+                  Phiên Quay cá nhân LIVE đang hoạt động
+                </CardTitle>
+                <CardDescription>
+                  Share link cho VĐV — chung (ai cũng tap được) hoặc riêng (chỉ tap được tên mình)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Open link */}
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">🔓 Link chung (ai cũng tap)</p>
+                  <button
+                    onClick={() => copyLink(`${window.location.origin}/pic/draw/${liveDraw.code}`, "open")}
+                    className="flex w-full items-center gap-2 rounded-lg border bg-background px-3 py-2 text-left text-sm font-mono text-primary hover:bg-accent"
+                  >
+                    {copiedKey === "open" ? <Check className="size-3.5 text-green-500 shrink-0" /> : <ExternalLink className="size-3.5 shrink-0" />}
+                    <span className="truncate">/pic/draw/{liveDraw.code}</span>
+                  </button>
+                </div>
+
+                {/* Per-player links */}
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">🔐 Link riêng từng VĐV (chỉ tap được tên mình)</p>
+                  <div className="max-h-72 overflow-y-auto rounded-lg border bg-background p-2 space-y-1">
+                    {players.map((p) => {
+                      const tok = liveDraw.playerTokens[p.id];
+                      if (!tok) return null;
+                      const url = `${window.location.origin}/pic/draw/${liveDraw.code}?p=${tok}`;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => copyLink(url, `p-${p.id}`)}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent"
+                        >
+                          {copiedKey === `p-${p.id}` ? <Check className="size-3 text-green-500 shrink-0" /> : <ExternalLink className="size-3 shrink-0 text-muted-foreground" />}
+                          <span className="w-24 truncate font-medium shrink-0">{p.name}</span>
+                          <span className="truncate font-mono text-muted-foreground">…?p={tok.slice(0, 8)}…</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button asChild className="flex-1">
+                    <a href={`/pic/draw/${liveDraw.code}`} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="size-3.5" />Mở phiên (admin)
+                    </a>
+                  </Button>
+                  <Button variant="outline" onClick={onCancelLiveIndividualDraw} disabled={pending} className="text-destructive">
+                    Hủy phiên
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Sau khi đủ {players.length} lượt quay, mở link admin → click <strong>Lưu kết quả</strong>.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Group generation card */}
           <Card className="border-primary/30">
             <CardHeader>
@@ -564,8 +659,8 @@ export default function PicPlayersClient({
                     </div>
                   )}
 
-                  <div className={`grid gap-2 ${crossTierMode ? "" : "sm:grid-cols-3"}`}>
-                    <Button onClick={onDrawOrPreview} disabled={!canGenerate || pending || !!drawCode} variant="outline" size="lg">
+                  <div className={`grid gap-2 ${crossTierMode ? "" : "sm:grid-cols-2 lg:grid-cols-4"}`}>
+                    <Button onClick={onDrawOrPreview} disabled={!canGenerate || pending || !!drawCode || !!liveDraw} variant="outline" size="lg">
                       <Shuffle className="size-4" />
                       {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : "🎲 Quay ngay"}
                     </Button>
@@ -573,23 +668,32 @@ export default function PicPlayersClient({
                       <>
                         <Button
                           onClick={() => setIndividualDrawMode(true)}
-                          disabled={!canGenerate || pending || !!drawCode}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw}
                           variant="outline"
                           size="lg"
                           className="border-primary/40 text-primary hover:bg-primary/10"
                         >
                           <Sparkles className="size-4" />
-                          ✨ Quay cá nhân
+                          ✨ Cá nhân
                         </Button>
-                        <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode} size="lg">
-                          <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 Quay LIVE"}
+                        <Button
+                          onClick={onCreateLiveIndividualDraw}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw}
+                          size="lg"
+                          className="bg-red-500 hover:bg-red-600 text-white"
+                        >
+                          <Sparkles className="size-4" />
+                          🌐 Cá nhân LIVE
+                        </Button>
+                        <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode || !!liveDraw} size="lg">
+                          <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 LIVE bảng"}
                         </Button>
                       </>
                     )}
                   </div>
                   {!crossTierMode && (
                     <p className="text-[11px] text-muted-foreground">
-                      <strong>Quay ngay</strong>: random tức thì · <strong>Quay cá nhân</strong>: mỗi VĐV tự bấm tên mình · <strong>Quay LIVE</strong>: realtime nhiều màn hình
+                      <strong>Quay ngay</strong>: random tức thì · <strong>Cá nhân</strong>: tự tap 1 thiết bị · <strong>Cá nhân LIVE</strong>: mỗi VĐV tap từ máy riêng · <strong>LIVE bảng</strong>: bốc cả bảng cùng lúc
                     </p>
                   )}
 

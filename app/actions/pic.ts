@@ -1220,3 +1220,289 @@ export async function getPicRefereeToken(
   if (error) return { error: error.message };
   return { token };
 }
+
+// ── PIC Individual Draw LIVE (multi-device realtime) ─────────────────────────
+
+function shortCode(): string {
+  return randomBytes(4).toString("base64url").replace(/[-_]/g, "").slice(0, 6).toLowerCase();
+}
+
+export async function createPicIndividualDrawSession(
+  eventId: string,
+): Promise<
+  { code: string; hostToken: string; playerTokens: Record<string, string> }
+  | { error: string }
+> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingGroups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId);
+  if (existingGroups && existingGroups.length > 0)
+    return { error: "schedule_already_generated" };
+
+  const { data: existingSessions } = await svc
+    .from("pic_individual_sessions")
+    .select("code")
+    .eq("event_id", eventId)
+    .eq("status", "active");
+  if (existingSessions && existingSessions.length > 0)
+    return { error: "session_already_active" };
+
+  const { data: players } = await svc
+    .from("pic_players")
+    .select("id")
+    .eq("event_id", eventId);
+  if (!players || players.length < 4) return { error: "need_at_least_4_players" };
+
+  const pc = players.length;
+
+  // Determine group sizes via snake distribution (same as offline mode)
+  let groupCount = 1;
+  for (let g = 1; g <= Math.ceil(pc / 4); g++) {
+    const sizes: number[] = Array.from({ length: g }, () => 0);
+    let dir = 1, gi = 0;
+    for (let i = 0; i < pc; i++) {
+      sizes[gi]!++;
+      const next = gi + dir;
+      if (next >= g || next < 0) dir = -dir;
+      else gi += dir;
+    }
+    if (Math.min(...sizes) >= 4 && Math.max(...sizes) <= 8) groupCount = g;
+  }
+
+  const groupSizes: number[] = Array.from({ length: groupCount }, () => 0);
+  let dir = 1, gi = 0;
+  for (let i = 0; i < pc; i++) {
+    groupSizes[gi]!++;
+    const next = gi + dir;
+    if (next >= groupCount || next < 0) dir = -dir;
+    else gi += dir;
+  }
+
+  const code = shortCode();
+  const hostToken = newToken();
+  const playerTokens: Record<string, string> = {};
+  for (const p of players) playerTokens[p.id] = newToken();
+
+  const { error } = await svc.from("pic_individual_sessions").insert({
+    code,
+    event_id: eventId,
+    owner_id: user.id,
+    host_token: hostToken,
+    group_sizes: groupSizes,
+    player_tokens: playerTokens,
+    assignments: {},
+    status: "active",
+  });
+  if (error) return { error: error.message };
+
+  return { code, hostToken, playerTokens };
+}
+
+export async function tapPicIndividualDraw(
+  code: string,
+  playerId: string,
+  playerToken: string | null,
+): Promise<{ ok: true; groupIdx: number } | { error: string }> {
+  const svc = createServiceClient();
+
+  const { data: session } = await svc
+    .from("pic_individual_sessions")
+    .select("code, group_sizes, player_tokens, assignments, status")
+    .eq("code", code)
+    .single();
+  if (!session) return { error: "session_not_found" };
+  if (session.status !== "active") return { error: "session_not_active" };
+
+  const tokens = session.player_tokens as Record<string, string>;
+  if (!(playerId in tokens)) return { error: "invalid_player" };
+
+  // If token provided, must match the player's token (restricted mode).
+  // If no token, anyone with code can tap (open mode).
+  if (playerToken && tokens[playerId] !== playerToken)
+    return { error: "wrong_player_token" };
+
+  const assignments = session.assignments as Record<string, number>;
+  if (playerId in assignments) return { error: "already_drawn" };
+
+  const groupSizes = session.group_sizes as number[];
+  const counts = Array(groupSizes.length).fill(0);
+  for (const gi of Object.values(assignments)) counts[gi]++;
+
+  const available: number[] = [];
+  for (let i = 0; i < groupSizes.length; i++) {
+    if (counts[i] < groupSizes[i]!) available.push(i);
+  }
+  if (available.length === 0) return { error: "all_groups_full" };
+
+  const chosen = available[Math.floor(Math.random() * available.length)]!;
+  const newAssignments = { ...assignments, [playerId]: chosen };
+
+  // Atomic-ish: only update if assignments hasn't changed since read.
+  // (Supabase: filter on jsonb equality.)
+  const { error } = await svc
+    .from("pic_individual_sessions")
+    .update({ assignments: newAssignments, updated_at: new Date().toISOString() })
+    .eq("code", code)
+    .eq("assignments", assignments);
+
+  if (error) return { error: error.message };
+  return { ok: true, groupIdx: chosen };
+}
+
+export async function applyPicIndividualDrawSession(
+  code: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: session } = await svc
+    .from("pic_individual_sessions")
+    .select("code, event_id, owner_id, group_sizes, assignments, status")
+    .eq("code", code)
+    .single();
+  if (!session) return { error: "session_not_found" };
+  if (session.owner_id !== user.id) return { error: "unauthorized" };
+  if (session.status !== "active") return { error: "session_not_active" };
+
+  const groupSizes = session.group_sizes as number[];
+  const assignments = session.assignments as Record<string, number>;
+
+  // Build groupSlots in expected format
+  const groupSlots: string[][] = Array.from({ length: groupSizes.length }, () => []);
+  for (const [pid, gi] of Object.entries(assignments)) {
+    groupSlots[gi]!.push(pid);
+  }
+
+  // Verify completeness
+  const total = groupSlots.reduce((s, g) => s + g.length, 0);
+  const { data: players } = await svc
+    .from("pic_players")
+    .select("id")
+    .eq("event_id", session.event_id);
+  if (!players || total !== players.length) return { error: "incomplete_assignment" };
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("config")
+    .eq("id", session.event_id)
+    .single();
+  const cfg = (ev?.config ?? {}) as { advancePerGroup?: number };
+  const advancePerGroup = cfg.advancePerGroup ?? 1;
+
+  // Create groups (mirrors applyIndividualDraw)
+  for (let gi = 0; gi < groupSlots.length; gi++) {
+    const label = String.fromCharCode(65 + gi);
+    const { data: grp, error: grpErr } = await svc
+      .from("pic_groups")
+      .insert({ event_id: session.event_id, label })
+      .select("id")
+      .single();
+    if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
+
+    const slotIds = groupSlots[gi]!;
+    await svc.from("pic_group_players").insert(
+      slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
+  }
+
+  await svc
+    .from("pic_events")
+    .update({
+      config: { ...cfg, advancePerGroup },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", session.event_id);
+
+  await svc
+    .from("pic_individual_sessions")
+    .update({ status: "applied", updated_at: new Date().toISOString() })
+    .eq("code", code);
+
+  revalidatePath(`/pic`);
+  return { ok: true };
+}
+
+export async function cancelPicIndividualDrawSession(
+  code: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: session } = await svc
+    .from("pic_individual_sessions")
+    .select("owner_id, status")
+    .eq("code", code)
+    .single();
+  if (!session) return { error: "session_not_found" };
+  if (session.owner_id !== user.id) return { error: "unauthorized" };
+  if (session.status !== "active") return { error: "session_not_active" };
+
+  const { error } = await svc
+    .from("pic_individual_sessions")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("code", code);
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+export async function resetPicIndividualDrawAssignments(
+  code: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: session } = await svc
+    .from("pic_individual_sessions")
+    .select("owner_id, status")
+    .eq("code", code)
+    .single();
+  if (!session) return { error: "session_not_found" };
+  if (session.owner_id !== user.id) return { error: "unauthorized" };
+  if (session.status !== "active") return { error: "session_not_active" };
+
+  const { error } = await svc
+    .from("pic_individual_sessions")
+    .update({ assignments: {}, updated_at: new Date().toISOString() })
+    .eq("code", code);
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+export async function resetPicIndividualDrawPlayer(
+  code: string,
+  playerId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: session } = await svc
+    .from("pic_individual_sessions")
+    .select("owner_id, status, assignments")
+    .eq("code", code)
+    .single();
+  if (!session) return { error: "session_not_found" };
+  if (session.owner_id !== user.id) return { error: "unauthorized" };
+  if (session.status !== "active") return { error: "session_not_active" };
+
+  const assignments = { ...(session.assignments as Record<string, number>) };
+  if (!(playerId in assignments)) return { error: "player_not_drawn" };
+  delete assignments[playerId];
+
+  const { error } = await svc
+    .from("pic_individual_sessions")
+    .update({ assignments, updated_at: new Date().toISOString() })
+    .eq("code", code);
+  if (error) return { error: error.message };
+  return { ok: true };
+}

@@ -9,15 +9,13 @@ if (!file) {
   process.exit(1);
 }
 
-const dbUrl = process.env.SUPABASE_DB_URL ?? process.env.DATABASE_URL;
-if (!dbUrl) {
-  console.error("SUPABASE_DB_URL env var missing");
-  process.exit(1);
-}
-
 const sql = readFileSync(file, "utf8");
 const client = new Client({
-  connectionString: dbUrl,
+  host: process.env.PGHOST ?? "aws-0-ap-southeast-1.pooler.supabase.com",
+  port: parseInt(process.env.PGPORT ?? "5432"),
+  user: process.env.PGUSER ?? "postgres.luzbuptumedpvgukxnhe",
+  password: process.env.PGPASSWORD ?? "7U9hVa,KA&6jE%b",
+  database: process.env.PGDATABASE ?? "postgres",
   ssl: { rejectUnauthorized: false },
 });
 await client.connect();
