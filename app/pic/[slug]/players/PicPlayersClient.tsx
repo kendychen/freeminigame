@@ -275,7 +275,7 @@ export default function PicPlayersClient({
   const onCreateLiveIndividualDraw = () => {
     if (!canGenerate || crossTierMode) return;
     startTransition(async () => {
-      const res = await createPicIndividualDrawSession(eventId);
+      const res = await createPicIndividualDrawSession(eventId, effG, advancePerGroup);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setLiveDraw({ code: res.code, playerTokens: res.playerTokens });
       toast({ title: "Đã tạo phiên LIVE!", description: "Chia sẻ link cho VĐV." });

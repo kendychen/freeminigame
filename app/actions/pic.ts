@@ -1229,6 +1229,8 @@ function shortCode(): string {
 
 export async function createPicIndividualDrawSession(
   eventId: string,
+  groupCount: number,
+  advancePerGroup: number,
 ): Promise<
   { code: string; hostToken: string; playerTokens: Record<string, string> }
   | { error: string }
@@ -1266,20 +1268,7 @@ export async function createPicIndividualDrawSession(
 
   const pc = players.length;
 
-  // Determine group sizes via snake distribution (same as offline mode)
-  let groupCount = 1;
-  for (let g = 1; g <= Math.ceil(pc / 4); g++) {
-    const sizes: number[] = Array.from({ length: g }, () => 0);
-    let dir = 1, gi = 0;
-    for (let i = 0; i < pc; i++) {
-      sizes[gi]!++;
-      const next = gi + dir;
-      if (next >= g || next < 0) dir = -dir;
-      else gi += dir;
-    }
-    if (Math.min(...sizes) >= 4 && Math.max(...sizes) <= 8) groupCount = g;
-  }
-
+  // Snake distribution for admin-chosen groupCount
   const groupSizes: number[] = Array.from({ length: groupCount }, () => 0);
   let dir = 1, gi = 0;
   for (let i = 0; i < pc; i++) {
@@ -1288,6 +1277,15 @@ export async function createPicIndividualDrawSession(
     if (next >= groupCount || next < 0) dir = -dir;
     else gi += dir;
   }
+  if (Math.min(...groupSizes) < 4 || Math.max(...groupSizes) > 8)
+    return { error: "invalid_group_count" };
+
+  // Save advancePerGroup to event config so applyPicIndividualDrawSession can read it
+  const cfg = (ev.config as Record<string, unknown>) ?? {};
+  await svc
+    .from("pic_events")
+    .update({ config: { ...cfg, advancePerGroup }, updated_at: new Date().toISOString() })
+    .eq("id", eventId);
 
   const code = shortCode();
   const hostToken = newToken();
