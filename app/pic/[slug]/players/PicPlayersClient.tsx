@@ -63,6 +63,7 @@ export default function PicPlayersClient({
   hasCompletedMatches,
   drawCode: initialDrawCode,
   initialScheduleMode,
+  initialLiveDraw,
 }: {
   eventId: string;
   initialPlayers: Player[];
@@ -71,6 +72,7 @@ export default function PicPlayersClient({
   hasCompletedMatches: boolean;
   drawCode: string | null;
   initialScheduleMode: "standard" | "hd";
+  initialLiveDraw: { code: string; playerTokens: Record<string, string> } | null;
 }) {
   const router = useRouter();
   const hasGroups = initialGroups.length > 0;
@@ -105,8 +107,8 @@ export default function PicPlayersClient({
       toast({ title: `Đã chuyển lịch ${mode === "hd" ? "HD" : "Chuẩn"}` });
     });
   };
-  // Individual LIVE draw session (multi-device)
-  const [liveDraw, setLiveDraw] = useState<{ code: string; playerTokens: Record<string, string> } | null>(null);
+  // Individual LIVE draw session (multi-device) — restored from server on page load
+  const [liveDraw, setLiveDraw] = useState<{ code: string; playerTokens: Record<string, string> } | null>(initialLiveDraw);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   // Shared A/B categories (State 1 old flow + State 2 post-split)
   const [categories, setCategories] = useState<Record<string, Category>>({});
