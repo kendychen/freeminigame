@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Shuffle, Sparkles, Trophy, Check, Lock, Radio, RotateCcw, X } from "lucide-react";
+import { Shuffle, Sparkles, Trophy, Check, Lock, Radio, RotateCcw, X, Download, Copy, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import {
@@ -33,8 +33,233 @@ const GROUP_SOLID = [
   "bg-amber-500 text-white",
 ];
 
+// Hex color pairs for image generation (matches GROUP_SOLID order)
+const GROUP_IMAGE_GRADIENT: [string, string][] = [
+  ["#3b82f6", "#1e40af"], // blue
+  ["#f97316", "#9a3412"], // orange
+  ["#10b981", "#065f46"], // emerald
+  ["#ec4899", "#9d174d"], // pink
+  ["#8b5cf6", "#5b21b6"], // violet
+  ["#f59e0b", "#92400e"], // amber
+];
+
 const ANIM_DURATION = 2200;
 const REVEAL_HOLD = 1400;
+
+// ── Generate share image (1080x1080 PNG) ─────────────────────────────────────
+async function generateResultImage(opts: {
+  playerName: string;
+  position: number;
+  groupLetter: string;
+  groupIdx: number;
+  eventName: string;
+}): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1080;
+  const ctx = canvas.getContext("2d")!;
+
+  // Background gradient
+  const [c1, c2] = GROUP_IMAGE_GRADIENT[opts.groupIdx % GROUP_IMAGE_GRADIENT.length]!;
+  const grad = ctx.createLinearGradient(0, 0, 1080, 1080);
+  grad.addColorStop(0, c1);
+  grad.addColorStop(1, c2);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1080, 1080);
+
+  // Soft white overlay box (rounded)
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  roundRect(ctx, 80, 80, 920, 920, 48);
+  ctx.fill();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffffff";
+
+  // Top: event name
+  ctx.font = '600 38px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillText(truncate(opts.eventName, 30), 540, 175);
+
+  // "KẾT QUẢ" label
+  ctx.font = '700 28px system-ui, sans-serif';
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.fillText("🎲 KẾT QUẢ BỐC THĂM", 540, 240);
+
+  // Player name (big)
+  ctx.fillStyle = "#ffffff";
+  ctx.font = '800 80px system-ui, sans-serif';
+  ctx.fillText(truncate(opts.playerName, 22), 540, 360);
+
+  // VĐV slot label
+  ctx.font = '600 64px system-ui, sans-serif';
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillText(`VĐV ${opts.position}`, 540, 510);
+
+  // Huge group letter card
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  roundRect(ctx, 290, 580, 500, 320, 36);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = '900 240px system-ui, sans-serif';
+  ctx.fillText(`Bảng ${opts.groupLetter}`, 540, 740);
+
+  // Bottom watermark
+  ctx.font = '500 28px system-ui, sans-serif';
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.fillText("🏆 hoinhompick.team", 540, 990);
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("canvas_blob_failed"));
+    }, "image/png");
+  });
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function truncate(s: string, max: number) {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+// ── PersonalResultCard ─────────────────────────────────────────────────────
+function PersonalResultCard({ playerName, position, groupIdx, eventName }: {
+  playerName: string;
+  position: number;
+  groupIdx: number;
+  eventName: string;
+}) {
+  const [pending, setPending] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const groupLetter = String.fromCharCode(65 + groupIdx);
+
+  // Generate preview image once on mount
+  useEffect(() => {
+    let cancelled = false;
+    void generateResultImage({ playerName, position, groupLetter, groupIdx, eventName })
+      .then((blob) => {
+        if (cancelled) return;
+        setPreviewUrl(URL.createObjectURL(blob));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerName, position, groupIdx]);
+
+  const filename = `ket-qua-${playerName.replace(/\s+/g, "-").toLowerCase()}-vdv${position}-bang${groupLetter}.png`;
+
+  const onSave = async () => {
+    setPending("save");
+    try {
+      const blob = await generateResultImage({ playerName, position, groupLetter, groupIdx, eventName });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Đã tải ảnh!", description: "Ảnh trong thư mục Downloads" });
+    } catch (e) {
+      toast({ title: "Lỗi", description: e instanceof Error ? e.message : "save_failed", variant: "destructive" });
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const onCopy = async () => {
+    setPending("copy");
+    try {
+      const blob = await generateResultImage({ playerName, position, groupLetter, groupIdx, eventName });
+      if (!navigator.clipboard || !window.ClipboardItem) {
+        throw new Error("Trình duyệt không hỗ trợ — hãy dùng nút Tải hoặc Chia sẻ");
+      }
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      toast({ title: "Đã copy ảnh!", description: "Paste vào Facebook, Zalo... để đăng" });
+    } catch (e) {
+      toast({ title: "Không copy được", description: e instanceof Error ? e.message : "copy_failed", variant: "destructive" });
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const onShare = async () => {
+    setPending("share");
+    try {
+      const blob = await generateResultImage({ playerName, position, groupLetter, groupIdx, eventName });
+      const file = new File([blob], filename, { type: "image/png" });
+      const nav = navigator as Navigator & { canShare?: (data: { files?: File[] }) => boolean };
+      if (nav.canShare && nav.canShare({ files: [file] }) && navigator.share) {
+        await navigator.share({
+          files: [file],
+          title: "Kết quả bốc thăm",
+          text: `Tôi vừa bốc trúng VĐV ${position} - Bảng ${groupLetter} tại ${eventName}! 🎲`,
+        });
+      } else {
+        // Fallback to download
+        await onSave();
+      }
+    } catch (e) {
+      const err = e as { name?: string; message?: string };
+      if (err.name !== "AbortError") {
+        toast({ title: "Lỗi chia sẻ", description: err.message ?? "share_failed", variant: "destructive" });
+      }
+    } finally {
+      setPending(null);
+    }
+  };
+
+  return (
+    <div className={`rounded-2xl border-2 border-primary/40 p-4 sm:p-5 space-y-4 ${GROUP_COLOR[groupIdx % GROUP_COLOR.length]}`}>
+      <div className="text-center space-y-1">
+        <p className="text-xs font-bold uppercase tracking-wider opacity-70">🎉 Kết quả của bạn</p>
+        <p className="text-2xl font-extrabold">{playerName}</p>
+      </div>
+
+      {previewUrl && (
+        <img
+          src={previewUrl}
+          alt="Kết quả bốc thăm"
+          className="mx-auto w-full max-w-xs rounded-xl border-2 border-current/20 shadow-lg"
+        />
+      )}
+
+      <div className="grid grid-cols-3 gap-2">
+        <Button onClick={onSave} disabled={!!pending} variant="outline" size="sm" className="flex-col h-auto py-2 gap-0.5">
+          <Download className="size-4" />
+          <span className="text-[11px]">{pending === "save" ? "..." : "Tải"}</span>
+        </Button>
+        <Button onClick={onCopy} disabled={!!pending} variant="outline" size="sm" className="flex-col h-auto py-2 gap-0.5">
+          <Copy className="size-4" />
+          <span className="text-[11px]">{pending === "copy" ? "..." : "Copy"}</span>
+        </Button>
+        <Button onClick={onShare} disabled={!!pending} size="sm" className="flex-col h-auto py-2 gap-0.5">
+          <Share2 className="size-4" />
+          <span className="text-[11px]">{pending === "share" ? "..." : "Chia sẻ"}</span>
+        </Button>
+      </div>
+      <p className="text-center text-[10px] opacity-60">Lưu hoặc share lên Facebook/Zalo</p>
+    </div>
+  );
+}
 
 export default function PicLiveDrawClient({
   code,
@@ -275,6 +500,16 @@ export default function PicLiveDrawClient({
           {lockedPlayer && <> · Bạn là <strong className="text-primary">{lockedPlayer.name}</strong></>}
         </p>
       </div>
+
+      {/* Personal result card — only when locked player has drawn */}
+      {lockedPlayer && assignments[lockedPlayer.id] && !animating && (
+        <PersonalResultCard
+          playerName={lockedPlayer.name}
+          position={assignments[lockedPlayer.id]!.p}
+          groupIdx={assignments[lockedPlayer.id]!.g}
+          eventName={eventName}
+        />
+      )}
 
       {/* Group capacity */}
       <div className={`grid gap-2 ${groupCount <= 2 ? "grid-cols-2" : groupCount <= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
