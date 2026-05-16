@@ -83,8 +83,8 @@ export default async function DashboardPage() {
                 <Link key={e.id} href={`/pic/${e.slug}`}>
                   <Card className="transition-shadow hover:shadow-md">
                     <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center justify-between text-base">
-                        <span className="truncate">{e.name}</span>
+                      <CardTitle className="flex items-center justify-between gap-2 text-base min-w-0">
+                        <span className="truncate min-w-0 flex-1">{e.name}</span>
                         <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
                       </CardTitle>
                       <CardDescription className="capitalize">
@@ -132,8 +132,8 @@ export default async function DashboardPage() {
                 <Link key={t.id} href={`/t/${t.slug}/admin`}>
                   <Card className="transition-shadow hover:shadow-md">
                     <CardHeader>
-                      <CardTitle className="flex items-center justify-between text-lg">
-                        <span className="truncate">{t.name}</span>
+                      <CardTitle className="flex items-center justify-between gap-2 text-lg min-w-0">
+                        <span className="truncate min-w-0 flex-1">{t.name}</span>
                         <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
                       </CardTitle>
                       <CardDescription className="capitalize">

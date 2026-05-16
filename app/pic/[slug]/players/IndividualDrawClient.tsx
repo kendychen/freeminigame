@@ -321,12 +321,12 @@ export default function IndividualDrawClient({
                     </div>
                     <ul className="space-y-1 text-sm">
                       {slots.map((name, i) => (
-                        <li key={i} className={`flex items-center gap-1.5 ${name ? "" : "opacity-30"}`}>
-                          <span className={`font-mono text-[10px] w-12 shrink-0 ${name ? "font-bold opacity-80" : ""}`}>VĐV {i + 1}</span>
+                        <li key={i} className={`flex items-start gap-1.5 ${name ? "" : "opacity-30"}`}>
+                          <span className={`font-mono text-[10px] shrink-0 ${name ? "font-bold opacity-80" : ""}`}>VĐV {i + 1}</span>
                           {name ? (
-                            <span className="truncate">{name}</span>
+                            <span className="break-words flex-1">{name}</span>
                           ) : (
-                            <span className="text-xs italic">đang chờ...</span>
+                            <span className="text-xs italic flex-1">đang chờ...</span>
                           )}
                         </li>
                       ))}

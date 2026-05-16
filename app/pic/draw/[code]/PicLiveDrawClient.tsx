@@ -484,9 +484,9 @@ export default function PicLiveDrawClient({
                 <p className="text-xs opacity-70">{filled}/{size}</p>
                 <ul className="mt-2 space-y-1 text-sm">
                   {slots.map((name, i) => (
-                    <li key={i} className={name ? "" : "opacity-40"}>
-                      <span className="font-mono text-[10px] font-bold mr-1.5">VĐV {i + 1}</span>
-                      {name ?? <em className="text-xs">đang chờ...</em>}
+                    <li key={i} className={`flex items-start gap-1.5 ${name ? "" : "opacity-40"}`}>
+                      <span className="font-mono text-[10px] font-bold shrink-0">VĐV {i + 1}</span>
+                      {name ? <span className="break-words flex-1">{name}</span> : <em className="text-xs italic flex-1">đang chờ...</em>}
                     </li>
                   ))}
                 </ul>
@@ -693,11 +693,11 @@ export default function PicLiveDrawClient({
                   </div>
                   <ul className="space-y-1 text-sm">
                     {slotArr.map((entry, i) => (
-                      <li key={i} className={`group flex items-center gap-1.5 ${entry ? "" : "opacity-40"}`}>
-                        <span className="font-mono text-[10px] font-bold w-12 shrink-0">VĐV {i + 1}</span>
+                      <li key={i} className={`group flex items-start gap-1.5 ${entry ? "" : "opacity-40"}`}>
+                        <span className="font-mono text-[10px] font-bold shrink-0">VĐV {i + 1}</span>
                         {entry ? (
                           <>
-                            <span className="truncate flex-1">{entry.name}</span>
+                            <span className="flex-1 break-words">{entry.name}</span>
                             {isOwner && (
                               <button
                                 onClick={() => handleResetPlayer({ id: entry.pid, name: entry.name })}
