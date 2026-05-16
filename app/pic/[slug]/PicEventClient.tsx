@@ -119,8 +119,11 @@ function TierBadge({ cat }: { cat: "A" | "B" | undefined }) {
 
 function SlotTag({ slot }: { slot: string | undefined }) {
   if (!slot) return null;
+  const num = slot.replace(/^VĐV\s*/, "");
   return (
-    <span className="font-mono text-[10px] font-bold text-muted-foreground/80">{slot}</span>
+    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-[9px] font-bold leading-none text-primary">
+      {num}
+    </span>
   );
 }
 
@@ -136,18 +139,18 @@ function PairLabel({ id1, id2, players, categories, slots, won, align }: {
   const cat2 = categories?.[id2];
   const slot1 = slots?.[id1];
   const slot2 = slots?.[id2];
-  const nameClass = `text-xs font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`;
+  const nameClass = `truncate text-xs font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`;
   if (!categories && !slots) {
     return <p className={`truncate text-sm font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`}>{p1?.name ?? "?"} & {p2?.name ?? "?"}</p>;
   }
   return (
-    <div className={`space-y-0.5 ${align === "right" ? "items-end" : "items-start"} flex flex-col`}>
-      <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+    <div className={`space-y-0.5 min-w-0 ${align === "right" ? "items-end" : "items-start"} flex flex-col`}>
+      <span className={`flex w-full items-center gap-1 min-w-0 ${align === "right" ? "flex-row-reverse" : ""}`}>
         <SlotTag slot={slot1} />
         <TierBadge cat={cat1} />
         <span className={nameClass}>{p1?.name ?? "?"}</span>
       </span>
-      <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+      <span className={`flex w-full items-center gap-1 min-w-0 ${align === "right" ? "flex-row-reverse" : ""}`}>
         <SlotTag slot={slot2} />
         <TierBadge cat={cat2} />
         <span className={nameClass}>{p2?.name ?? "?"}</span>
@@ -456,7 +459,11 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
               </td>
               <td className="px-2 py-2.5 font-medium sm:px-3">
                 <span className="flex items-center gap-1.5">
-                  {slot && <span className="font-mono text-[10px] font-bold text-muted-foreground/80 shrink-0">{slot}</span>}
+                  {slot && (
+                    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary/15 font-mono text-[9px] font-bold leading-none text-primary">
+                      {slot.replace(/^VĐV\s*/, "")}
+                    </span>
+                  )}
                   {cat && (
                     <span className={`flex h-4 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold ${
                       cat === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"

@@ -37,7 +37,10 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col flex-1">
-      <header className="border-b">
+      <header
+        className="border-b bg-background"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <Trophy className="size-5 text-primary" />
