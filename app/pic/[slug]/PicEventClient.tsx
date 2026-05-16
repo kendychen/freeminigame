@@ -119,10 +119,36 @@ function TierBadge({ cat }: { cat: "A" | "B" | undefined }) {
 
 function SlotTag({ slot }: { slot: string | undefined }) {
   if (!slot) return null;
+  // "VĐV 1" → "VĐV1" (no space, more compact)
+  const compact = slot.replace(/^VĐV\s+/, "VĐV");
   return (
-    <span className="shrink-0 font-mono text-[10px] font-bold text-muted-foreground/80">
-      {slot}
+    <span className="shrink-0 font-mono text-[8px] font-semibold uppercase leading-none tracking-wider text-muted-foreground/70">
+      {compact}
     </span>
+  );
+}
+
+function PlayerLabel({ player, cat, slot, won, align }: {
+  player: PicPlayer | undefined;
+  cat: "A" | "B" | undefined;
+  slot: string | undefined;
+  won: boolean;
+  align: "left" | "right";
+}) {
+  const boxClass = `flex flex-col min-w-0 rounded-md border px-2 py-1 ${
+    won ? "border-primary/50 bg-primary/5" : "bg-card/50"
+  } ${align === "right" ? "items-end text-right" : "items-start text-left"}`;
+  const nameClass = `text-xs font-semibold leading-tight break-words ${won ? "text-primary" : ""}`;
+  return (
+    <div className={boxClass}>
+      {(slot || cat) && (
+        <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+          <SlotTag slot={slot} />
+          <TierBadge cat={cat} />
+        </span>
+      )}
+      <span className={nameClass}>{player?.name ?? "?"}</span>
+    </div>
   );
 }
 
@@ -134,26 +160,13 @@ function PairLabel({ id1, id2, players, categories, slots, won, align }: {
 }) {
   const p1 = players.find(p => p.id === id1);
   const p2 = players.find(p => p.id === id2);
-  const cat1 = categories?.[id1];
-  const cat2 = categories?.[id2];
-  const slot1 = slots?.[id1];
-  const slot2 = slots?.[id2];
-  const nameClass = `text-xs font-semibold leading-tight break-words ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`;
   if (!categories && !slots) {
     return <p className={`truncate text-sm font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`}>{p1?.name ?? "?"} & {p2?.name ?? "?"}</p>;
   }
   return (
-    <div className={`space-y-0.5 min-w-0 ${align === "right" ? "items-end" : "items-start"} flex flex-col`}>
-      <span className={`flex w-full items-center gap-1 min-w-0 ${align === "right" ? "flex-row-reverse" : ""}`}>
-        <SlotTag slot={slot1} />
-        <TierBadge cat={cat1} />
-        <span className={nameClass}>{p1?.name ?? "?"}</span>
-      </span>
-      <span className={`flex w-full items-center gap-1 min-w-0 ${align === "right" ? "flex-row-reverse" : ""}`}>
-        <SlotTag slot={slot2} />
-        <TierBadge cat={cat2} />
-        <span className={nameClass}>{p2?.name ?? "?"}</span>
-      </span>
+    <div className={`space-y-1 min-w-0 flex flex-col ${align === "right" ? "items-end" : "items-start"}`}>
+      <PlayerLabel player={p1} cat={categories?.[id1]} slot={slots?.[id1]} won={won} align={align} />
+      <PlayerLabel player={p2} cat={categories?.[id2]} slot={slots?.[id2]} won={won} align={align} />
     </div>
   );
 }

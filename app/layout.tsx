@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { InAppBrowserBanner } from "@/components/pwa/InAppBrowserBanner";
 import { SitePresenceTracker } from "@/components/admin/site-presence-tracker";
+import { PageProgress } from "@/components/ui/page-progress";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -117,6 +118,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col overflow-x-hidden">
         <ThemeProvider>
+          <PageProgress />
           <InAppBrowserBanner />
           <SitePresenceTracker />
           {children}
