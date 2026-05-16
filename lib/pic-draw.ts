@@ -22,10 +22,35 @@ export function buildDrawPairs(
   const allIds = advancingByGroup.flat();
 
   if (mode === "cross_group" && advancingByGroup.length >= 2) {
-    const sA = shuffle(advancingByGroup[0]!);
-    const sB = shuffle(advancingByGroup[1]!);
-    // Each team = 1 from A + 1 from B
-    return sA.map((a, i) => [a, sB[i]!] as [string, string]);
+    // Round-robin cross-group: each pair = 2 players from DIFFERENT groups.
+    // Pick from group with most remaining, partner = random other non-empty group.
+    const buckets = advancingByGroup.map((g) => shuffle([...g]));
+    const pairs: [string, string][] = [];
+
+    while (true) {
+      const indices = buckets
+        .map((_, i) => i)
+        .filter((i) => buckets[i]!.length > 0)
+        .sort((a, b) => {
+          const diff = buckets[b]!.length - buckets[a]!.length;
+          return diff !== 0 ? diff : Math.random() - 0.5;
+        });
+
+      if (indices.length === 0) break;
+      if (indices.length === 1) {
+        // Only 1 group has players left → forced same-group pairs (fallback)
+        const last = buckets[indices[0]!]!;
+        while (last.length >= 2) pairs.push([last.pop()!, last.pop()!]);
+        break;
+      }
+
+      const i1 = indices[0]!;
+      const others = indices.slice(1);
+      const i2 = others[Math.floor(Math.random() * others.length)]!;
+      pairs.push([buckets[i1]!.pop()!, buckets[i2]!.pop()!]);
+    }
+
+    return pairs;
   }
 
   if (mode === "cross_rank" && advancingByGroup.length >= 2) {
@@ -82,8 +107,8 @@ export const DRAW_MODES: { value: DrawMode; label: string; desc: string }[] = [
   },
   {
     value: "cross_group",
-    label: "Chéo bảng A×B",
-    desc: "Mỗi cặp đôi gồm 1 người bảng A + 1 người bảng B",
+    label: "Chéo bảng",
+    desc: "Mỗi cặp đôi gồm 2 người từ 2 bảng khác nhau (cân bằng nhiều bảng)",
   },
   {
     value: "cross_rank",
