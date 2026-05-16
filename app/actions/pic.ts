@@ -255,6 +255,36 @@ export async function removePicPlayer(
   return { ok: true };
 }
 
+export async function updatePicPlayer(
+  eventId: string,
+  playerId: string,
+  name: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "name_required" };
+  if (trimmed.length > 100) return { error: "name_too_long" };
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { error } = await svc
+    .from("pic_players")
+    .update({ name: trimmed })
+    .eq("id", playerId)
+    .eq("event_id", eventId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pic`);
+  return { ok: true };
+}
+
 export async function bulkAddPicPlayers(
   eventId: string,
   names: string[],

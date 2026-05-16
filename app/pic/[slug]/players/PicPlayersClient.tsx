@@ -2,13 +2,13 @@
 
 import { useState, useMemo, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Upload, Shuffle, Users, Radio, ExternalLink, RefreshCw, Check, Sparkles } from "lucide-react";
+import { Plus, Trash2, Upload, Shuffle, Users, Radio, ExternalLink, RefreshCw, Check, Sparkles, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import {
-  addPicPlayer, removePicPlayer, bulkAddPicPlayers,
+  addPicPlayer, removePicPlayer, updatePicPlayer, bulkAddPicPlayers,
   generatePicGroups, generateCrossTierGroupMatches, generateNormalGroupMatches,
   generateCrossTierGroupsFull, createPicDraw, applyPicDraw, resetPicGroups,
   createPicIndividualDrawSession, cancelPicIndividualDrawSession,
@@ -397,6 +397,24 @@ export default function PicPlayersClient({
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setPlayers(prev => prev.filter(p => p.id !== id));
       setCategories(prev => { const n = { ...prev }; delete n[id]; return n; });
+    });
+  };
+
+  // Edit name inline
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const startEdit = (p: Player) => { setEditingId(p.id); setEditValue(p.name); };
+  const cancelEdit = () => { setEditingId(null); setEditValue(""); };
+  const saveEdit = (id: string) => {
+    const newName = editValue.trim();
+    if (!newName) { cancelEdit(); return; }
+    const current = players.find(x => x.id === id);
+    if (current && current.name === newName) { cancelEdit(); return; }
+    startTransition(async () => {
+      const res = await updatePicPlayer(eventId, id, newName);
+      if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      setPlayers(prev => prev.map(p => p.id === id ? { ...p, name: newName } : p));
+      cancelEdit();
     });
   };
 
@@ -886,26 +904,58 @@ export default function PicPlayersClient({
               {players.map((p, i) => {
                 const cat = categories[p.id];
                 const isActive = !hasGroups && crossTierMode && !preview;
+                const isEditing = editingId === p.id;
                 return (
                   <div key={p.id}
-                    onClick={isActive ? () => handlePlayerTap(p.id) : undefined}
-                    className={`flex items-center justify-between gap-2 rounded-md border p-2 text-sm ${isActive ? "cursor-pointer select-none active:scale-95 transition-transform" : ""} ${isActive && activeTier ? "hover:bg-accent" : ""}`}>
+                    onClick={isActive && !isEditing ? () => handlePlayerTap(p.id) : undefined}
+                    className={`flex items-center justify-between gap-2 rounded-md border p-2 text-sm ${isActive && !isEditing ? "cursor-pointer select-none active:scale-95 transition-transform" : ""} ${isActive && activeTier && !isEditing ? "hover:bg-accent" : ""}`}>
                     <span className="flex flex-1 items-center gap-2 truncate">
                       <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">{i + 1}</span>
-                      <span className="truncate">{p.name}</span>
+                      {isEditing ? (
+                        <Input
+                          autoFocus
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onClick={e => e.stopPropagation()}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") { e.preventDefault(); saveEdit(p.id); }
+                            else if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+                          }}
+                          onBlur={() => saveEdit(p.id)}
+                          maxLength={100}
+                          className="h-7 flex-1 text-sm"
+                        />
+                      ) : (
+                        <span className="truncate">{p.name}</span>
+                      )}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
-                      {isActive && (
+                      {isActive && !isEditing && (
                         <span className={`flex h-6 w-7 items-center justify-center rounded text-xs font-bold transition-colors ${
                           cat === "A" ? "bg-blue-500 text-white"
                           : cat === "B" ? "bg-orange-500 text-white"
                           : "border bg-muted text-muted-foreground"
                         }`}>{cat ?? "—"}</span>
                       )}
-                      {!hasGroups && !preview && (
-                        <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); onDelete(p.id); }} disabled={pending}>
-                          <Trash2 className="size-3" />
-                        </Button>
+                      {!hasGroups && !preview && !isEditing && (
+                        <>
+                          <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); startEdit(p); }} disabled={pending} title="Sửa tên">
+                            <Pencil className="size-3" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); onDelete(p.id); }} disabled={pending} title="Xoá">
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </>
+                      )}
+                      {isEditing && (
+                        <>
+                          <Button size="sm" variant="ghost" onMouseDown={e => { e.preventDefault(); saveEdit(p.id); }} disabled={pending} title="Lưu">
+                            <Check className="size-3 text-green-600" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onMouseDown={e => { e.preventDefault(); cancelEdit(); }} disabled={pending} title="Hủy">
+                            <X className="size-3" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
