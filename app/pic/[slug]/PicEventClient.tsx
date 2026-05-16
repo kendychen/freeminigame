@@ -433,12 +433,12 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/20 text-xs text-muted-foreground">
-            <th className="px-3 py-2 text-left">#</th>
-            <th className="px-3 py-2 text-left">Tên</th>
-            <th className="px-3 py-2 text-center">Điểm</th>
-            <th className="px-3 py-2 text-center">T</th>
-            <th className="px-3 py-2 text-center">B</th>
-            <th className="px-3 py-2 text-center">±</th>
+            <th className="px-2 py-2 text-left sm:px-3">#</th>
+            <th className="px-2 py-2 text-left sm:px-3">Tên</th>
+            <th className="px-2 py-2 text-center sm:px-3">Điểm</th>
+            <th className="hidden px-3 py-2 text-center sm:table-cell">T</th>
+            <th className="hidden px-3 py-2 text-center sm:table-cell">B</th>
+            <th className="px-2 py-2 text-center sm:px-3">±</th>
           </tr>
         </thead>
         <tbody>
@@ -447,14 +447,14 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
             const slot = playerSlots?.[s.playerId];
             return (
             <tr key={s.playerId} className={`border-b last:border-0 ${i >= advancePerGroup ? "opacity-50" : ""}`}>
-              <td className="px-3 py-2.5">
+              <td className="px-2 py-2.5 sm:px-3">
                 <span className={`flex size-6 items-center justify-center rounded-full text-xs font-bold ${
                   i === 0 ? "bg-yellow-400/20 text-yellow-600" :
                   i === 1 ? "bg-slate-300/20 text-slate-500" :
                   i < advancePerGroup ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
                 }`}>{s.rank}</span>
               </td>
-              <td className="px-3 py-2.5 font-medium">
+              <td className="px-2 py-2.5 font-medium sm:px-3">
                 <span className="flex items-center gap-1.5">
                   {slot && <span className="font-mono text-[10px] font-bold text-muted-foreground/80 shrink-0">{slot}</span>}
                   {cat && (
@@ -462,13 +462,18 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
                       cat === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"
                     }`}>{cat}</span>
                   )}
-                  {s.name}
+                  <span className="truncate">{s.name}</span>
                 </span>
               </td>
-              <td className="px-3 py-2.5 text-center font-mono font-bold text-primary">{s.pts}</td>
-              <td className="px-3 py-2.5 text-center font-mono">{s.wins}</td>
-              <td className="px-3 py-2.5 text-center font-mono text-muted-foreground">{s.losses}</td>
-              <td className={`px-3 py-2.5 text-center font-mono font-semibold ${s.diff > 0 ? "text-green-600" : s.diff < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+              <td className="px-2 py-2.5 text-center font-mono font-bold text-primary sm:px-3">
+                {s.pts}
+                <span className="ml-1 inline text-[10px] font-normal text-muted-foreground sm:hidden">
+                  ({s.wins}T·{s.losses}B)
+                </span>
+              </td>
+              <td className="hidden px-3 py-2.5 text-center font-mono sm:table-cell">{s.wins}</td>
+              <td className="hidden px-3 py-2.5 text-center font-mono text-muted-foreground sm:table-cell">{s.losses}</td>
+              <td className={`px-2 py-2.5 text-center font-mono font-semibold sm:px-3 ${s.diff > 0 ? "text-green-600" : s.diff < 0 ? "text-red-500" : "text-muted-foreground"}`}>
                 {s.diff > 0 ? "+" : ""}{s.diff}
               </td>
             </tr>

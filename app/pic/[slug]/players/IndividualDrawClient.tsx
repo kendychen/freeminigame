@@ -247,12 +247,12 @@ export default function IndividualDrawClient({
                   })}
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col items-center gap-2 max-w-[90vw]">
                   <div
-                    className={`flex flex-col items-center justify-center rounded-2xl px-6 py-4 shadow-2xl animate-bounce ${GROUP_SOLID[drawing.result % GROUP_SOLID.length]}`}
+                    className={`flex flex-col items-center justify-center rounded-2xl px-5 py-3 sm:px-6 sm:py-4 shadow-2xl animate-bounce ${GROUP_SOLID[drawing.result % GROUP_SOLID.length]}`}
                   >
                     <span className="text-xs font-bold opacity-80">VĐV {drawing.position}</span>
-                    <span className="text-3xl font-black leading-tight">Bảng {String.fromCharCode(65 + drawing.result)}</span>
+                    <span className="text-2xl sm:text-3xl font-black leading-tight">Bảng {String.fromCharCode(65 + drawing.result)}</span>
                   </div>
                 </div>
               )}

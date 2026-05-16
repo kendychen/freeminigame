@@ -224,7 +224,13 @@ export function QuickScoreClient({ initial, onBack }: { initial: QuickScore; onB
   const showServingChoice = !isCompleted && servingTeam === null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-background"
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
 
       {/* Serving choice overlay */}
       {showServingChoice && (

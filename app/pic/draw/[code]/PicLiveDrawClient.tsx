@@ -258,7 +258,7 @@ function PersonalResultCard({ playerName, position, groupIdx, eventName }: {
         <img
           src={previewUrl}
           alt="Kết quả bốc thăm"
-          className="mx-auto w-full max-w-xs rounded-xl border-2 border-current/20 shadow-lg"
+          className="mx-auto w-full max-w-[260px] sm:max-w-xs rounded-xl border-2 border-current/20 shadow-lg"
         />
       )}
 
@@ -509,7 +509,13 @@ export default function PicLiveDrawClient({
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-4">
+    <div
+      className="mx-auto max-w-3xl space-y-4 p-3 sm:p-4"
+      style={{
+        paddingTop: "max(0.75rem, env(safe-area-inset-top))",
+        paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+      }}
+    >
       <div className="space-y-1 text-center">
         <div className="flex items-center justify-center gap-2 text-xs font-medium uppercase tracking-wider text-red-500">
           <Radio className="size-3.5 animate-pulse" />LIVE
@@ -594,12 +600,12 @@ export default function PicLiveDrawClient({
                 })}
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-2 max-w-[90vw]">
                 <div
-                  className={`flex flex-col items-center justify-center rounded-2xl px-6 py-4 shadow-2xl animate-bounce ${GROUP_SOLID[animating.result % GROUP_SOLID.length]}`}
+                  className={`flex flex-col items-center justify-center rounded-2xl px-5 py-3 sm:px-6 sm:py-4 shadow-2xl animate-bounce ${GROUP_SOLID[animating.result % GROUP_SOLID.length]}`}
                 >
                   <span className="text-xs font-bold opacity-80">VĐV {animating.position}</span>
-                  <span className="text-3xl font-black leading-tight">Bảng {String.fromCharCode(65 + animating.result)}</span>
+                  <span className="text-2xl sm:text-3xl font-black leading-tight">Bảng {String.fromCharCode(65 + animating.result)}</span>
                 </div>
               </div>
             )}

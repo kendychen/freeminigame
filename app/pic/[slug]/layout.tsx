@@ -36,8 +36,14 @@ export default async function PicAdminLayout({
   ];
 
   return (
-    <div className="flex flex-col flex-1 pb-16 lg:pb-0">
-      <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
+    <div
+      className="flex flex-col flex-1"
+      style={{ paddingBottom: "calc(64px + env(safe-area-inset-bottom))" }}
+    >
+      <header
+        className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur lg:!pt-0"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-3 sm:h-16 sm:px-4">
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
             <PickleballLogo size={26} />
@@ -75,13 +81,16 @@ export default async function PicAdminLayout({
         <div className="min-w-0 flex-1">{children}</div>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur lg:hidden">
+      <nav
+        className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur lg:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
         <div className="grid grid-cols-4">
           {nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className="flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <item.icon className="size-5" />
               <span className="leading-tight">{item.short}</span>

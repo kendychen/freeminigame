@@ -939,21 +939,21 @@ export default function PicPlayersClient({
                       )}
                       {!hasGroups && !preview && !isEditing && (
                         <>
-                          <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); startEdit(p); }} disabled={pending} title="Sửa tên">
-                            <Pencil className="size-3" />
+                          <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); startEdit(p); }} disabled={pending} title="Sửa tên" className="h-9 w-9 p-0">
+                            <Pencil className="size-4" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); onDelete(p.id); }} disabled={pending} title="Xoá">
-                            <Trash2 className="size-3" />
+                          <Button size="sm" variant="ghost" onClick={e => { e.stopPropagation(); onDelete(p.id); }} disabled={pending} title="Xoá" className="h-9 w-9 p-0">
+                            <Trash2 className="size-4" />
                           </Button>
                         </>
                       )}
                       {isEditing && (
                         <>
-                          <Button size="sm" variant="ghost" onMouseDown={e => { e.preventDefault(); saveEdit(p.id); }} disabled={pending} title="Lưu">
-                            <Check className="size-3 text-green-600" />
+                          <Button size="sm" variant="ghost" onMouseDown={e => { e.preventDefault(); saveEdit(p.id); }} disabled={pending} title="Lưu" className="h-9 w-9 p-0">
+                            <Check className="size-4 text-green-600" />
                           </Button>
-                          <Button size="sm" variant="ghost" onMouseDown={e => { e.preventDefault(); cancelEdit(); }} disabled={pending} title="Hủy">
-                            <X className="size-3" />
+                          <Button size="sm" variant="ghost" onMouseDown={e => { e.preventDefault(); cancelEdit(); }} disabled={pending} title="Hủy" className="h-9 w-9 p-0">
+                            <X className="size-4" />
                           </Button>
                         </>
                       )}
