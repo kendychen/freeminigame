@@ -128,21 +128,21 @@ function SlotTag({ slot }: { slot: string | undefined }) {
   );
 }
 
-function PlayerLabel({ player, cat, slot, won, align }: {
+function PlayerLabel({ player, cat, slot, won }: {
   player: PicPlayer | undefined;
   cat: "A" | "B" | undefined;
   slot: string | undefined;
   won: boolean;
-  align: "left" | "right";
+  align?: "left" | "right";
 }) {
-  const boxClass = `flex flex-col min-w-0 rounded-md border px-2 py-1 ${
+  const boxClass = `flex flex-col items-center min-w-0 rounded-md border px-2 py-1 text-center ${
     won ? "border-primary/50 bg-primary/5" : "bg-card/50"
-  } ${align === "right" ? "items-end text-right" : "items-start text-left"}`;
+  }`;
   const nameClass = `text-xs font-semibold leading-tight break-words ${won ? "text-primary" : ""}`;
   return (
     <div className={boxClass}>
       {(slot || cat) && (
-        <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <span className="flex items-center justify-center gap-1">
           <SlotTag slot={slot} />
           <TierBadge cat={cat} />
         </span>
