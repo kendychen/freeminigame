@@ -128,19 +128,15 @@ function SlotTag({ slot }: { slot: string | undefined }) {
   );
 }
 
-function PlayerLabel({ player, cat, slot, won }: {
+function PlayerRow({ player, cat, slot, won }: {
   player: PicPlayer | undefined;
   cat: "A" | "B" | undefined;
   slot: string | undefined;
   won: boolean;
-  align?: "left" | "right";
 }) {
-  const boxClass = `flex flex-col items-center min-w-0 rounded-md border px-2 py-1 text-center ${
-    won ? "border-primary/50 bg-primary/5" : "bg-card/50"
-  }`;
   const nameClass = `text-xs font-semibold leading-tight break-words ${won ? "text-primary" : ""}`;
   return (
-    <div className={boxClass}>
+    <div className="flex flex-col items-center min-w-0 text-center">
       {(slot || cat) && (
         <span className="flex items-center justify-center gap-1">
           <SlotTag slot={slot} />
@@ -164,9 +160,11 @@ function PairLabel({ id1, id2, players, categories, slots, won, align }: {
     return <p className={`truncate text-sm font-semibold leading-tight ${won ? "text-primary" : align === "right" ? "text-muted-foreground" : ""}`}>{p1?.name ?? "?"} & {p2?.name ?? "?"}</p>;
   }
   return (
-    <div className={`space-y-1 min-w-0 flex flex-col ${align === "right" ? "items-end" : "items-start"}`}>
-      <PlayerLabel player={p1} cat={categories?.[id1]} slot={slots?.[id1]} won={won} align={align} />
-      <PlayerLabel player={p2} cat={categories?.[id2]} slot={slots?.[id2]} won={won} align={align} />
+    <div className={`min-w-0 w-full rounded-md border px-2 py-1.5 space-y-1.5 ${
+      won ? "border-primary/50 bg-primary/5" : "bg-card/50"
+    }`}>
+      <PlayerRow player={p1} cat={categories?.[id1]} slot={slots?.[id1]} won={won} />
+      <PlayerRow player={p2} cat={categories?.[id2]} slot={slots?.[id2]} won={won} />
     </div>
   );
 }
