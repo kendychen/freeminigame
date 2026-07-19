@@ -147,7 +147,7 @@ function distributeToGroups(players: PicPlayer[], groupCount: number): PicGroup[
   // Generate matches per group
   for (const g of groups) {
     const n = g.playerIds.length;
-    if (n < 4 || n > 8) continue;
+    if (n < 4 || n > 10) continue;
     const schedule = generateGroupSchedule(n);
     g.matches = schedule.map((slot, i) => ({
       id: uid(), round: i + 1, stage: "group",

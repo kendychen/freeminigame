@@ -47,7 +47,7 @@ export default function PicNewPage() {
     const result: number[] = [];
     for (let g = 1; g <= Math.ceil(pc / 4); g++) {
       const sizes = snakeDistribute(players, g).map((gr) => gr.length);
-      if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 8)
+      if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 10)
         result.push(g);
     }
     return result;

@@ -44,6 +44,31 @@ const SCHEDULES: Record<number, MatchSlot[]> = {
     { a: [0, 2], b: [4, 6] },
     { a: [1, 3], b: [5, 7] },
   ],
+  // 9/10: cyclic a:[i,i+1] b:[i+2,i+4] (mod n) — same construction as 7.
+  // Each player plays exactly 4 matches, never repeats a partner or an opponent.
+  9: [
+    { a: [0, 1], b: [2, 4] },
+    { a: [1, 2], b: [3, 5] },
+    { a: [2, 3], b: [4, 6] },
+    { a: [3, 4], b: [5, 7] },
+    { a: [4, 5], b: [6, 8] },
+    { a: [5, 6], b: [0, 7] },
+    { a: [6, 7], b: [1, 8] },
+    { a: [7, 8], b: [0, 2] },
+    { a: [0, 8], b: [1, 3] },
+  ],
+  10: [
+    { a: [0, 1], b: [2, 4] },
+    { a: [1, 2], b: [3, 5] },
+    { a: [2, 3], b: [4, 6] },
+    { a: [3, 4], b: [5, 7] },
+    { a: [4, 5], b: [6, 8] },
+    { a: [5, 6], b: [7, 9] },
+    { a: [6, 7], b: [0, 8] },
+    { a: [7, 8], b: [1, 9] },
+    { a: [8, 9], b: [0, 2] },
+    { a: [0, 9], b: [1, 3] },
+  ],
 };
 
 // HD variant — alternative schedules (positions referred to as 1A, 2A, 3A...)
@@ -71,6 +96,8 @@ const SCHEDULES_HD: Record<number, MatchSlot[]> = {
   ],
   7: SCHEDULES[7]!,
   8: SCHEDULES[8]!,
+  9: SCHEDULES[9]!,
+  10: SCHEDULES[10]!,
 };
 
 export type ScheduleMode = "standard" | "hd";
@@ -78,7 +105,7 @@ export type ScheduleMode = "standard" | "hd";
 export function generateGroupSchedule(n: number, mode: ScheduleMode = "standard"): MatchSlot[] {
   const map = mode === "hd" ? SCHEDULES_HD : SCHEDULES;
   const s = map[n];
-  if (!s) throw new Error(`Số VĐV phải là 4, 5, 6, 7 hoặc 8`);
+  if (!s) throw new Error(`Số VĐV phải từ 4 đến 10`);
   return s;
 }
 

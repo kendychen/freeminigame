@@ -370,7 +370,7 @@ export async function generatePicGroups(
     const n = slotIds.length;
     if (n < 4) continue;
     const scheduleMode = ((ev.config as { scheduleMode?: "standard" | "hd" })?.scheduleMode) ?? "standard";
-    const schedule = generateGroupSchedule(Math.min(n, 8), scheduleMode);
+    const schedule = generateGroupSchedule(Math.min(n, 10), scheduleMode);
     await svc.from("pic_matches").insert(
       schedule.map((slot, i) => ({
         event_id: eventId,
@@ -613,7 +613,7 @@ export async function generateNormalGroupMatches(
 
     const n = slotIds.length;
     if (n < 4) continue;
-    const schedule = generateGroupSchedule(Math.min(n, 8), scheduleMode);
+    const schedule = generateGroupSchedule(Math.min(n, 10), scheduleMode);
     for (let i = 0; i < schedule.length; i++) {
       const slot = schedule[i]!;
       matchRows.push({
@@ -1334,7 +1334,7 @@ export async function createPicIndividualDrawSession(
     if (next >= groupCount || next < 0) dir = -dir;
     else gi += dir;
   }
-  if (Math.min(...groupSizes) < 4 || Math.max(...groupSizes) > 8)
+  if (Math.min(...groupSizes) < 4 || Math.max(...groupSizes) > 10)
     return { error: "invalid_group_count" };
 
   // Save advancePerGroup to event config so applyPicIndividualDrawSession can read it
