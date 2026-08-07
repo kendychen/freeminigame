@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/toast";
 import {
   tapPicIndividualDraw,
   applyPicIndividualDrawSession,
+  applyPicKnockoutDrawSession,
   resetPicIndividualDrawPlayer,
   resetPicIndividualDrawAssignments,
 } from "@/app/actions/pic";
@@ -49,9 +50,9 @@ const REVEAL_HOLD = 1400;
 // ── Generate share image (1080x1080 PNG) ─────────────────────────────────────
 async function generateResultImage(opts: {
   playerName: string;
-  position: number;
-  groupLetter: string;
-  groupIdx: number;
+  mainText: string; // "Bảng A" | "Cặp 3"
+  subText: string; // "VĐV 2" | "Nam" | "Nữ" | ...
+  colorIdx: number;
   eventName: string;
 }): Promise<Blob> {
   const canvas = document.createElement("canvas");
@@ -60,7 +61,7 @@ async function generateResultImage(opts: {
   const ctx = canvas.getContext("2d")!;
 
   // Background gradient
-  const [c1, c2] = GROUP_IMAGE_GRADIENT[opts.groupIdx % GROUP_IMAGE_GRADIENT.length]!;
+  const [c1, c2] = GROUP_IMAGE_GRADIENT[opts.colorIdx % GROUP_IMAGE_GRADIENT.length]!;
   const grad = ctx.createLinearGradient(0, 0, 1080, 1080);
   grad.addColorStop(0, c1);
   grad.addColorStop(1, c2);
@@ -106,18 +107,20 @@ async function generateResultImage(opts: {
   ctx.font = '800 80px system-ui, sans-serif';
   ctx.fillText(truncate(opts.playerName, 22), 540, 360);
 
-  // VĐV slot label
-  ctx.font = '600 64px system-ui, sans-serif';
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.fillText(`VĐV ${opts.position}`, 540, 510);
+  // Slot label
+  if (opts.subText) {
+    ctx.font = '600 64px system-ui, sans-serif';
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillText(opts.subText, 540, 510);
+  }
 
-  // Huge group letter — clean with subtle text shadow
+  // Huge result text — clean with subtle text shadow
   ctx.fillStyle = "#ffffff";
   ctx.font = '900 240px system-ui, sans-serif';
   ctx.shadowColor = "rgba(0,0,0,0.25)";
   ctx.shadowBlur = 24;
   ctx.shadowOffsetY = 8;
-  ctx.fillText(`Bảng ${opts.groupLetter}`, 540, 740);
+  ctx.fillText(opts.mainText, 540, 740);
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
@@ -157,20 +160,20 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 }
 
 // ── PersonalResultCard ─────────────────────────────────────────────────────
-function PersonalResultCard({ playerName, position, groupIdx, eventName }: {
+function PersonalResultCard({ playerName, mainText, subText, colorIdx, eventName }: {
   playerName: string;
-  position: number;
-  groupIdx: number;
+  mainText: string;
+  subText: string;
+  colorIdx: number;
   eventName: string;
 }) {
   const [pending, setPending] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const groupLetter = String.fromCharCode(65 + groupIdx);
 
   // Generate preview image once on mount
   useEffect(() => {
     let cancelled = false;
-    void generateResultImage({ playerName, position, groupLetter, groupIdx, eventName })
+    void generateResultImage({ playerName, mainText, subText, colorIdx, eventName })
       .then((blob) => {
         if (cancelled) return;
         setPreviewUrl(URL.createObjectURL(blob));
@@ -181,14 +184,14 @@ function PersonalResultCard({ playerName, position, groupIdx, eventName }: {
       setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerName, position, groupIdx]);
+  }, [playerName, mainText, subText, colorIdx]);
 
-  const filename = `ket-qua-${playerName.replace(/\s+/g, "-").toLowerCase()}-vdv${position}-bang${groupLetter}.png`;
+  const filename = `ket-qua-${playerName.replace(/\s+/g, "-").toLowerCase()}-${mainText.replace(/\s+/g, "-").toLowerCase()}.png`;
 
   const onSave = async () => {
     setPending("save");
     try {
-      const blob = await generateResultImage({ playerName, position, groupLetter, groupIdx, eventName });
+      const blob = await generateResultImage({ playerName, mainText, subText, colorIdx, eventName });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -208,7 +211,7 @@ function PersonalResultCard({ playerName, position, groupIdx, eventName }: {
   const onCopy = async () => {
     setPending("copy");
     try {
-      const blob = await generateResultImage({ playerName, position, groupLetter, groupIdx, eventName });
+      const blob = await generateResultImage({ playerName, mainText, subText, colorIdx, eventName });
       if (!navigator.clipboard || !window.ClipboardItem) {
         throw new Error("Trình duyệt không hỗ trợ — hãy dùng nút Tải hoặc Chia sẻ");
       }
@@ -224,14 +227,14 @@ function PersonalResultCard({ playerName, position, groupIdx, eventName }: {
   const onShare = async () => {
     setPending("share");
     try {
-      const blob = await generateResultImage({ playerName, position, groupLetter, groupIdx, eventName });
+      const blob = await generateResultImage({ playerName, mainText, subText, colorIdx, eventName });
       const file = new File([blob], filename, { type: "image/png" });
       const nav = navigator as Navigator & { canShare?: (data: { files?: File[] }) => boolean };
       if (nav.canShare && nav.canShare({ files: [file] }) && navigator.share) {
         await navigator.share({
           files: [file],
           title: "Kết quả bốc thăm",
-          text: `Tôi vừa bốc trúng VĐV ${position} - Bảng ${groupLetter} tại ${eventName}! 🎲`,
+          text: `Tôi vừa bốc trúng ${subText ? subText + " - " : ""}${mainText} tại ${eventName}! 🎲`,
         });
       } else {
         // Fallback to download
@@ -248,7 +251,7 @@ function PersonalResultCard({ playerName, position, groupIdx, eventName }: {
   };
 
   return (
-    <div className={`rounded-2xl border-2 border-primary/40 p-4 sm:p-5 space-y-4 ${GROUP_COLOR[groupIdx % GROUP_COLOR.length]}`}>
+    <div className={`rounded-2xl border-2 border-primary/40 p-4 sm:p-5 space-y-4 ${GROUP_COLOR[colorIdx % GROUP_COLOR.length]}`}>
       <div className="text-center space-y-1">
         <p className="text-xs font-bold uppercase tracking-wider opacity-70">🎉 Kết quả của bạn</p>
         <p className="text-2xl font-extrabold">{playerName}</p>
@@ -291,6 +294,8 @@ export default function PicLiveDrawClient({
   initialStatus,
   lockedPlayerId,
   playerToken,
+  kind = "group",
+  slotTags = null,
 }: {
   code: string;
   eventName: string;
@@ -301,6 +306,8 @@ export default function PicLiveDrawClient({
   initialStatus: string;
   lockedPlayerId: string | null;
   playerToken: string | null;
+  kind?: "group" | "ko_pairs";
+  slotTags?: Record<string, string> | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -315,6 +322,13 @@ export default function PicLiveDrawClient({
   const progRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const groupCount = groupSizes.length;
+  const isPairs = kind === "ko_pairs";
+  const bucketName = (gi: number) =>
+    isPairs ? `Cặp ${gi + 1}` : `Bảng ${String.fromCharCode(65 + gi)}`;
+  const bucketShort = (gi: number) =>
+    isPairs ? `${gi + 1}` : String.fromCharCode(65 + gi);
+  const slotName = (gi: number, p: number) =>
+    slotTags?.[`${gi}-${p}`] ?? `VĐV ${p}`;
   const playerMap = useMemo(() => {
     const m: Record<string, Player> = {};
     for (const p of players) m[p.id] = p;
@@ -431,12 +445,17 @@ export default function PicLiveDrawClient({
 
   const handleApply = () => {
     startTransition(async () => {
-      const res = await applyPicIndividualDrawSession(code);
+      const res = isPairs
+        ? await applyPicKnockoutDrawSession(code)
+        : await applyPicIndividualDrawSession(code);
       if ("error" in res) {
         toast({ title: "Lỗi", description: res.error, variant: "destructive" });
         return;
       }
-      toast({ title: "Đã lưu kết quả!", description: "Quay về trang quản lý..." });
+      toast({
+        title: "Đã lưu kết quả!",
+        description: isPairs ? "Vòng knockout bắt đầu!" : "Quay về trang quản lý...",
+      });
       router.refresh();
     });
   };
@@ -469,8 +488,12 @@ export default function PicLiveDrawClient({
     return (
       <div className="mx-auto max-w-2xl space-y-6 p-4 pt-12 text-center">
         <Trophy className="mx-auto size-16 text-yellow-500" />
-        <h1 className="text-2xl font-bold">Bốc thăm đã hoàn tất!</h1>
-        <p className="text-muted-foreground">Admin đã lưu kết quả. Đợi lịch thi đấu được tạo.</p>
+        <h1 className="text-2xl font-bold">{isPairs ? "Bốc cặp hoàn tất!" : "Bốc thăm đã hoàn tất!"}</h1>
+        <p className="text-muted-foreground">
+          {isPairs
+            ? "Các cặp đấu knockout đã chốt. Theo dõi kết quả trên trang giải."
+            : "Admin đã lưu kết quả. Đợi lịch thi đấu được tạo."}
+        </p>
         <div className={`grid gap-3 ${groupCount <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
           {groupSizes.map((size, gi) => {
             const slots: (string | null)[] = Array(size).fill(null);
@@ -480,12 +503,12 @@ export default function PicLiveDrawClient({
             const filled = slots.filter((s) => s !== null).length;
             return (
               <div key={gi} className={`rounded-xl border-2 p-3 text-left ${GROUP_COLOR[gi % GROUP_COLOR.length]}`}>
-                <p className="font-bold">Bảng {String.fromCharCode(65 + gi)}</p>
+                <p className="font-bold">{bucketName(gi)}</p>
                 <p className="text-xs opacity-70">{filled}/{size}</p>
                 <ul className="mt-2 space-y-1 text-sm">
                   {slots.map((name, i) => (
                     <li key={i} className={`flex items-start gap-1.5 ${name ? "" : "opacity-40"}`}>
-                      <span className="font-mono text-[10px] font-bold shrink-0">VĐV {i + 1}</span>
+                      <span className="font-mono text-[10px] font-bold shrink-0">{slotName(gi, i + 1)}</span>
                       {name ? <span className="break-words flex-1">{name}</span> : <em className="text-xs italic flex-1">đang chờ...</em>}
                     </li>
                   ))}
@@ -531,8 +554,9 @@ export default function PicLiveDrawClient({
       {lockedPlayer && assignments[lockedPlayer.id] && !animating && (
         <PersonalResultCard
           playerName={lockedPlayer.name}
-          position={assignments[lockedPlayer.id]!.p}
-          groupIdx={assignments[lockedPlayer.id]!.g}
+          mainText={bucketName(assignments[lockedPlayer.id]!.g)}
+          subText={slotName(assignments[lockedPlayer.id]!.g, assignments[lockedPlayer.id]!.p)}
+          colorIdx={assignments[lockedPlayer.id]!.g}
           eventName={eventName}
         />
       )}
@@ -549,7 +573,7 @@ export default function PicLiveDrawClient({
                 full ? "border-green-500/50 bg-green-500/5" : GROUP_COLOR[gi % GROUP_COLOR.length]
               }`}
             >
-              <p className="text-xs font-semibold">Bảng {String.fromCharCode(65 + gi)}</p>
+              <p className="text-xs font-semibold">{bucketName(gi)}</p>
               <p className="font-mono text-lg font-bold">
                 {c}<span className="text-xs opacity-60">/{size}</span>
               </p>
@@ -594,7 +618,7 @@ export default function PicLiveDrawClient({
                         transition: "transform 0.08s",
                       }}
                     >
-                      {String.fromCharCode(65 + gi)}
+                      {bucketShort(gi)}
                     </div>
                   );
                 })}
@@ -604,15 +628,15 @@ export default function PicLiveDrawClient({
                 <div
                   className={`flex flex-col items-center justify-center rounded-2xl px-5 py-3 sm:px-6 sm:py-4 shadow-2xl animate-bounce ${GROUP_SOLID[animating.result % GROUP_SOLID.length]}`}
                 >
-                  <span className="text-xs font-bold opacity-80">VĐV {animating.position}</span>
-                  <span className="text-2xl sm:text-3xl font-black leading-tight">Bảng {String.fromCharCode(65 + animating.result)}</span>
+                  <span className="text-xs font-bold opacity-80">{slotName(animating.result, animating.position ?? 1)}</span>
+                  <span className="text-2xl sm:text-3xl font-black leading-tight">{bucketName(animating.result)}</span>
                 </div>
               </div>
             )}
             <p className="text-sm font-semibold">
               {animating.result === null
-                ? "Đang xác định bảng..."
-                : <>🏆 Bạn là <strong>VĐV {animating.position} - Bảng {String.fromCharCode(65 + animating.result)}</strong>!</>}
+                ? (isPairs ? "Đang xác định cặp..." : "Đang xác định bảng...")
+                : <>🏆 Bạn vào <strong>{bucketName(animating.result)}</strong>{isPairs ? "" : <> · <strong>{slotName(animating.result, animating.position ?? 1)}</strong></>}!</>}
             </p>
           </div>
           <div className="mx-auto h-2 max-w-xs overflow-hidden rounded-full bg-secondary">
@@ -688,13 +712,13 @@ export default function PicLiveDrawClient({
               return (
                 <div key={gi} className={`rounded-xl border-2 p-3 ${GROUP_COLOR[gi % GROUP_COLOR.length]}`}>
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="font-bold">Bảng {String.fromCharCode(65 + gi)}</p>
+                    <p className="font-bold">{bucketName(gi)}</p>
                     <span className="font-mono text-xs opacity-70">{slots.length}/{size}</span>
                   </div>
                   <ul className="space-y-1 text-sm">
                     {slotArr.map((entry, i) => (
                       <li key={i} className={`group flex items-start gap-1.5 ${entry ? "" : "opacity-40"}`}>
-                        <span className="font-mono text-[10px] font-bold shrink-0">VĐV {i + 1}</span>
+                        <span className="font-mono text-[10px] font-bold shrink-0">{slotName(gi, i + 1)}</span>
                         {entry ? (
                           <>
                             <span className="flex-1 break-words">{entry.name}</span>

@@ -160,7 +160,7 @@ export async function createPicEvent(
 
 export async function updatePicConfig(
   eventId: string,
-  patch: Partial<Pick<PicConfig, "name" | "targetGroup" | "targetKnockout" | "hasThirdPlace" | "pointsForWin" | "pointsForLoss" | "tiebreakerOrder">>,
+  patch: Partial<Pick<PicConfig, "name" | "targetGroup" | "targetKnockout" | "hasThirdPlace" | "pointsForWin" | "pointsForLoss" | "tiebreakerOrder" | "playerGenders" | "playerCategories" | "bestExtraCount">>,
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -319,6 +319,7 @@ export async function generatePicGroups(
   groupCount: number,
   advancePerGroup: number,
   crossTierMode = false,
+  genderQuota = false,
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -343,12 +344,32 @@ export async function generatePicGroups(
     .eq("event_id", eventId);
   if (!players || players.length < 4) return { error: "need_at_least_4_players" };
 
-  const ids = players.map((p) => p.id);
-  for (let i = ids.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+  const shuffleIds = (arr: string[]) => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+  };
+
+  let groupSlots: string[][];
+  if (genderQuota) {
+    // Giới hạn Nam/Nữ mỗi bảng: chia riêng 2 danh sách rồi ghép (nam trước, nữ sau).
+    // Nữ snake đảo chiều để bảng dư nam không dư luôn cả nữ → sĩ số đều nhất có thể.
+    const genders =
+      ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+        ?.playerGenders) ?? {};
+    const males = players.filter((p) => genders[p.id] === "M").map((p) => p.id);
+    const females = players.filter((p) => genders[p.id] === "F").map((p) => p.id);
+    if (males.length + females.length !== players.length)
+      return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi chia bảng" };
+    const maleGroups = snakeDistribute(shuffleIds(males), groupCount);
+    const femaleGroups = snakeDistribute(shuffleIds(females), groupCount).reverse();
+    groupSlots = maleGroups.map((mg, i) => [...mg, ...(femaleGroups[i] ?? [])]);
+  } else {
+    groupSlots = snakeDistribute(shuffleIds(players.map((p) => p.id)), groupCount);
   }
-  const groupSlots = snakeDistribute(ids, groupCount);
 
   for (let gi = 0; gi < groupSlots.length; gi++) {
     const label = String.fromCharCode(65 + gi);
@@ -830,30 +851,23 @@ export async function scorePicMatch({
 
 // ── Draw knockout bracket ──────────────────────────────────────────────────────
 
-export async function picDrawKnockout(
+interface PicKoRow {
+  event_id: string;
+  round: number;
+  stage: string;
+  a1_id?: string | null;
+  a2_id?: string | null;
+  b1_id?: string | null;
+  b2_id?: string | null;
+}
+
+/** Build KO bracket rows from pairs (shared by manual confirm + LIVE pair-draw apply). */
+function buildPicKoRows(
   eventId: string,
   pairs: [string, string][],
-): Promise<{ ok: true } | { error: string }> {
-  const { user } = await requireUser();
-  const svc = createServiceClient();
-
-  const { data: ev } = await svc
-    .from("pic_events")
-    .select("owner_id, config")
-    .eq("id", eventId)
-    .single();
-  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
-  const hasThird = (ev.config as Record<string, unknown>)?.hasThirdPlace ?? false;
-
-  const matches: {
-    event_id: string;
-    round: number;
-    stage: string;
-    a1_id?: string | null;
-    a2_id?: string | null;
-    b1_id?: string | null;
-    b2_id?: string | null;
-  }[] = [];
+  hasThird: boolean,
+): PicKoRow[] {
+  const matches: PicKoRow[] = [];
 
   if (pairs.length === 2) {
     // Direct final
@@ -885,6 +899,28 @@ export async function picDrawKnockout(
     matches.push({ event_id: eventId, round: 99, stage: "final" });
     if (hasThird) matches.push({ event_id: eventId, round: 98, stage: "third" });
   }
+
+  return matches;
+}
+
+export async function picDrawKnockout(
+  eventId: string,
+  pairs: [string, string][],
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+  const hasThird = Boolean(
+    (ev.config as Record<string, unknown>)?.hasThirdPlace ?? false,
+  );
+
+  const matches = buildPicKoRows(eventId, pairs, hasThird);
 
   const { error } = await svc.from("pic_matches").insert(matches);
   if (error) return { error: error.message };
@@ -1288,6 +1324,7 @@ export async function createPicIndividualDrawSession(
   eventId: string,
   groupCount: number,
   advancePerGroup: number,
+  genderQuota = false,
 ): Promise<
   { code: string; hostToken: string; playerTokens: Record<string, string> }
   | { error: string }
@@ -1325,15 +1362,43 @@ export async function createPicIndividualDrawSession(
 
   const pc = players.length;
 
-  // Snake distribution for admin-chosen groupCount
-  const groupSizes: number[] = Array.from({ length: groupCount }, () => 0);
-  let dir = 1, gi = 0;
-  for (let i = 0; i < pc; i++) {
-    groupSizes[gi]!++;
-    const next = gi + dir;
-    if (next >= groupCount || next < 0) dir = -dir;
-    else gi += dir;
+  const snakeSizes = (count: number, k: number): number[] => {
+    const sizes: number[] = Array.from({ length: k }, () => 0);
+    let dir = 1, gi = 0;
+    for (let i = 0; i < count; i++) {
+      sizes[gi]!++;
+      const next = gi + dir;
+      if (next >= k || next < 0) dir = -dir;
+      else gi += dir;
+    }
+    return sizes;
+  };
+
+  let groupSizes: number[];
+  let slotTags: Record<string, string> | null = null;
+
+  if (genderQuota) {
+    // Giới hạn Nam/Nữ mỗi bảng: slot 1..q của bảng dành cho Nam, còn lại cho Nữ
+    const genders =
+      ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+        ?.playerGenders) ?? {};
+    const maleCount = players.filter((p) => genders[p.id] === "M").length;
+    const femaleCount = players.filter((p) => genders[p.id] === "F").length;
+    if (maleCount + femaleCount !== pc)
+      return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi tạo phiên" };
+    const maleSizes = snakeSizes(maleCount, groupCount);
+    const femaleSizes = snakeSizes(femaleCount, groupCount).reverse();
+    groupSizes = maleSizes.map((m, i) => m + (femaleSizes[i] ?? 0));
+    slotTags = {};
+    for (let g = 0; g < groupCount; g++) {
+      for (let p = 1; p <= groupSizes[g]!; p++) {
+        slotTags[`${g}-${p}`] = p <= maleSizes[g]! ? "Nam" : "Nữ";
+      }
+    }
+  } else {
+    groupSizes = snakeSizes(pc, groupCount);
   }
+
   if (Math.min(...groupSizes) < 4 || Math.max(...groupSizes) > 10)
     return { error: "invalid_group_count" };
 
@@ -1358,6 +1423,8 @@ export async function createPicIndividualDrawSession(
     player_tokens: playerTokens,
     assignments: {},
     status: "active",
+    kind: "group",
+    slot_tags: slotTags,
   });
   if (error) return { error: error.message };
 
@@ -1373,7 +1440,7 @@ export async function tapPicIndividualDraw(
 
   const { data: session } = await svc
     .from("pic_individual_sessions")
-    .select("code, group_sizes, player_tokens, assignments, status")
+    .select("code, event_id, group_sizes, player_tokens, assignments, status, kind, slot_tags")
     .eq("code", code)
     .single();
   if (!session) return { error: "session_not_found" };
@@ -1389,10 +1456,35 @@ export async function tapPicIndividualDraw(
 
   const groupSizes = session.group_sizes as number[];
 
+  // Slot-tag constraint (Nam/Nữ quota per group, or Nam/Nữ · A/B pair slots):
+  // resolve this player's tag label from event config
+  const slotTags = (session.slot_tags ?? null) as Record<string, string> | null;
+  let playerTag: string | null = null;
+  if (slotTags) {
+    const { data: evRow } = await svc
+      .from("pic_events")
+      .select("config")
+      .eq("id", session.event_id)
+      .single();
+    const cfg = (evRow?.config ?? {}) as {
+      playerGenders?: Record<string, "M" | "F">;
+      playerCategories?: Record<string, "A" | "B">;
+    };
+    const tagVals = new Set(Object.values(slotTags));
+    if (tagVals.has("A") || tagVals.has("B")) {
+      playerTag = cfg.playerCategories?.[playerId] ?? null;
+    } else {
+      const gender = cfg.playerGenders?.[playerId];
+      playerTag = gender === "M" ? "Nam" : gender === "F" ? "Nữ" : null;
+    }
+    if (!playerTag)
+      return { error: "VĐV chưa được gán nhóm (Nam/Nữ hoặc A/B) — admin gán trước" };
+  }
+
   // RPC returns JSONB { g, p } — atomic random slot pick.
   const { data: rpcResult, error: rpcErr } = await svc.rpc(
     "pic_individual_draw_tap",
-    { p_code: code, p_player_id: playerId },
+    { p_code: code, p_player_id: playerId, p_tag: playerTag },
   );
 
   if (
@@ -1425,7 +1517,9 @@ export async function tapPicIndividualDraw(
   const available: { g: number; p: number }[] = [];
   for (let g = 0; g < groupSizes.length; g++) {
     for (let p = 1; p <= groupSizes[g]!; p++) {
-      if (!occupied.has(`${g}-${p}`)) available.push({ g, p });
+      if (occupied.has(`${g}-${p}`)) continue;
+      if (slotTags && playerTag && slotTags[`${g}-${p}`] !== playerTag) continue;
+      available.push({ g, p });
     }
   }
   if (available.length === 0) return { error: "all_slots_full" };
@@ -1593,5 +1687,204 @@ export async function resetPicIndividualDrawPlayer(
     .update({ assignments, updated_at: new Date().toISOString() })
     .eq("code", code);
   if (error) return { error: error.message };
+  return { ok: true };
+}
+
+// ── LIVE knockout PAIR draw (bốc cặp — mỗi VĐV 1 link) ────────────────────────
+
+export async function createPicKnockoutDrawSession(
+  eventId: string,
+  qualifierIds: string[],
+  constraint: "none" | "gender" | "tier",
+): Promise<
+  { code: string; hostToken: string; playerTokens: Record<string, string> }
+  | { error: string; existingCode?: string }
+> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config, stage")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+  if (ev.stage !== "draw") return { error: "Chưa ở giai đoạn bốc thăm cặp" };
+
+  const { data: existingSessions } = await svc
+    .from("pic_individual_sessions")
+    .select("code")
+    .eq("event_id", eventId)
+    .eq("status", "active");
+  if (existingSessions && existingSessions.length > 0)
+    return {
+      error: "Đang có phiên LIVE khác — hủy phiên cũ trước",
+      existingCode: existingSessions[0]!.code,
+    };
+
+  const ids = [...new Set(qualifierIds)];
+  if (
+    ids.length !== qualifierIds.length ||
+    ids.length < 4 ||
+    ids.length > 32 ||
+    ids.length % 2 !== 0
+  )
+    return { error: "Số người đi tiếp phải là số chẵn từ 4 đến 32" };
+
+  const { data: players } = await svc
+    .from("pic_players")
+    .select("id")
+    .eq("event_id", eventId);
+  const validIds = new Set((players ?? []).map((p) => p.id));
+  if (ids.some((id) => !validIds.has(id)))
+    return { error: "Danh sách người đi tiếp không hợp lệ" };
+
+  const pairCount = ids.length / 2;
+  let slotTags: Record<string, string> | null = null;
+
+  if (constraint === "gender" || constraint === "tier") {
+    const cfg = (ev.config ?? {}) as {
+      playerGenders?: Record<string, "M" | "F">;
+      playerCategories?: Record<string, "A" | "B">;
+    };
+    const l1 = constraint === "gender" ? "Nam" : "A";
+    const l2 = constraint === "gender" ? "Nữ" : "B";
+    const labelOf = (pid: string): string | null =>
+      constraint === "gender"
+        ? cfg.playerGenders?.[pid] === "M"
+          ? "Nam"
+          : cfg.playerGenders?.[pid] === "F"
+            ? "Nữ"
+            : null
+        : (cfg.playerCategories?.[pid] ?? null);
+    const c1 = ids.filter((id) => labelOf(id) === l1).length;
+    const c2 = ids.filter((id) => labelOf(id) === l2).length;
+    if (c1 + c2 !== ids.length)
+      return { error: `Còn người đi tiếp chưa được gán ${l1}/${l2}` };
+    if (c1 !== c2)
+      return { error: `Số ${l1} và ${l2} phải bằng nhau (đang ${c1} vs ${c2})` };
+    slotTags = {};
+    for (let g = 0; g < pairCount; g++) {
+      slotTags[`${g}-1`] = l1;
+      slotTags[`${g}-2`] = l2;
+    }
+  }
+
+  const code = shortCode();
+  const hostToken = newToken();
+  const playerTokens: Record<string, string> = {};
+  for (const id of ids) playerTokens[id] = newToken();
+
+  const { error } = await svc.from("pic_individual_sessions").insert({
+    code,
+    event_id: eventId,
+    owner_id: user.id,
+    host_token: hostToken,
+    group_sizes: Array.from({ length: pairCount }, () => 2),
+    player_tokens: playerTokens,
+    assignments: {},
+    status: "active",
+    kind: "ko_pairs",
+    slot_tags: slotTags,
+  });
+  if (error) return { error: error.message };
+
+  return { code, hostToken, playerTokens };
+}
+
+export async function getActivePicKnockoutDraw(eventId: string): Promise<
+  | { active: false }
+  | {
+      active: true;
+      code: string;
+      playerTokens: Record<string, string>;
+      drawnCount: number;
+      total: number;
+    }
+> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { active: false };
+
+  const { data } = await svc
+    .from("pic_individual_sessions")
+    .select("code, player_tokens, assignments, status")
+    .eq("event_id", eventId)
+    .eq("kind", "ko_pairs")
+    .eq("status", "active")
+    .gte("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const s = data?.[0];
+  if (!s) return { active: false };
+  const tokens = s.player_tokens as Record<string, string>;
+  return {
+    active: true,
+    code: s.code,
+    playerTokens: tokens,
+    drawnCount: Object.keys((s.assignments ?? {}) as object).length,
+    total: Object.keys(tokens).length,
+  };
+}
+
+export async function applyPicKnockoutDrawSession(
+  code: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: session } = await svc
+    .from("pic_individual_sessions")
+    .select("code, event_id, owner_id, group_sizes, player_tokens, assignments, status, kind")
+    .eq("code", code)
+    .single();
+  if (!session) return { error: "session_not_found" };
+  if (session.owner_id !== user.id) return { error: "unauthorized" };
+  if (session.status !== "active") return { error: "session_not_active" };
+  if (session.kind !== "ko_pairs") return { error: "Phiên này không phải bốc cặp" };
+
+  const sizes = session.group_sizes as number[];
+  const assignments = session.assignments as Record<string, { g: number; p: number }>;
+  const entrantIds = Object.keys(session.player_tokens as Record<string, string>);
+  if (entrantIds.some((id) => !(id in assignments)))
+    return { error: "Chưa bốc đủ — còn VĐV chưa quay" };
+
+  const buckets: string[][] = sizes.map(() => ["", ""]);
+  for (const [pid, v] of Object.entries(assignments)) {
+    if (buckets[v.g]) buckets[v.g]![v.p - 1] = pid;
+  }
+  if (buckets.some((b) => b.filter(Boolean).length !== 2))
+    return { error: "Kết quả bốc chưa hoàn chỉnh" };
+  const pairs = buckets.map((b) => [b[0]!, b[1]!] as [string, string]);
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("config")
+    .eq("id", session.event_id)
+    .single();
+  const hasThird = Boolean(
+    ((ev?.config ?? {}) as { hasThirdPlace?: boolean }).hasThirdPlace ?? false,
+  );
+
+  const rows = buildPicKoRows(session.event_id, pairs, hasThird);
+  const { error: insErr } = await svc.from("pic_matches").insert(rows);
+  if (insErr) return { error: insErr.message };
+
+  await svc
+    .from("pic_events")
+    .update({ stage: "knockout", updated_at: new Date().toISOString() })
+    .eq("id", session.event_id);
+
+  await svc
+    .from("pic_individual_sessions")
+    .update({ status: "applied", updated_at: new Date().toISOString() })
+    .eq("code", code);
+
+  revalidatePath(`/pic`);
   return { ok: true };
 }

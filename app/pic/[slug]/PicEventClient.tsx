@@ -7,7 +7,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
-import { scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore, getPicRefereeToken, picDrawFinalPairs } from "@/app/actions/pic";
+import {
+  scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore, getPicRefereeToken, picDrawFinalPairs,
+  createPicKnockoutDrawSession, getActivePicKnockoutDraw, cancelPicIndividualDrawSession, updatePicConfig,
+} from "@/app/actions/pic";
 import { buildDrawPairs, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
 import type { PicEventFull } from "@/app/actions/pic";
 import { QuickScoreClient, type QuickScore } from "@/components/score/QuickScoreClient";
@@ -521,6 +524,22 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
 
+  // Gender/tier tags cho bốc cặp (persisted in config)
+  const [genders, setGenders] = useState<Record<string, "M" | "F">>(
+    () => config.playerGenders ?? {},
+  );
+  const [tiers, setTiers] = useState<Record<string, "A" | "B">>(
+    () => config.playerCategories ?? {},
+  );
+  // Phiên bốc cặp LIVE
+  const [koLive, setKoLive] = useState<{
+    code: string;
+    playerTokens: Record<string, string>;
+    drawnCount: number;
+    total: number;
+  } | null>(null);
+  const [copiedKoKey, setCopiedKoKey] = useState<string | null>(null);
+
   // Derive A/B tier from cross-tier match structure (a1/b1=A-tier, a2/b2=B-tier)
   // Falls back to config.playerCategories if stored, otherwise derives from matches
   const playerCategories = useMemo<Record<string, "A" | "B"> | undefined>(() => {
@@ -571,6 +590,79 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       setDrawDone(true);
     } catch {}
   }, [eventId, stage]);
+  // Poll phiên bốc cặp LIVE (đang draw stage): applied → refresh sang knockout
+  useEffect(() => {
+    if (stage !== "draw") return;
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const res = await getActivePicKnockoutDraw(eventId);
+        if (!mounted) return;
+        if (res.active) {
+          setKoLive({
+            code: res.code,
+            playerTokens: res.playerTokens,
+            drawnCount: res.drawnCount,
+            total: res.total,
+          });
+        } else {
+          setKoLive((prev) => {
+            if (prev) router.refresh();
+            return null;
+          });
+        }
+      } catch {
+        /* transient */
+      }
+    };
+    void refresh();
+    const interval = setInterval(refresh, 4000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [stage, eventId, router]);
+
+  const onCreateKoLive = () => {
+    if (!selectedModeInfo.ok) return;
+    const constraint =
+      drawMode === "mixed_gender" ? ("gender" as const)
+      : drawMode === "cross_tier" ? ("tier" as const)
+      : ("none" as const);
+    startTransition(async () => {
+      const res = await createPicKnockoutDrawSession(eventId, advancingIds, constraint);
+      if ("error" in res) {
+        alert(res.error);
+        return;
+      }
+      setKoLive({
+        code: res.code,
+        playerTokens: res.playerTokens,
+        drawnCount: 0,
+        total: advancingIds.length,
+      });
+    });
+  };
+
+  const onCancelKoLive = () => {
+    if (!koLive) return;
+    if (!confirm("Hủy phiên bốc cặp LIVE?")) return;
+    startTransition(async () => {
+      const res = await cancelPicIndividualDrawSession(koLive.code);
+      if ("error" in res) {
+        alert(res.error);
+        return;
+      }
+      setKoLive(null);
+    });
+  };
+
+  const copyKoLink = (url: string, key: string) => {
+    navigator.clipboard.writeText(url).catch(() => prompt("Copy link:", url));
+    setCopiedKoKey(key);
+    setTimeout(() => setCopiedKoKey(null), 2000);
+  };
+
   const byId = (id: string) => players.find((p) => p.id === id);
   const multiGroup = groups.length > 1;
   const allGroupDone = groups.every((g) => g.matches.every((m) => m.status === "completed"));
@@ -584,10 +676,87 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
     return computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup).map((s) => s.playerId);
   });
-  const advancingIds = advancingByGroup.flat();
+
+  // Vớt: N người hạng (advancePerGroup+1) có thành tích tốt nhất so liên bảng
+  const bestExtraCount = config.bestExtraCount ?? 0;
+  const extraQualifiers = (() => {
+    if (bestExtraCount <= 0) return [];
+    const candidates = groups
+      .map((g) => {
+        const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
+        const st = computeStandings(gPlayers, g.matches, W, L, TB);
+        const c = st[config.advancePerGroup];
+        return c ? { ...c, groupLabel: g.label } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => {
+        if (b.pts !== a.pts) return b.pts - a.pts;
+        if (TB === "wins_first") {
+          if (b.wins !== a.wins) return b.wins - a.wins;
+          if (b.diff !== a.diff) return b.diff - a.diff;
+        } else {
+          if (b.diff !== a.diff) return b.diff - a.diff;
+          if (b.wins !== a.wins) return b.wins - a.wins;
+        }
+        return a.name.localeCompare(b.name);
+      });
+    return candidates.slice(0, bestExtraCount);
+  })();
+
+  const drawBuckets =
+    extraQualifiers.length > 0
+      ? [...advancingByGroup, extraQualifiers.map((e) => e.playerId)]
+      : advancingByGroup;
+  const advancingIds = drawBuckets.flat();
+
+  // Tag hợp lệ cho mode Đôi nam nữ / Đôi A+B
+  const effTiers = Object.keys(tiers).length > 0 ? tiers : (playerCategories ?? {});
+  const modeTagInfo = (m: DrawMode): { ok: boolean; msg?: string } => {
+    if (m === "mixed_gender") {
+      const c1 = advancingIds.filter((id) => genders[id] === "M").length;
+      const c2 = advancingIds.filter((id) => genders[id] === "F").length;
+      if (c1 + c2 < advancingIds.length)
+        return { ok: false, msg: `Còn ${advancingIds.length - c1 - c2} người chưa gán Nam/Nữ — tap tên bên dưới` };
+      if (c1 !== c2) return { ok: false, msg: `Nam ${c1} ≠ Nữ ${c2} — phải bằng nhau mới ghép đôi nam nữ được` };
+      return { ok: true };
+    }
+    if (m === "cross_tier") {
+      const c1 = advancingIds.filter((id) => effTiers[id] === "A").length;
+      const c2 = advancingIds.filter((id) => effTiers[id] === "B").length;
+      if (c1 + c2 < advancingIds.length)
+        return { ok: false, msg: `Còn ${advancingIds.length - c1 - c2} người chưa gán A/B — tap tên bên dưới` };
+      if (c1 !== c2) return { ok: false, msg: `A ${c1} ≠ B ${c2} — phải bằng nhau mới ghép đôi A+B được` };
+      return { ok: true };
+    }
+    return { ok: true };
+  };
+  const selectedModeInfo = modeTagInfo(drawMode);
+
+  const toggleQualifierGender = (id: string) => {
+    setGenders((prev) => {
+      const cur = prev[id];
+      const next = { ...prev };
+      if (!cur) next[id] = "M";
+      else if (cur === "M") next[id] = "F";
+      else delete next[id];
+      void updatePicConfig(eventId, { playerGenders: next });
+      return next;
+    });
+  };
+  const toggleQualifierTier = (id: string) => {
+    setTiers((prev) => {
+      const cur = prev[id];
+      const next = { ...prev };
+      if (!cur) next[id] = "A";
+      else if (cur === "A") next[id] = "B";
+      else delete next[id];
+      void updatePicConfig(eventId, { playerCategories: next });
+      return next;
+    });
+  };
 
   const doDraw = () => {
-    if (drawDone || isDrawing) return;
+    if (drawDone || isDrawing || !selectedModeInfo.ok) return;
     setIsDrawing(true);
     setDrawProgress(0);
     setAnimTick(0);
@@ -600,7 +769,11 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     setTimeout(() => {
       clearInterval(tickId);
       clearInterval(progId);
-      const pairs = buildDrawPairs(drawMode, advancingByGroup);
+      const pairTags =
+        drawMode === "mixed_gender" ? genders
+        : drawMode === "cross_tier" ? effTiers
+        : undefined;
+      const pairs = buildDrawPairs(drawMode, drawBuckets, { pairTags });
       setDrawnPairs(pairs);
       localStorage.setItem(`pic-draw-${eventId}`, JSON.stringify(pairs));
       setDrawProgress(100);
@@ -669,6 +842,22 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                   </div>
                 );
               })}
+              {extraQualifiers.length > 0 && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-3 py-2">
+                  <p className="mb-1 text-xs font-bold text-amber-600">
+                    🎟️ Vớt — hạng {config.advancePerGroup + 1} tốt nhất liên bảng
+                  </p>
+                  {extraQualifiers.map((s) => (
+                    <div key={s.playerId} className="flex items-center gap-2 py-0.5">
+                      <span className="flex h-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[10px] font-bold text-amber-600">
+                        Bảng {s.groupLabel}
+                      </span>
+                      <span className="flex-1 text-sm">{s.name}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{s.wins}T {s.diff > 0 ? "+" : ""}{s.diff}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -692,12 +881,121 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               </div>
             )}
 
+            {/* Tag pills for Đôi nam nữ / Đôi A+B */}
+            {!drawDone && !isDrawing && (drawMode === "mixed_gender" || drawMode === "cross_tier") && (
+              <div className="space-y-2 rounded-xl border bg-card p-3">
+                <p className="text-xs font-semibold">
+                  {drawMode === "mixed_gender"
+                    ? "Gán Nam/Nữ cho người đi tiếp — tap để đổi (Nam → Nữ → bỏ)"
+                    : "Gán hạng A/B cho người đi tiếp — tap để đổi (A → B → bỏ)"}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {advancingIds.map((id) => {
+                    const p = byId(id);
+                    const tag = drawMode === "mixed_gender"
+                      ? (genders[id] === "M" ? "Nam" : genders[id] === "F" ? "Nữ" : null)
+                      : (effTiers[id] ?? null);
+                    const color =
+                      tag === "Nam" || tag === "A"
+                        ? "bg-blue-500 text-white border-blue-500"
+                        : tag === "Nữ"
+                          ? "bg-pink-500 text-white border-pink-500"
+                          : tag === "B"
+                            ? "bg-orange-500 text-white border-orange-500"
+                            : "bg-muted text-muted-foreground";
+                    return (
+                      <button
+                        key={id}
+                        onClick={() =>
+                          drawMode === "mixed_gender"
+                            ? toggleQualifierGender(id)
+                            : toggleQualifierTier(id)
+                        }
+                        className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:border-primary active:scale-95"
+                      >
+                        <span>{p?.name ?? id}</span>
+                        <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${color}`}>
+                          {tag ?? "—"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!selectedModeInfo.ok && (
+                  <p className="text-xs font-medium text-destructive">{selectedModeInfo.msg}</p>
+                )}
+              </div>
+            )}
+
             {/* One-time draw button */}
             {!drawDone && (
-              <Button onClick={doDraw} disabled={isDrawing} className="w-full">
+              <Button onClick={doDraw} disabled={isDrawing || !selectedModeInfo.ok} className="w-full">
                 <Shuffle className={`size-4 ${isDrawing ? "animate-spin" : ""}`} />
-                {isDrawing ? "Đang bốc thăm..." : "🎲 Bốc thăm"}
+                {isDrawing ? "Đang bốc thăm..." : "🎲 Bốc thăm (tại chỗ)"}
               </Button>
+            )}
+
+            {/* LIVE pair draw — mỗi VĐV 1 link riêng */}
+            {!drawDone && !isDrawing && (
+              <div className="space-y-2 rounded-xl border border-red-400/40 bg-red-500/5 p-3">
+                {koLive ? (
+                  <>
+                    <p className="flex items-center gap-2 text-sm font-bold text-red-500">
+                      <span className="inline-block size-2 animate-pulse rounded-full bg-red-500" />
+                      Phiên bốc cặp LIVE · {koLive.drawnCount}/{koLive.total} đã quay
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm">
+                        <a href={`/pic/draw/${koLive.code}`} target="_blank" rel="noopener noreferrer">
+                          <Link2 className="size-3.5" />Mở phiên (admin)
+                        </a>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copyKoLink(`${window.location.origin}/pic/draw/${koLive.code}`, "ko-open")}
+                      >
+                        {copiedKoKey === "ko-open" ? <Check className="size-3.5 text-green-500" /> : <Link2 className="size-3.5" />}
+                        Copy link chung
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const text = advancingIds
+                            .map((id) => {
+                              const tok = koLive.playerTokens[id];
+                              return tok ? `${byId(id)?.name ?? "?"}: ${window.location.origin}/pic/draw/${koLive.code}?p=${tok}` : null;
+                            })
+                            .filter(Boolean)
+                            .join("\n");
+                          copyKoLink(text, "ko-all");
+                        }}
+                      >
+                        {copiedKoKey === "ko-all" ? <Check className="size-3.5 text-green-500" /> : <Link2 className="size-3.5" />}
+                        Copy tất cả link riêng
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={onCancelKoLive} disabled={pending}>
+                        Hủy phiên
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Mỗi VĐV mở link riêng của mình, tự bấm quay — đủ {koLive.total} lượt thì mở phiên admin bấm <strong>Xác nhận</strong> để vào knockout.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold">🔴 Bốc cặp LIVE — mỗi VĐV 1 link, tự quay từ máy mình</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Dùng chế độ bốc đang chọn ở trên ({DRAW_MODES.find((m) => m.value === drawMode)?.label}). Kết quả hiện realtime trên mọi máy.
+                    </p>
+                    <Button onClick={onCreateKoLive} disabled={pending || !selectedModeInfo.ok} size="sm" className="bg-red-500 text-white hover:bg-red-600">
+                      <Link2 className="size-3.5" />
+                      {pending ? "Đang tạo…" : "Tạo phiên bốc cặp LIVE"}
+                    </Button>
+                  </>
+                )}
+              </div>
             )}
 
             {/* Live animation */}

@@ -1,4 +1,9 @@
-export type DrawMode = "random_all" | "cross_group" | "cross_rank";
+export type DrawMode =
+  | "random_all"
+  | "cross_group"
+  | "cross_rank"
+  | "mixed_gender"
+  | "cross_tier";
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -18,8 +23,23 @@ function shuffle<T>(arr: T[]): T[] {
 export function buildDrawPairs(
   mode: DrawMode,
   advancingByGroup: string[][],
+  opts?: { pairTags?: Record<string, string | undefined> },
 ): [string, string][] {
   const allIds = advancingByGroup.flat();
+
+  // Đôi nam nữ / Đôi A+B: mỗi cặp gồm 1 người từ mỗi nhóm tag (2 tag, số lượng bằng nhau)
+  if ((mode === "mixed_gender" || mode === "cross_tier") && opts?.pairTags) {
+    const tags = opts.pairTags;
+    const vals = [...new Set(allIds.map((id) => tags[id]).filter((t): t is string => !!t))].sort();
+    if (vals.length === 2) {
+      const g1 = shuffle(allIds.filter((id) => tags[id] === vals[0]));
+      const g2 = shuffle(allIds.filter((id) => tags[id] === vals[1]));
+      if (g1.length === g2.length && g1.length > 0) {
+        return g1.map((id, i) => [id, g2[i]!] as [string, string]);
+      }
+    }
+    // invalid tag setup → fall through to random_all below
+  }
 
   if (mode === "cross_group" && advancingByGroup.length >= 2) {
     // Round-robin cross-group: each pair = 2 players from DIFFERENT groups.
@@ -99,7 +119,12 @@ export function reDrawUnlocked(
   return result;
 }
 
-export const DRAW_MODES: { value: DrawMode; label: string; desc: string }[] = [
+export const DRAW_MODES: {
+  value: DrawMode;
+  label: string;
+  desc: string;
+  requiresTags?: "gender" | "tier";
+}[] = [
   {
     value: "random_all",
     label: "Random toàn bộ",
@@ -114,5 +139,17 @@ export const DRAW_MODES: { value: DrawMode; label: string; desc: string }[] = [
     value: "cross_rank",
     label: "Chéo hạng",
     desc: "A1+B4 đấu A2+B3 · B1+A4 đấu B2+A3",
+  },
+  {
+    value: "mixed_gender",
+    label: "Đôi nam nữ",
+    desc: "Mỗi cặp gồm 1 Nam + 1 Nữ (gán Nam/Nữ cho người đi tiếp ngay bên dưới)",
+    requiresTags: "gender",
+  },
+  {
+    value: "cross_tier",
+    label: "Đôi A + B",
+    desc: "Mỗi cặp gồm 1 VĐV hạng A + 1 hạng B (gán A/B ngay bên dưới)",
+    requiresTags: "tier",
   },
 ];

@@ -40,6 +40,8 @@ export interface PicConfig {
   drawGroupCount?: number;
   drawAdvancePerGroup?: number;
   playerCategories?: Record<string, "A" | "B">;
+  playerGenders?: Record<string, "M" | "F">;
+  bestExtraCount?: number; // số VĐV "vớt" hạng kế tiếp có thành tích tốt nhất liên bảng
   scheduleMode?: "standard" | "hd";
 }
 

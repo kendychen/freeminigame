@@ -17,7 +17,7 @@ export default async function PicLiveDrawPage({
 
   const { data: session } = await svc
     .from("pic_individual_sessions")
-    .select("code, event_id, owner_id, group_sizes, player_tokens, assignments, status")
+    .select("code, event_id, owner_id, group_sizes, player_tokens, assignments, status, kind, slot_tags")
     .eq("code", code)
     .single();
   if (!session) notFound();
@@ -46,17 +46,23 @@ export default async function PicLiveDrawPage({
   const cfg = ev.config as { name?: string };
   const eventName = (ev.name as string | null | undefined) || cfg?.name || "PIC tournament";
 
+  // KO pair sessions only include qualifiers — hide the rest
+  const tokens = session.player_tokens as Record<string, string>;
+  const sessionPlayers = (players ?? []).filter((p) => p.id in tokens);
+
   return (
     <PicLiveDrawClient
       code={code}
       eventName={eventName}
       ownerId={session.owner_id as string}
-      players={(players ?? []).map((p) => ({ id: p.id, name: p.name }))}
+      players={sessionPlayers.map((p) => ({ id: p.id, name: p.name }))}
       groupSizes={session.group_sizes as number[]}
       initialAssignments={session.assignments as Record<string, { g: number; p: number }>}
       initialStatus={session.status as string}
       lockedPlayerId={lockedPlayerId}
       playerToken={playerToken ?? null}
+      kind={((session.kind as string | null) ?? "group") as "group" | "ko_pairs"}
+      slotTags={(session.slot_tags as Record<string, string> | null) ?? null}
     />
   );
 }

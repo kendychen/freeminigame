@@ -12,7 +12,7 @@ import {
   generatePicGroups, generateCrossTierGroupMatches, generateNormalGroupMatches,
   generateCrossTierGroupsFull, createPicDraw, applyPicDraw, resetPicGroups,
   createPicIndividualDrawSession, cancelPicIndividualDrawSession,
-  setPicScheduleMode,
+  setPicScheduleMode, updatePicConfig,
 } from "@/app/actions/pic";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import IndividualDrawClient from "./IndividualDrawClient";
@@ -64,6 +64,8 @@ export default function PicPlayersClient({
   drawCode: initialDrawCode,
   initialScheduleMode,
   initialLiveDraw,
+  initialPlayerGenders,
+  initialBestExtra,
 }: {
   eventId: string;
   initialPlayers: Player[];
@@ -73,6 +75,8 @@ export default function PicPlayersClient({
   drawCode: string | null;
   initialScheduleMode: "standard" | "hd";
   initialLiveDraw: { code: string; playerTokens: Record<string, string> } | null;
+  initialPlayerGenders?: Record<string, "M" | "F">;
+  initialBestExtra?: number;
 }) {
   const router = useRouter();
   const hasGroups = initialGroups.length > 0;
@@ -115,11 +119,32 @@ export default function PicPlayersClient({
   const [activeTier, setActiveTier] = useState<Category | null>(null);
   // Preview for old flow
   const [preview, setPreview] = useState<PreviewGroup[] | null>(null);
+  // Gender tags (persisted server-side in config.playerGenders)
+  const [genders, setGenders] = useState<Record<string, "M" | "F">>(initialPlayerGenders ?? {});
+  const [genderQuota, setGenderQuota] = useState(false);
+  // Vớt: lấy thêm N người hạng kế tiếp có thành tích tốt nhất liên bảng
+  const [bestExtra, setBestExtra] = useState(initialBestExtra ?? 0);
 
   const pc = players.length;
   const aCount = useMemo(() => players.filter(p => categories[p.id] === "A").length, [players, categories]);
   const bCount = useMemo(() => players.filter(p => categories[p.id] === "B").length, [players, categories]);
   const untaggedCount = pc - aCount - bCount;
+  const maleCount = useMemo(() => players.filter(p => genders[p.id] === "M").length, [players, genders]);
+  const femaleCount = useMemo(() => players.filter(p => genders[p.id] === "F").length, [players, genders]);
+  const ungenderedCount = pc - maleCount - femaleCount;
+  const allGendered = pc > 0 && ungenderedCount === 0;
+
+  const toggleGender = (playerId: string) => {
+    setGenders(prev => {
+      const cur = prev[playerId];
+      const next = { ...prev };
+      if (!cur) next[playerId] = "M";
+      else if (cur === "M") next[playerId] = "F";
+      else delete next[playerId];
+      void updatePicConfig(eventId, { playerGenders: next });
+      return next;
+    });
+  };
 
   useEffect(() => {
     try {
@@ -163,23 +188,36 @@ export default function PicPlayersClient({
     return Array.from({ length: effG }, () => (aCount / effG) * 2);
   }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length]);
 
+  const validAdvanceOptions = useMemo<{ v: number; e: number }[]>(() => {
+    if (crossTierMode || groupSizes.length === 0) return [{ v: 1, e: 0 }];
+    const minSize = Math.min(...groupSizes);
+    const opts: { v: number; e: number }[] = [];
+    for (let v = 1; v < minSize; v++) {
+      if ((effG * v) % 2 === 0 && effG * v >= 2) opts.push({ v, e: 0 });
+      // Vớt: +e người hạng (v+1) có thành tích tốt nhất liên bảng, tròn nhánh 4/8/16 người
+      if (v + 1 <= minSize) {
+        for (const target of [4, 8, 16]) {
+          const e = target - effG * v;
+          if (e >= 1 && e < effG) opts.push({ v, e });
+        }
+      }
+    }
+    opts.sort((a, b) => (effG * a.v + a.e) - (effG * b.v + b.e) || a.v - b.v);
+    return opts.length > 0 ? opts : [{ v: 1, e: 0 }];
+  }, [groupSizes, effG, crossTierMode]);
+
   useEffect(() => {
     if (crossTierMode || groupSizes.length === 0) return;
-    const minSize = Math.min(...groupSizes);
-    const stillValid = advancePerGroup < minSize && (effG * advancePerGroup) % 2 === 0 && effG * advancePerGroup >= 2;
-    if (!stillValid) setAdvancePerGroup(1);
+    const stillValid = validAdvanceOptions.some(o => o.v === advancePerGroup && o.e === bestExtra);
+    if (!stillValid) {
+      setAdvancePerGroup(1);
+      if (bestExtra !== 0) {
+        setBestExtra(0);
+        void updatePicConfig(eventId, { bestExtraCount: 0 });
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effG, crossTierMode]);
-
-  const validAdvanceOptions = useMemo(() => {
-    if (crossTierMode || groupSizes.length === 0) return [1];
-    const minSize = Math.min(...groupSizes);
-    const opts: number[] = [];
-    for (let v = 1; v < minSize; v++) {
-      if ((effG * v) % 2 === 0 && effG * v >= 2) opts.push(v);
-    }
-    return opts.length > 0 ? opts : [1];
-  }, [groupSizes, effG, crossTierMode]);
 
   const crossTierError = useMemo(() => {
     if (!crossTierMode) return null;
@@ -265,9 +303,13 @@ export default function PicPlayersClient({
   const onDrawOrPreview = () => {
     if (!canGenerate) return;
     if (crossTierMode) { setPreview(computePreview()); return; }
+    if (genderQuota && !allGendered) {
+      toast({ title: "Chưa gán đủ Nam/Nữ", description: `Còn ${ungenderedCount} VĐV chưa gán`, variant: "destructive" });
+      return;
+    }
     // Always crossTierMode=true for random draw — goes to State 2 for A/B assignment
     startTransition(async () => {
-      const res = await generatePicGroups(eventId, effG, advancePerGroup, true);
+      const res = await generatePicGroups(eventId, effG, advancePerGroup, true, genderQuota);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       toast({ title: "Đã chia bảng!", description: "Phân hạng A/B trong từng bảng để tạo lịch." });
       router.refresh();
@@ -290,8 +332,12 @@ export default function PicPlayersClient({
 
   const onCreateLiveIndividualDraw = () => {
     if (!canGenerate || crossTierMode) return;
+    if (genderQuota && !allGendered) {
+      toast({ title: "Chưa gán đủ Nam/Nữ", description: `Còn ${ungenderedCount} VĐV chưa gán`, variant: "destructive" });
+      return;
+    }
     startTransition(async () => {
-      const res = await createPicIndividualDrawSession(eventId, effG, advancePerGroup);
+      const res = await createPicIndividualDrawSession(eventId, effG, advancePerGroup, genderQuota);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setLiveDraw({ code: res.code, playerTokens: res.playerTokens });
       toast({ title: "Đã tạo phiên LIVE!", description: "Chia sẻ link cho VĐV." });
@@ -629,6 +675,45 @@ export default function PicPlayersClient({
                 </div>
               </label>
 
+              {/* Gender tags + per-group Nam/Nữ quota */}
+              {!crossTierMode && (
+                <div className="space-y-2 rounded-lg border bg-card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">Giới tính VĐV (Nam/Nữ)</p>
+                      <p className="text-xs text-muted-foreground">
+                        Tap badge ⚥ ở danh sách VĐV bên dưới: Nam → Nữ → bỏ
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5 text-sm font-medium shrink-0">
+                      <span className="rounded bg-blue-500/15 px-2 py-0.5 text-blue-600">Nam: {maleCount}</span>
+                      <span className="rounded bg-pink-500/15 px-2 py-0.5 text-pink-600">Nữ: {femaleCount}</span>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={genderQuota}
+                      onChange={e => setGenderQuota(e.target.checked)}
+                      className="size-4 accent-primary"
+                    />
+                    Giới hạn Nam/Nữ mỗi bảng khi quay (chia đều nam, đều nữ vào các bảng)
+                  </label>
+                  {genderQuota && !allGendered && (
+                    <p className="text-xs font-medium text-destructive">
+                      Còn {ungenderedCount} VĐV chưa gán Nam/Nữ — gán đủ mới quay được
+                    </p>
+                  )}
+                  {genderQuota && allGendered && (
+                    <p className="text-xs text-muted-foreground">
+                      Mỗi bảng sẽ có ~{Math.floor(maleCount / effG)}–{Math.ceil(maleCount / effG)} nam
+                      + ~{Math.floor(femaleCount / effG)}–{Math.ceil(femaleCount / effG)} nữ.
+                      Chỉ áp dụng cho <strong>Quay ngay</strong> và <strong>Cá nhân LIVE</strong>.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Old flow: A/B tagger */}
               {crossTierMode && !preview && (
                 <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
@@ -717,13 +802,30 @@ export default function PicPlayersClient({
                       <div className="space-y-2">
                         <p className="text-sm font-medium">Vào vòng trong</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {validAdvanceOptions.map(v => (
-                            <button key={v} onClick={() => setAdvancePerGroup(v)}
-                              className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${advancePerGroup === v ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}>
-                              <span className="block">Top {v}/bảng</span>
-                              <span className="block text-xs font-normal opacity-60">→ {effG * v} người tổng</span>
-                            </button>
-                          ))}
+                          {validAdvanceOptions.map(o => {
+                            const selected = advancePerGroup === o.v && bestExtra === o.e;
+                            const total = effG * o.v + o.e;
+                            return (
+                              <button
+                                key={`${o.v}-${o.e}`}
+                                onClick={() => {
+                                  setAdvancePerGroup(o.v);
+                                  setBestExtra(o.e);
+                                  void updatePicConfig(eventId, { bestExtraCount: o.e });
+                                }}
+                                className={`rounded-md border px-3 py-2 text-left text-sm font-semibold transition-colors ${selected ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}
+                              >
+                                <span className="block">
+                                  Top {o.v}/bảng{o.e > 0 ? ` + ${o.e} vớt` : ""}
+                                </span>
+                                <span className="block text-xs font-normal opacity-60">
+                                  {o.e > 0
+                                    ? `+${o.e} hạng ${o.v + 1} tốt nhất → ${total} người`
+                                    : `→ ${total} người tổng`}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -751,10 +853,11 @@ export default function PicPlayersClient({
                       <>
                         <Button
                           onClick={() => setIndividualDrawMode(true)}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota}
                           variant="outline"
                           size="lg"
                           className="border-primary/40 text-primary hover:bg-primary/10"
+                          title={genderQuota ? "Chế độ này chưa hỗ trợ giới hạn Nam/Nữ" : undefined}
                         >
                           <Sparkles className="size-4" />
                           ✨ Cá nhân
@@ -768,7 +871,12 @@ export default function PicPlayersClient({
                           <Sparkles className="size-4" />
                           🌐 Cá nhân LIVE
                         </Button>
-                        <Button onClick={onCreateLiveDraw} disabled={!canGenerate || pending || !!drawCode || !!liveDraw} size="lg">
+                        <Button
+                          onClick={onCreateLiveDraw}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota}
+                          size="lg"
+                          title={genderQuota ? "Chế độ này chưa hỗ trợ giới hạn Nam/Nữ" : undefined}
+                        >
                           <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 LIVE bảng"}
                         </Button>
                       </>
@@ -930,6 +1038,19 @@ export default function PicPlayersClient({
                       )}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
+                      {!isEditing && (
+                        <button
+                          onClick={e => { e.stopPropagation(); toggleGender(p.id); }}
+                          title="Tap để đổi: Nam → Nữ → bỏ"
+                          className={`flex h-6 min-w-9 items-center justify-center rounded px-1 text-[10px] font-bold transition-colors ${
+                            genders[p.id] === "M" ? "bg-blue-500 text-white"
+                            : genders[p.id] === "F" ? "bg-pink-500 text-white"
+                            : "border bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {genders[p.id] === "M" ? "Nam" : genders[p.id] === "F" ? "Nữ" : "⚥"}
+                        </button>
+                      )}
                       {isActive && !isEditing && (
                         <span className={`flex h-6 w-7 items-center justify-center rounded text-xs font-bold transition-colors ${
                           cat === "A" ? "bg-blue-500 text-white"

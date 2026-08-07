@@ -457,7 +457,7 @@ export default function PicPage() {
             {/* Draw mode selector — hidden after draw done */}
             {!drawDone && !isDrawing && (
               <div className="space-y-1.5">
-                {DRAW_MODES.filter((m) => multiGroup || m.value === "random_all").map((m) => (
+                {DRAW_MODES.filter((m) => (multiGroup || m.value === "random_all") && !m.requiresTags).map((m) => (
                   <button key={m.value} onClick={() => setDrawMode(m.value)}
                     className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors ${
                       drawMode === m.value ? "border-primary bg-primary/10" : "hover:border-primary/50"

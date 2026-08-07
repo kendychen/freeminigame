@@ -23,12 +23,14 @@ export default async function PicPlayersPage({
 
   // Load active individual LIVE session if any
   const svc = createServiceClient();
-  const { data: activeSession } = await svc
+  const { data: activeSessions } = await svc
     .from("pic_individual_sessions")
-    .select("code, player_tokens")
+    .select("code, player_tokens, kind")
     .eq("event_id", state.id)
     .eq("status", "active")
-    .maybeSingle();
+    .limit(5);
+  const activeSession =
+    (activeSessions ?? []).find((s) => (s.kind ?? "group") === "group") ?? null;
 
   return (
     <PicPlayersClient
@@ -39,6 +41,8 @@ export default async function PicPlayersPage({
       hasCompletedMatches={hasCompletedMatches}
       drawCode={state.config.drawCode ?? null}
       initialScheduleMode={state.config.scheduleMode ?? "standard"}
+      initialPlayerGenders={state.config.playerGenders ?? {}}
+      initialBestExtra={state.config.bestExtraCount ?? 0}
       initialLiveDraw={
         activeSession
           ? { code: activeSession.code as string, playerTokens: activeSession.player_tokens as Record<string, string> }
