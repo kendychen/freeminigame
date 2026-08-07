@@ -165,7 +165,7 @@ export default async function HomePage() {
                 động trên điện thoại — kết quả tự cập nhật cho viewer.
               </p>
 
-              <div className="mt-8 grid w-full gap-2.5 sm:w-auto sm:grid-cols-2 sm:gap-3 lg:grid-cols-5">
+              <div className="mt-8 grid w-full gap-2.5 sm:w-auto sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
                 <Link href="/pair/new" className="w-full sm:w-auto">
                   <Button size="lg" className="w-full sm:min-w-[180px]">
                     <Radio className="size-4" />
@@ -200,6 +200,16 @@ export default async function HomePage() {
                   >
                     <Users className="size-4" />
                     PIC xoay cặp
+                  </Button>
+                </Link>
+                <Link href={user ? "/team/new" : "/login"} className="w-full sm:w-auto">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full sm:min-w-[180px]"
+                  >
+                    <Users className="size-4" />
+                    Giải đồng đội
                   </Button>
                 </Link>
                 <Link
@@ -419,7 +429,7 @@ export default async function HomePage() {
 
         {/* 2 modes */}
         <section className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
-          <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
             <div className="rounded-2xl border bg-card p-5 sm:p-6">
               <div className="inline-flex size-10 items-center justify-center rounded-xl bg-primary/15">
                 <Zap className="size-5 text-primary" />
@@ -462,6 +472,29 @@ export default async function HomePage() {
               >
                 <Button variant="outline" className="w-full sm:w-auto">
                   {user ? "Bảng điều khiển" : "Đăng nhập"}
+                </Button>
+              </Link>
+            </div>
+            <div className="rounded-2xl border bg-card p-5 sm:p-6">
+              <div className="inline-flex size-10 items-center justify-center rounded-xl bg-primary/15">
+                <Users className="size-5 text-primary" />
+              </div>
+              <h3 className="mt-3 text-lg font-bold sm:text-xl">
+                Giải đồng đội
+              </h3>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                Đội gặp đội: mỗi trận đối đầu gồm nhiều nội dung đôi. Chia bảng
+                vòng tròn, xếp đội hình từng trận, BXH tự động.
+              </p>
+              <ul className="mt-3 space-y-1.5 text-sm">
+                <li>✓ Đôi nam / Đôi nữ / Đôi nam nữ / Đôi hỗn hợp</li>
+                <li>✓ Xếp đội hình + chấm điểm từng nội dung</li>
+                <li>✓ Xử thắng khi đội bỏ cuộc, sửa tỉ số</li>
+                <li>✓ Link trọng tài + viewer realtime</li>
+              </ul>
+              <Link href={user ? "/team/new" : "/login"} className="mt-5 block">
+                <Button variant="outline" className="w-full sm:w-auto">
+                  {user ? "Tạo giải đồng đội" : "Đăng nhập"}
                 </Button>
               </Link>
             </div>

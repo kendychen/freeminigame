@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Trophy, ArrowRight, Users } from "lucide-react";
+import { Plus, Trophy, ArrowRight, Users, Swords } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
@@ -18,7 +18,7 @@ export default async function DashboardPage() {
   const { user, supabase } = await requireUser();
   const svc = createServiceClient();
 
-  const [tournamentsRes, picEventsRes] = await Promise.all([
+  const [tournamentsRes, picEventsRes, teamEventsRes] = await Promise.all([
     supabase
       .from("tournaments")
       .select("id, slug, name, format, status, created_at")
@@ -30,10 +30,16 @@ export default async function DashboardPage() {
       .select("id, slug, name, stage, created_at")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false }),
+    svc
+      .from("team_events")
+      .select("id, slug, name, stage, created_at")
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false }),
   ]);
 
   const list = tournamentsRes.data ?? [];
   const picList = picEventsRes.data ?? [];
+  const teamList = teamEventsRes.data ?? [];
 
   return (
     <div className="flex flex-col flex-1">
@@ -91,6 +97,55 @@ export default async function DashboardPage() {
                         PIC xoay cặp · {
                           e.stage === "group" ? "Vòng bảng" :
                           e.stage === "draw" ? "Bốc thăm" :
+                          e.stage === "knockout" ? "Knockout" : "Hoàn thành"
+                        }
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Team events section */}
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Swords className="size-5 text-primary" />
+                Giải đồng đội
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">Giải đấu đối kháng giữa các đội</p>
+            </div>
+            <Link href="/team/new">
+              <Button size="sm" variant="outline">
+                <Plus className="size-4" />
+                Tạo giải đồng đội
+              </Button>
+            </Link>
+          </div>
+          {teamList.length === 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Chưa có giải đồng đội nào</CardTitle>
+                <CardDescription>Tạo giải đấu đồng đội đầu tiên của bạn.</CardDescription>
+              </CardHeader>
+            </Card>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {teamList.map((e) => (
+                <Link key={e.id} href={`/team/${e.slug}`}>
+                  <Card className="transition-shadow hover:shadow-md">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center justify-between gap-2 text-base min-w-0">
+                        <span className="truncate min-w-0 flex-1">{e.name}</span>
+                        <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                      </CardTitle>
+                      <CardDescription>
+                        Giải đồng đội · {
+                          e.stage === "setup" ? "Thiết lập" :
+                          e.stage === "group" ? "Vòng bảng" :
                           e.stage === "knockout" ? "Knockout" : "Hoàn thành"
                         }
                       </CardDescription>
