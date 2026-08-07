@@ -11,7 +11,7 @@ if (!file) {
 
 const sql = readFileSync(file, "utf8");
 const client = new Client({
-  host: process.env.PGHOST ?? "aws-0-ap-southeast-1.pooler.supabase.com",
+  host: process.env.PGHOST ?? "aws-1-ap-southeast-1.pooler.supabase.com",
   port: parseInt(process.env.PGPORT ?? "5432"),
   user: process.env.PGUSER ?? "postgres.luzbuptumedpvgukxnhe",
   password: process.env.PGPASSWORD ?? "7U9hVa,KA&6jE%b",

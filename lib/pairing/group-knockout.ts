@@ -6,6 +6,7 @@ export interface GroupKnockoutOptions {
   groupSize: number; // 3 or 4 typical
   qualifyPerGroup: number; // 1 or 2 typical
   doubleRound?: boolean;
+  groupCount?: number; // when set, wins over groupSize (chia theo số bảng)
 }
 
 export interface GroupKnockoutResult {
@@ -22,7 +23,15 @@ export function snakeSeedGroups(
   groupSize: number,
 ): Map<string, Team[]> {
   if (groupSize < 2) throw new Error("groupSize must be >= 2");
-  const groupCount = Math.ceil(teams.length / groupSize);
+  return snakeSeedGroupsByCount(teams, Math.ceil(teams.length / groupSize));
+}
+
+/** Snake-seed into exactly `groupCount` groups (sizes differ by at most 1). */
+export function snakeSeedGroupsByCount(
+  teams: Team[],
+  groupCount: number,
+): Map<string, Team[]> {
+  if (groupCount < 1) throw new Error("groupCount must be >= 1");
   const labels = Array.from({ length: groupCount }, (_, i) =>
     String.fromCharCode(65 + i),
   );
@@ -44,7 +53,9 @@ export function generateGroupKnockout(
   teams: Team[],
   opts: GroupKnockoutOptions,
 ): GroupKnockoutResult {
-  const groups = snakeSeedGroups(teams, opts.groupSize);
+  const groups = opts.groupCount
+    ? snakeSeedGroupsByCount(teams, opts.groupCount)
+    : snakeSeedGroups(teams, opts.groupSize);
   const groupMatches = new Map<string, Match[]>();
   for (const [label, groupTeams] of groups.entries()) {
     if (groupTeams.length < 2) {

@@ -13,6 +13,7 @@ import {
 } from "@/app/actions/teams";
 import { toast } from "@/components/ui/toast";
 import { translateError } from "@/lib/error-messages";
+import { DrawSessionCard } from "@/components/tournaments/DrawSessionCard";
 
 interface TeamRow {
   id: string;
@@ -25,10 +26,14 @@ interface TeamRow {
 
 export function TeamsClient({
   tournamentId,
+  format,
+  hasMatches,
   initial,
   membersByTeam,
 }: {
   tournamentId: string;
+  format: string;
+  hasMatches: boolean;
   initial: TeamRow[];
   membersByTeam: Record<string, { id: string; name: string }[]>;
 }) {
@@ -37,7 +42,24 @@ export function TeamsClient({
   const [region, setRegion] = useState("");
   const [rating, setRating] = useState("");
   const [csvText, setCsvText] = useState("");
+  const [quickCount, setQuickCount] = useState(4);
   const [isPending, start] = useTransition();
+
+  const onQuickCreate = () => {
+    const startNo = teams.length + 1;
+    const rows = Array.from({ length: quickCount }, (_, i) => ({
+      name: `Đội ${startNo + i}`,
+    }));
+    start(async () => {
+      const res = await bulkImportTeams({ tournamentId, rows });
+      if ("error" in res) {
+        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
+        return;
+      }
+      toast({ title: "Đã tạo đội", description: `${res.count} đội (Đội ${startNo}–Đội ${startNo + quickCount - 1})` });
+      window.location.reload();
+    });
+  };
 
   const onAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +127,52 @@ export function TeamsClient({
 
   return (
     <div className="space-y-6">
+      <DrawSessionCard
+        tournamentId={tournamentId}
+        variant="teams"
+        isGroupFormat={format === "group_knockout"}
+        entrants={teams.map((t) => ({ id: t.id, name: t.name }))}
+        disabledReason={
+          hasMatches
+            ? "Sơ đồ thi đấu đã được tạo — không bốc thăm lại được"
+            : teams.length < 2
+              ? "Cần ít nhất 2 đội để bốc thăm"
+              : null
+        }
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle>Tạo nhanh theo số đội</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-2">
+              <Label>Số đội</Label>
+              <Input
+                type="number"
+                value={quickCount}
+                onChange={(e) =>
+                  setQuickCount(
+                    Math.max(2, Math.min(64, Number(e.target.value) || 2)),
+                  )
+                }
+                min={2}
+                max={64}
+                className="w-24"
+              />
+            </div>
+            <Button onClick={onQuickCreate} disabled={isPending}>
+              <Plus className="size-4" />
+              Tạo {quickCount} đội (Đội {teams.length + 1}–Đội{" "}
+              {teams.length + quickCount})
+            </Button>
+            <p className="pb-2 text-xs text-muted-foreground">
+              Tên mặc định — đổi tên sau nếu cần, không cần import.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Thêm đội</CardTitle>

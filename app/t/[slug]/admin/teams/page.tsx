@@ -11,10 +11,14 @@ export default async function TeamsPage({
   const { supabase } = await requireUser();
   const { data: t } = await supabase
     .from("tournaments")
-    .select("id")
+    .select("id, format")
     .eq("slug", slug)
     .maybeSingle();
   if (!t) notFound();
+  const { count: matchCount } = await supabase
+    .from("matches")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", t.id);
   const { data: teams } = await supabase
     .from("teams")
     .select("id, name, region, rating, seed, logo_url")
@@ -43,6 +47,8 @@ export default async function TeamsPage({
   return (
     <TeamsClient
       tournamentId={t.id}
+      format={t.format as string}
+      hasMatches={(matchCount ?? 0) > 0}
       initial={teams ?? []}
       membersByTeam={membersByTeam}
     />

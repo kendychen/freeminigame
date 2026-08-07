@@ -29,7 +29,9 @@ export default function NewTournamentPage() {
   const [format, setFormat] = useState<FormatOption>("single_elim");
   const [series, setSeries] = useState<"bo1" | "bo3" | "bo5">("bo1");
   const [isPublic, setPublic] = useState(true);
+  const [groupBy, setGroupBy] = useState<"size" | "count">("size");
   const [groupSize, setGroupSize] = useState(4);
+  const [groupCount, setGroupCount] = useState(2);
   const [qualifyPerGroup, setQualifyPerGroup] = useState(2);
   const [plateEnabled, setPlateEnabled] = useState(false);
   const [qualifyPlatePerGroup, setQualifyPlatePerGroup] = useState(1);
@@ -50,7 +52,14 @@ export default function NewTournamentPage() {
       seriesFormat: series,
       config: {
         doubleRound: format === "round_robin" ? doubleRound : undefined,
-        groupSize: format === "group_knockout" ? groupSize : undefined,
+        groupSize:
+          format === "group_knockout" && groupBy === "size"
+            ? groupSize
+            : undefined,
+        groupCount:
+          format === "group_knockout" && groupBy === "count"
+            ? groupCount
+            : undefined,
         qualifyPerGroup:
           format === "group_knockout" ? qualifyPerGroup : undefined,
         plateEnabled: format === "group_knockout" ? plateEnabled : undefined,
@@ -147,30 +156,75 @@ export default function NewTournamentPage() {
               )}
               {format === "group_knockout" && (
                 <div className="space-y-3 rounded-lg border bg-secondary/30 p-3">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Số đội/bảng</Label>
-                      <Input
-                        type="number"
-                        value={groupSize}
-                        onChange={(e) =>
-                          setGroupSize(Number(e.target.value) || 4)
-                        }
-                        min={2}
-                        max={8}
-                      />
+                  <div className="space-y-2">
+                    <Label>Chia bảng theo</Label>
+                    <div className="flex overflow-hidden rounded-md border">
+                      {(
+                        [
+                          ["size", "Số đội mỗi bảng"],
+                          ["count", "Số bảng đấu"],
+                        ] as const
+                      ).map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setGroupBy(val)}
+                          className={`flex-1 px-3 py-1.5 text-sm font-medium transition-colors ${
+                            groupBy === val
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-background text-muted-foreground hover:bg-accent"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {groupBy === "size" ? (
+                      <div className="space-y-2">
+                        <Label>Số đội/bảng</Label>
+                        <Input
+                          type="number"
+                          value={groupSize}
+                          onChange={(e) =>
+                            setGroupSize(Number(e.target.value) || 4)
+                          }
+                          min={2}
+                          max={8}
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label>Số bảng đấu</Label>
+                        <Select
+                          value={String(groupCount)}
+                          onChange={(e) =>
+                            setGroupCount(Number(e.target.value) || 2)
+                          }
+                        >
+                          {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                            <option key={n} value={n}>
+                              {n} bảng
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    )}
                     <div className="space-y-2">
-                      <Label>Vào Cúp chính/bảng</Label>
-                      <Input
-                        type="number"
-                        value={qualifyPerGroup}
+                      <Label>Số đội đi tiếp/bảng</Label>
+                      <Select
+                        value={String(qualifyPerGroup)}
                         onChange={(e) =>
                           setQualifyPerGroup(Number(e.target.value) || 2)
                         }
-                        min={1}
-                        max={4}
-                      />
+                      >
+                        {[1, 2, 3, 4].map((n) => (
+                          <option key={n} value={n}>
+                            {n} đội vào Cúp chính
+                          </option>
+                        ))}
+                      </Select>
                     </div>
                   </div>
                   <label className="flex items-center gap-2 text-sm">

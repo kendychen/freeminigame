@@ -51,6 +51,7 @@ export function BracketAdminClient({
     startTransition(async () => {
       const cfg = (tournament.config ?? {}) as {
         groupSize?: number;
+        groupCount?: number;
         qualifyPerGroup?: number;
         doubleRound?: boolean;
         seriesFormat?: "bo1" | "bo3" | "bo5";
@@ -61,6 +62,7 @@ export function BracketAdminClient({
         seriesFormat: cfg.seriesFormat,
         doubleRound: cfg.doubleRound,
         groupSize: cfg.groupSize,
+        groupCount: cfg.groupCount,
         qualifyPerGroup: cfg.qualifyPerGroup,
       });
       if ("error" in res) {

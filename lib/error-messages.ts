@@ -52,6 +52,35 @@ const ERROR_VI: Record<string, string> = {
   cannot_invite_self: "Không thể mời chính mình",
   cannot_remove_owner: "Không thể xoá chủ giải đấu",
   cannot_change_owner: "Không thể đổi vai trò chủ giải đấu",
+  // Team mode (giải đồng đội)
+  name_too_long: "Tên quá dài",
+  add_failed: "Thêm thất bại, thử lại",
+  insert_failed: "Tạo thất bại, thử lại",
+  rubbers_locked: "Đã tạo lịch thi đấu — không thể đổi nội dung thi đấu",
+  schedule_exists: "Lịch thi đấu đã được tạo",
+  roster_below_minimum: "Đội sẽ không đủ VĐV tối thiểu cho các nội dung",
+  gender_locked_in_lineup:
+    "VĐV đang trong đội hình đôi nam/đôi nữ/đôi nam nữ — mở lại nội dung trước khi đổi giới tính",
+  player_in_lineup: "VĐV đang trong đội hình một nội dung — gỡ khỏi đội hình trước",
+  rubber_completed: "Nội dung đã có kết quả — mở lại trước khi sửa",
+  rubber_walkover: "Nội dung đã xử thắng/hủy — chủ giải cần mở lại trước khi nhập điểm",
+  tie_not_finished: "Trận đối đầu chưa đấu xong tất cả nội dung",
+  tie_already_decided: "Trận đối đầu đã có đội thắng",
+  // Tournament LIVE draw (/t/draw)
+  session_already_active: "Đang có phiên bốc thăm khác — hủy phiên cũ trước",
+  session_not_found: "Không tìm thấy phiên bốc thăm",
+  session_not_active: "Phiên bốc thăm đã kết thúc",
+  invalid_entrant: "Không thuộc danh sách bốc thăm",
+  all_slots_full: "Đã hết chỗ trống",
+  incomplete_assignment: "Chưa bốc đủ — còn người/đội chưa quay",
+  entrant_not_drawn: "Chưa bốc thăm nên không thể quay lại",
+  need_at_least_4_players: "Cần ít nhất 4 VĐV",
+  need_even_players: "Số VĐV phải là số chẵn để ghép đôi",
+  tags_unbalanced:
+    "Số VĐV hai nhóm (Nam/Nữ) phải bằng nhau — gán tag cho tất cả VĐV trước",
+  missing_tag: "VĐV chưa được gán nhóm Nam/Nữ — gán tag ở tab Thành viên",
+  invalid_group_count: "Số bảng không hợp lệ (mỗi bảng cần ít nhất 2 đội)",
+  invalid_team_count: "Số đội không hợp lệ (mỗi đội cần ít nhất 2 VĐV)",
 };
 
 export function translateError(code: string | undefined | null): string {

@@ -53,6 +53,7 @@ export async function generateBracket(input: {
   seriesFormat?: "bo1" | "bo3" | "bo5";
   doubleRound?: boolean;
   groupSize?: number;
+  groupCount?: number;
   qualifyPerGroup?: number;
 }) {
   const { supabase } = await requireTournamentAdmin(input.tournamentId);

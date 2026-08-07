@@ -22,6 +22,7 @@ export interface BuildBracketInput {
   seriesFormat?: "bo1" | "bo3" | "bo5";
   doubleRound?: boolean;
   groupSize?: number;
+  groupCount?: number;
   qualifyPerGroup?: number;
 }
 
@@ -141,9 +142,10 @@ export async function buildBracket(
         }
         matches = all;
       } else {
-        // Fallback: snake-seed
+        // Fallback: snake-seed (by group count if configured, else by group size)
         const result = generateGroupKnockout(teams, {
           groupSize: input.groupSize ?? 4,
+          groupCount: input.groupCount,
           qualifyPerGroup: input.qualifyPerGroup ?? 2,
           doubleRound: input.doubleRound ?? false,
         });

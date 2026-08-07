@@ -26,6 +26,7 @@ import {
 } from "@/app/actions/players";
 import { getActiveDraw } from "@/app/actions/group-draw";
 import { ExternalLink } from "lucide-react";
+import { DrawSessionCard } from "@/components/tournaments/DrawSessionCard";
 
 interface Player {
   id: string;
@@ -133,7 +134,7 @@ export function MembersClient({
   const [drawMode, setDrawMode] = useState<"random_all" | "balanced_by_tag">(
     "random_all",
   );
-  const [tagPreset, setTagPreset] = useState<TagPreset>("AB");
+  const [tagPreset, setTagPreset] = useState<TagPreset>("MF");
   const [pending, startTransition] = useTransition();
   const [activeDraw, setActiveDraw] = useState<{
     code: string;
@@ -416,6 +417,23 @@ export function MembersClient({
           </Button>
         </CardContent>
       </Card>
+
+      {/* LIVE pair draw — mỗi VĐV 1 link riêng */}
+      <DrawSessionCard
+        tournamentId={tournamentId}
+        variant="pair"
+        entrants={players.map((p) => ({
+          id: p.id,
+          name: p.seed_tag ? `${p.name} (${p.seed_tag})` : p.name,
+        }))}
+        disabledReason={
+          teamCount > 0
+            ? "Đội đã tồn tại — xoá đội trước khi bốc ghép đôi"
+            : players.length < 4
+              ? "Cần ít nhất 4 VĐV"
+              : null
+        }
+      />
 
       {/* Random team draw */}
       <Card className="border-primary/30">
