@@ -677,11 +677,14 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     return computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup).map((s) => s.playerId);
   });
 
+  // Tag hợp lệ cho mode Đôi nam nữ / Đôi A+B
+  const effTiers = Object.keys(tiers).length > 0 ? tiers : (playerCategories ?? {});
+
   // Vớt: N người hạng (advancePerGroup+1) có thành tích tốt nhất so liên bảng
   const bestExtraCount = config.bestExtraCount ?? 0;
-  const extraQualifiers = (() => {
+  const extraCandidatesAll = (() => {
     if (bestExtraCount <= 0) return [];
-    const candidates = groups
+    return groups
       .map((g) => {
         const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
         const st = computeStandings(gPlayers, g.matches, W, L, TB);
@@ -700,7 +703,38 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
         }
         return a.name.localeCompare(b.name);
       });
-    return candidates.slice(0, bestExtraCount);
+  })();
+
+  const vTagOf = (id: string): string | null =>
+    drawMode === "mixed_gender"
+      ? genders[id] === "M" ? "Nam" : genders[id] === "F" ? "Nữ" : null
+      : drawMode === "cross_tier"
+        ? (effTiers[id] ?? null)
+        : null;
+
+  // Đôi nam nữ / Đôi A+B: vớt chia đều theo nhóm — vd 2 vớt = 1 Nam tốt nhất + 1 Nữ tốt nhất
+  const extraQualifiers = (() => {
+    if (bestExtraCount <= 0) return [];
+    if ((drawMode === "mixed_gender" || drawMode === "cross_tier") && bestExtraCount >= 2) {
+      const vals = drawMode === "mixed_gender" ? ["Nam", "Nữ"] : ["A", "B"];
+      const take = Math.floor(bestExtraCount / 2);
+      const picked: typeof extraCandidatesAll = [];
+      for (const v of vals)
+        picked.push(...extraCandidatesAll.filter((c) => vTagOf(c.playerId) === v).slice(0, take));
+      // Bù nếu một nhóm thiếu ứng viên (hoặc chưa gán tag đủ)
+      if (picked.length < bestExtraCount) {
+        const chosen = new Set(picked.map((c) => c.playerId));
+        for (const c of extraCandidatesAll) {
+          if (picked.length >= bestExtraCount) break;
+          if (!chosen.has(c.playerId)) {
+            picked.push(c);
+            chosen.add(c.playerId);
+          }
+        }
+      }
+      return picked;
+    }
+    return extraCandidatesAll.slice(0, bestExtraCount);
   })();
 
   const drawBuckets =
@@ -709,8 +743,11 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       : advancingByGroup;
   const advancingIds = drawBuckets.flat();
 
-  // Tag hợp lệ cho mode Đôi nam nữ / Đôi A+B
-  const effTiers = Object.keys(tiers).length > 0 ? tiers : (playerCategories ?? {});
+  // Pills gán tag: gồm cả MỌI ứng viên vớt (hạng v+1 các bảng) để gán được
+  // trước khi hệ chốt ai được vớt theo giới
+  const tagPillIds = [
+    ...new Set([...advancingByGroup.flat(), ...extraCandidatesAll.map((c) => c.playerId)]),
+  ];
   const modeTagInfo = (m: DrawMode): { ok: boolean; msg?: string } => {
     if (m === "mixed_gender") {
       const c1 = advancingIds.filter((id) => genders[id] === "M").length;
@@ -847,15 +884,23 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                   <p className="mb-1 text-xs font-bold text-amber-600">
                     🎟️ Vớt — hạng {config.advancePerGroup + 1} tốt nhất liên bảng
                   </p>
-                  {extraQualifiers.map((s) => (
-                    <div key={s.playerId} className="flex items-center gap-2 py-0.5">
-                      <span className="flex h-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[10px] font-bold text-amber-600">
-                        Bảng {s.groupLabel}
-                      </span>
-                      <span className="flex-1 text-sm">{s.name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{s.wins}T {s.diff > 0 ? "+" : ""}{s.diff}</span>
-                    </div>
-                  ))}
+                  {extraQualifiers.map((s) => {
+                    const vt = vTagOf(s.playerId);
+                    return (
+                      <div key={s.playerId} className="flex items-center gap-2 py-0.5">
+                        <span className="flex h-5 shrink-0 items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[10px] font-bold text-amber-600">
+                          Bảng {s.groupLabel}
+                        </span>
+                        <span className="flex-1 text-sm">{s.name}</span>
+                        {vt && (
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            vt === "Nam" || vt === "A" ? "bg-blue-500/15 text-blue-600" : "bg-pink-500/15 text-pink-600"
+                          }`}>{vt}</span>
+                        )}
+                        <span className="font-mono text-xs text-muted-foreground">{s.wins}T {s.diff > 0 ? "+" : ""}{s.diff}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -890,7 +935,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                     : "Gán hạng A/B cho người đi tiếp — tap để đổi (A → B → bỏ)"}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {advancingIds.map((id) => {
+                  {tagPillIds.map((id) => {
                     const p = byId(id);
                     const tag = drawMode === "mixed_gender"
                       ? (genders[id] === "M" ? "Nam" : genders[id] === "F" ? "Nữ" : null)
