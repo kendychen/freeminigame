@@ -19,12 +19,14 @@ import {
   addPlayer,
   bulkImportPlayers,
   bulkSetPlayerTags,
+  cancelPlayerTeamDraw,
   clearTeamsAndMembers,
   createPlayerTeamDraw,
   deletePlayer,
   setPlayerTag,
 } from "@/app/actions/players";
 import { getActiveDraw } from "@/app/actions/group-draw";
+import { getActiveTournamentDraw } from "@/app/actions/tournament-draw";
 import { ExternalLink } from "lucide-react";
 import { DrawSessionCard } from "@/components/tournaments/DrawSessionCard";
 
@@ -135,6 +137,8 @@ export function MembersClient({
     "random_all",
   );
   const [tagPreset, setTagPreset] = useState<TagPreset>("MF");
+  const [drawType, setDrawType] = useState<"links" | "wheel">("links");
+  const [linksActive, setLinksActive] = useState(false);
   const [pending, startTransition] = useTransition();
   const [activeDraw, setActiveDraw] = useState<{
     code: string;
@@ -164,6 +168,33 @@ export function MembersClient({
       clearInterval(interval);
     };
   }, [tournamentId]);
+
+  // Poll phiên bốc link riêng (t_draw_sessions) — để khoá picker khi đang chạy
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const res = await getActiveTournamentDraw(tournamentId);
+        if (mounted) setLinksActive(res.active);
+      } catch {
+        /* transient */
+      }
+    };
+    void refresh();
+    const interval = setInterval(refresh, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [tournamentId]);
+
+  // Phiên nào đang chạy thì tự chuyển picker về đúng loại đó
+  useEffect(() => {
+    if (linksActive) setDrawType("links");
+  }, [linksActive]);
+  useEffect(() => {
+    if (activeDraw && !linksActive) setDrawType("wheel");
+  }, [activeDraw, linksActive]);
 
   useEffect(() => {
     const sb = getSupabaseBrowser();
@@ -293,6 +324,23 @@ export function MembersClient({
     });
   };
 
+  const onCancelWheel = () => {
+    if (!confirm("Hủy phiên vòng quay này? Kết quả đang quay dở sẽ bị bỏ.")) return;
+    startTransition(async () => {
+      const res = await cancelPlayerTeamDraw(tournamentId);
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        return;
+      }
+      setActiveDraw(null);
+      toast({ title: "Đã hủy phiên vòng quay" });
+    });
+  };
+
   const onTeamDraw = () => {
     if (players.length < teamSize) {
       toast({
@@ -353,6 +401,79 @@ export function MembersClient({
   };
 
   const expectedTeams = Math.ceil(players.length / teamSize);
+  const anyDrawActive = linksActive || !!activeDraw;
+
+  const tagToolbar = (
+    <TagPickerToolbar
+      preset={tagPreset}
+      setPreset={setTagPreset}
+      disabled={pending}
+      counts={(() => {
+        const labels = presetLabelsOf(tagPreset);
+        if (!labels) {
+          return {
+            left: 0,
+            right: 0,
+            untagged: players.filter((p) => !p.seed_tag).length,
+          };
+        }
+        const left = players.filter((p) => p.seed_tag === labels[0]).length;
+        const right = players.filter((p) => p.seed_tag === labels[1]).length;
+        return {
+          left,
+          right,
+          untagged: players.length - left - right,
+        };
+      })()}
+      onRandomSplit={async () => {
+        const labels = presetLabelsOf(tagPreset);
+        if (!labels) return;
+        // Shuffle a copy so the split is random, not by row order
+        const shuffled = [...players].sort(() => Math.random() - 0.5);
+        const half = Math.ceil(shuffled.length / 2);
+        const assignments = shuffled.map((p, i) => ({
+          playerId: p.id,
+          tag: i < half ? labels[0] : labels[1],
+        }));
+        const res = await bulkSetPlayerTags({
+          tournamentId,
+          assignments,
+        });
+        if ("error" in res) {
+          toast({
+            title: "Lỗi",
+            description: translateError(res.error),
+            variant: "destructive",
+          });
+          return;
+        }
+        const tagById = new Map(assignments.map((a) => [a.playerId, a.tag]));
+        setPlayers((prev) =>
+          prev.map((p) => ({
+            ...p,
+            seed_tag: tagById.get(p.id) ?? p.seed_tag,
+          })),
+        );
+        toast({
+          title: "Đã chia 50:50",
+          description: `${labels[0]}: ${half} người · ${labels[1]}: ${
+            shuffled.length - half
+          } người`,
+        });
+      }}
+      onClear={async () => {
+        const res = await bulkSetPlayerTags({
+          tournamentId,
+          assignments: players.map((p) => ({
+            playerId: p.id,
+            tag: null,
+          })),
+        });
+        if ("error" in res) return;
+        setPlayers((prev) => prev.map((p) => ({ ...p, seed_tag: null })));
+      }}
+    />
+  );
 
   return (
     <div className="space-y-6">
@@ -418,42 +539,89 @@ export function MembersClient({
         </CardContent>
       </Card>
 
-      {/* LIVE pair draw — mỗi VĐV 1 link riêng */}
-      <DrawSessionCard
-        tournamentId={tournamentId}
-        variant="pair"
-        entrants={players.map((p) => ({
-          id: p.id,
-          name: p.seed_tag ? `${p.name} (${p.seed_tag})` : p.name,
-        }))}
-        disabledReason={
-          teamCount > 0
-            ? "Đội đã tồn tại — xoá đội trước khi bốc ghép đôi"
-            : players.length < 4
-              ? "Cần ít nhất 4 VĐV"
-              : null
-        }
-      />
+      {/* Bốc thăm — 1 chỗ duy nhất, chọn 1 trong 2 cách */}
+      <Card className="border-primary/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Dice5 className="size-5 text-primary" />
+            Bốc thăm chia đội (realtime)
+          </CardTitle>
+          <CardDescription>
+            Chọn 1 trong 2 cách bốc. Muốn đổi cách khi đang có phiên chạy thì
+            bấm Hủy phiên trước.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex overflow-hidden rounded-md border">
+            {(
+              [
+                ["links", "🔗 Mỗi VĐV 1 link riêng"],
+                ["wheel", "🎡 Vòng quay chung 1 màn hình"],
+              ] as const
+            ).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setDrawType(val)}
+                disabled={anyDrawActive}
+                className={`flex-1 px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+                  drawType === val
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {anyDrawActive && (
+            <p className="text-xs text-muted-foreground">
+              🔒 Đang có phiên bốc thăm chạy — hủy phiên trong khung bên dưới
+              rồi mới chọn lại cách bốc.
+            </p>
+          )}
+          {tagToolbar}
+          {teamCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <span>
+                Đang có <strong>{teamCount} đội</strong> — muốn bốc lại thì xoá
+                hết đội (danh sách VĐV giữ nguyên).
+              </span>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={onClearTeams}
+                disabled={pending}
+              >
+                <Trash2 className="size-3.5" />
+                Xoá tất cả đội
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {teamCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <span>
-            Đang có <strong>{teamCount} đội</strong> — muốn bốc ghép đôi lại thì
-            xoá hết đội (danh sách VĐV giữ nguyên).
-          </span>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={onClearTeams}
-            disabled={pending}
-          >
-            <Trash2 className="size-3.5" />
-            Xoá tất cả đội
-          </Button>
-        </div>
+      {/* Cách 1: mỗi VĐV 1 link riêng */}
+      {(drawType === "links" || linksActive) && (
+        <DrawSessionCard
+          tournamentId={tournamentId}
+          variant="pair"
+          entrants={players.map((p) => ({
+            id: p.id,
+            name: p.seed_tag ? `${p.name} (${p.seed_tag})` : p.name,
+          }))}
+          disabledReason={
+            teamCount > 0
+              ? "Đội đã tồn tại — xoá đội trước khi bốc ghép đôi"
+              : players.length < 4
+                ? "Cần ít nhất 4 VĐV"
+                : null
+          }
+        />
       )}
 
-      {/* Random team draw */}
+      {/* Cách 2: vòng quay chung */}
+      {(drawType === "wheel" || !!activeDraw) && (
       <Card className="border-primary/30">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -524,81 +692,7 @@ export function MembersClient({
             )}
           </div>
 
-          <TagPickerToolbar
-            preset={tagPreset}
-            setPreset={setTagPreset}
-            disabled={pending}
-            counts={(() => {
-              const labels = presetLabelsOf(tagPreset);
-              if (!labels) {
-                return {
-                  left: 0,
-                  right: 0,
-                  untagged: players.filter((p) => !p.seed_tag).length,
-                };
-              }
-              const left = players.filter((p) => p.seed_tag === labels[0]).length;
-              const right = players.filter((p) => p.seed_tag === labels[1]).length;
-              return {
-                left,
-                right,
-                untagged: players.length - left - right,
-              };
-            })()}
-            onRandomSplit={async () => {
-              const labels = presetLabelsOf(tagPreset);
-              if (!labels) return;
-              // Shuffle a copy so the split is random, not by row order
-              const shuffled = [...players].sort(() => Math.random() - 0.5);
-              const half = Math.ceil(shuffled.length / 2);
-              const assignments = shuffled.map((p, i) => ({
-                playerId: p.id,
-                tag: i < half ? labels[0] : labels[1],
-              }));
-              const res = await bulkSetPlayerTags({
-                tournamentId,
-                assignments,
-              });
-              if ("error" in res) {
-                toast({
-                  title: "Lỗi",
-                  description: translateError(res.error),
-                  variant: "destructive",
-                });
-                return;
-              }
-              const tagById = new Map(
-                assignments.map((a) => [a.playerId, a.tag]),
-              );
-              setPlayers((prev) =>
-                prev.map((p) => ({
-                  ...p,
-                  seed_tag: tagById.get(p.id) ?? p.seed_tag,
-                })),
-              );
-              toast({
-                title: "Đã chia 50:50",
-                description: `${labels[0]}: ${half} người · ${labels[1]}: ${
-                  shuffled.length - half
-                } người`,
-              });
-            }}
-            onClear={async () => {
-              const res = await bulkSetPlayerTags({
-                tournamentId,
-                assignments: players.map((p) => ({
-                  playerId: p.id,
-                  tag: null,
-                })),
-              });
-              if ("error" in res) return;
-              setPlayers((prev) =>
-                prev.map((p) => ({ ...p, seed_tag: null })),
-              );
-            }}
-          />
-
-          {activeDraw && teamCount === 0 && (
+          {activeDraw && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
               <p className="font-semibold text-amber-700 dark:text-amber-400">
                 🎲 Phiên bốc thăm đang chạy
@@ -607,15 +701,26 @@ export function MembersClient({
                 Trạng thái: <strong>{activeDraw.status}</strong> · Mã{" "}
                 <code>{activeDraw.code}</code>
               </p>
-              <a
-                href={`/pair/${activeDraw.code}?host=${activeDraw.host_token}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline"
-              >
-                <ExternalLink className="size-3" />
-                Mở phòng host
-              </a>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <a
+                  href={`/pair/${activeDraw.code}?host=${activeDraw.host_token}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-primary underline-offset-2 hover:underline"
+                >
+                  <ExternalLink className="size-3" />
+                  Mở phòng host
+                </a>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-destructive"
+                  onClick={onCancelWheel}
+                  disabled={pending}
+                >
+                  Hủy phiên
+                </Button>
+              </div>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
@@ -644,6 +749,7 @@ export function MembersClient({
           </p>
         </CardContent>
       </Card>
+      )}
 
       {/* Members list */}
       <Card>

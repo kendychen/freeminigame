@@ -112,6 +112,20 @@ export async function clearTeamsAndMembers(tournamentId: string) {
   return { ok: true } as const;
 }
 
+/** Close any alive team-draw wheel session for this tournament (admin cancel). */
+export async function cancelPlayerTeamDraw(tournamentId: string) {
+  await requireTournamentAdmin(tournamentId);
+  const svc = createServiceClient();
+  const { error } = await svc
+    .from("pair_sessions")
+    .update({ status: "closed" })
+    .eq("linked_tournament_id", tournamentId)
+    .neq("status", "closed")
+    .not("player_id_map", "is", null);
+  if (error) return { error: error.message } as const;
+  return { ok: true } as const;
+}
+
 /**
  * Random team draw: take all players, group them into teams via realtime
  * pair lobby. After shuffle, server creates teams and assigns members.
