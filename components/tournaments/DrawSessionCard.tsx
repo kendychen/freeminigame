@@ -152,7 +152,7 @@ export function DrawSessionCard({
         </CardTitle>
         <CardDescription>
           {variant === "pair"
-            ? "Mỗi VĐV mở link riêng của mình, tự bấm quay — kết quả hiện LIVE trên mọi máy. Bốc xong admin xác nhận để tạo các đội."
+            ? "Không cần tạo đội trước. Mỗi VĐV mở link riêng, tự bấm quay — kết quả hiện LIVE trên mọi máy. Bốc xong admin xác nhận, hệ tự tạo Đội 1, Đội 2… và ghép người theo đúng kết quả."
             : isGroupFormat
               ? "Mỗi đội mở link riêng, tự bấm quay vào bảng — mọi người xem LIVE. Bốc xong admin xác nhận, sơ đồ sinh theo đúng kết quả."
               : "Mỗi đội mở link riêng, tự bấm quay vị trí trong nhánh đấu — mọi người xem LIVE."}

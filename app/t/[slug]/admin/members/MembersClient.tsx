@@ -435,6 +435,24 @@ export function MembersClient({
         }
       />
 
+      {teamCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <span>
+            Đang có <strong>{teamCount} đội</strong> — muốn bốc ghép đôi lại thì
+            xoá hết đội (danh sách VĐV giữ nguyên).
+          </span>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={onClearTeams}
+            disabled={pending}
+          >
+            <Trash2 className="size-3.5" />
+            Xoá tất cả đội
+          </Button>
+        </div>
+      )}
+
       {/* Random team draw */}
       <Card className="border-primary/30">
         <CardHeader>

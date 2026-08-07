@@ -62,6 +62,7 @@ export async function createTournamentDrawSession(input: {
   let entrantIds: string[];
 
   if (input.mode === "pair") {
+    // Không cần tạo đội trước — hệ tự tạo "Đội 1..N" khi xác nhận kết quả
     const { count: teamCountExisting } = await svc
       .from("teams")
       .select("id", { count: "exact", head: true })
