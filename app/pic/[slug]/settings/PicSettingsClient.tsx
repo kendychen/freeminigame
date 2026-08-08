@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
-import { updatePicConfig } from "@/app/actions/pic";
+import { updatePicConfig, deletePicEvent } from "@/app/actions/pic";
 import type { PicEventFull } from "@/app/actions/pic";
 
 const WIN_PRESETS = [
@@ -18,7 +18,25 @@ const WIN_PRESETS = [
 
 export default function PicSettingsClient({ state }: { state: PicEventFull }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [pending, startTransition] = useTransition();
+  const [armedDelete, setArmedDelete] = useState(false);
+
+  const onDelete = () => {
+    if (!armedDelete) {
+      setArmedDelete(true);
+      setTimeout(() => setArmedDelete(false), 4000);
+      return;
+    }
+    startTransition(async () => {
+      const res = await deletePicEvent(state.id);
+      if ("error" in res) {
+        toast({ title: "Lỗi", description: res.error, variant: "destructive" });
+        return;
+      }
+      toast({ title: "Đã xóa giải đấu" });
+      router.push("/dashboard");
+    });
+  };
 
   const { id, config } = state;
   const [name, setName] = useState(config.name);
@@ -179,6 +197,20 @@ export default function PicSettingsClient({ state }: { state: PicEventFull }) {
       <Button onClick={save} size="lg" className="w-full">
         Lưu cài đặt
       </Button>
+
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-base text-destructive">Vùng nguy hiểm</CardTitle>
+          <CardDescription>
+            Xóa vĩnh viễn giải đấu này — toàn bộ VĐV, bảng đấu, trận đấu và kết quả sẽ mất, không hoàn tác được.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="destructive" onClick={onDelete} disabled={pending}>
+            {pending ? "Đang xóa…" : armedDelete ? "⚠️ Chạm lần nữa để XÓA VĨNH VIỄN" : "Xóa giải đấu"}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

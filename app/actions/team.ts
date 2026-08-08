@@ -1060,3 +1060,24 @@ export async function getTeamRefereeToken(
   if (error) return { error: error.message };
   return { token };
 }
+
+export async function deleteTeamEvent(
+  eventId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("team_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "forbidden" };
+
+  // FK ON DELETE CASCADE dọn sạch squads/players/ties/rubbers
+  const { error } = await svc.from("team_events").delete().eq("id", eventId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}

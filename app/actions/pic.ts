@@ -181,6 +181,27 @@ export async function updatePicConfig(
   return { ok: true };
 }
 
+export async function deletePicEvent(
+  eventId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "Không có quyền" };
+
+  // FK ON DELETE CASCADE dọn sạch players/groups/matches/sessions
+  const { error } = await svc.from("pic_events").delete().eq("id", eventId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 // ── Advance group → draw ──────────────────────────────────────────────────────
 
 export async function picAdvanceToDraw(

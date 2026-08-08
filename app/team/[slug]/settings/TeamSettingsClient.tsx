@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
-import { updateTeamConfig, resetTeamSchedule } from "@/app/actions/team";
+import { updateTeamConfig, resetTeamSchedule, deleteTeamEvent } from "@/app/actions/team";
 import { translateError } from "@/lib/error-messages";
 import { CATEGORY_LABELS } from "@/lib/team/types";
 import type { RubberCategory, TeamConfig, TeamEventFull } from "@/lib/team/types";
@@ -102,6 +102,24 @@ export default function TeamSettingsClient({ state }: { state: TeamEventFull }) 
         toast({ title: "Đã đặt lại lịch đấu" });
         router.refresh();
       }
+    });
+  };
+
+  const [armedDelete, setArmedDelete] = useState(false);
+  const onDelete = () => {
+    if (!armedDelete) {
+      setArmedDelete(true);
+      setTimeout(() => setArmedDelete(false), 4000);
+      return;
+    }
+    startTransition(async () => {
+      const res = await deleteTeamEvent(event.id);
+      if ("error" in res) {
+        toast({ title: "Lỗi", description: translateError(res.error), variant: "destructive" });
+        return;
+      }
+      toast({ title: "Đã xóa giải đấu" });
+      router.push("/dashboard");
     });
   };
 
@@ -227,24 +245,29 @@ export default function TeamSettingsClient({ state }: { state: TeamEventFull }) 
         Lưu cài đặt
       </Button>
 
-      {hasSchedule && (
-        <Card className="border-destructive/40">
-          <CardHeader>
-            <CardTitle className="text-base text-destructive">Vùng nguy hiểm</CardTitle>
-            <CardDescription>
-              {hasScored
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-base text-destructive">Vùng nguy hiểm</CardTitle>
+          <CardDescription>
+            {hasSchedule
+              ? hasScored
                 ? "Đã có trận hoàn thành — không thể đặt lại lịch đấu"
-                : "Xóa toàn bộ lịch đối đầu và quay về bước thiết lập đội"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+                : "Đặt lại lịch: xóa toàn bộ lịch đối đầu, quay về bước thiết lập đội"
+              : "Xóa giải: mất vĩnh viễn toàn bộ đội, VĐV và kết quả — không hoàn tác được"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {hasSchedule && (
             <Button variant="destructive" onClick={onReset} disabled={pending || hasScored}>
               <RefreshCw className="size-4" />
               {armedReset ? "Chạm lần nữa để xác nhận" : "Đặt lại lịch đấu"}
             </Button>
-          </CardContent>
-        </Card>
-      )}
+          )}
+          <Button variant="destructive" onClick={onDelete} disabled={pending}>
+            {armedDelete ? "⚠️ Chạm lần nữa để XÓA VĨNH VIỄN" : "Xóa giải đấu"}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }
