@@ -997,7 +997,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               <div className="space-y-2 rounded-xl border bg-card p-3">
                 <p className="text-xs font-semibold">
                   {drawMode === "mixed_gender"
-                    ? "Gán Nam/Nữ cho người đi tiếp — tap để đổi (Nam → Nữ → bỏ)"
+                    ? "Giới tính người đi tiếp — đã gán từ đầu giải (sai thì sửa ở tab VĐV)"
                     : "Gán hạng A/B cho người đi tiếp — tap để đổi (A → B → bỏ)"}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -1014,20 +1014,29 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                           : tag === "B"
                             ? "bg-orange-500 text-white border-orange-500"
                             : "bg-muted text-muted-foreground";
-                    return (
-                      <button
-                        key={id}
-                        onClick={() =>
-                          drawMode === "mixed_gender"
-                            ? toggleQualifierGender(id)
-                            : toggleQualifierTier(id)
-                        }
-                        className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:border-primary active:scale-95"
-                      >
+                    const inner = (
+                      <>
                         <span>{p?.name ?? id}</span>
                         <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${color}`}>
                           {tag ?? "—"}
                         </span>
+                      </>
+                    );
+                    // Giới tính chỉ hiển thị (khoá) — hạng A/B vẫn tap để gán
+                    if (drawMode === "mixed_gender") {
+                      return (
+                        <span key={id} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
+                          {inner}
+                        </span>
+                      );
+                    }
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => toggleQualifierTier(id)}
+                        className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors hover:border-primary active:scale-95"
+                      >
+                        {inner}
                       </button>
                     );
                   })}
