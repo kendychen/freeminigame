@@ -573,6 +573,24 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     return aCount > 0 && bCount > 0 && aCount === bCount ? cats : undefined;
   }, [config.playerCategories, groups]);
 
+  // KO cards: nếu mọi VĐV trong nhánh knockout đều có giới tính → badge Nam/Nữ
+  const koGenderCats = useMemo<Record<string, "A" | "B"> | null>(() => {
+    const ids = new Set<string>();
+    for (const m of knockoutMatches)
+      for (const id of [m.a1, m.a2, m.b1, m.b2]) if (id) ids.add(id);
+    if (ids.size === 0) return null;
+    const src = config.playerGenders ?? {};
+    const cats: Record<string, "A" | "B"> = {};
+    for (const id of ids) {
+      const g = src[id];
+      if (!g) return null;
+      cats[id] = g === "M" ? "A" : "B";
+    }
+    return cats;
+  }, [knockoutMatches, config.playerGenders]);
+  const koCats = koGenderCats ?? undefined;
+  const koLabels = koGenderCats ? { A: "Nam", B: "Nữ" } : undefined;
+
   // Slot labels: "VĐV 1", "VĐV 2", ... based on each group's playerIds order (=seed)
   const playerSlots = useMemo<Record<string, string>>(() => {
     const slots: Record<string, string> = {};
@@ -1159,10 +1177,26 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                 <div className="space-y-1.5">
                   {([mu.a, mu.b] as [string, string][]).map((pair, pi) => (
                     <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
-                      <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
-                        {pi === 0 ? "A" : "B"}
+                      <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-semibold">
+                        {pair.map((id, idx) => {
+                          const g = genders[id];
+                          const t = effTiers[id];
+                          const badge = g
+                            ? { text: g === "M" ? "Nam" : "Nữ", cls: g === "M" ? "bg-blue-500/20 text-blue-600" : "bg-pink-500/20 text-pink-600" }
+                            : drawMode === "cross_tier" && t
+                              ? { text: t, cls: t === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600" }
+                              : null;
+                          return (
+                            <span key={id} className="inline-flex items-center gap-1">
+                              {idx > 0 && <span className="opacity-50">&</span>}
+                              {byId(id)?.name ?? "?"}
+                              {badge && (
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${badge.cls}`}>{badge.text}</span>
+                              )}
+                            </span>
+                          );
+                        })}
                       </span>
-                      <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
                     </div>
                   ))}
                 </div>
@@ -1353,7 +1387,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                   groupLabel={`1/16-${i + 1}`}
                   onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
                   onDirectScore={handleDirectScore(m.id)}
-                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
+                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
+                  playerCategories={koCats} tierLabels={koLabels} />
               ))}
             </div>
           )}
@@ -1365,7 +1400,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                   groupLabel={`TK${i + 1}`}
                   onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
                   onDirectScore={handleDirectScore(m.id)}
-                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
+                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
+                  playerCategories={koCats} tierLabels={koLabels} />
               ))}
             </div>
           )}
@@ -1376,7 +1412,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                 <MatchCard key={m.id} match={m} players={players}
                   onClick={() => setActiveMatch({ match: m, stage: "knockout" })}
                   onDirectScore={handleDirectScore(m.id)}
-                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined} />
+                  refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
+                  playerCategories={koCats} tierLabels={koLabels} />
               ))}
             </div>
           )}
@@ -1427,7 +1464,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               <MatchCard match={finalMatchKO} players={players}
                 onClick={() => setActiveMatch({ match: finalMatchKO, stage: "knockout" })}
                 onDirectScore={handleDirectScore(finalMatchKO.id)}
-                refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${finalMatchKO.id}` : undefined} />
+                refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${finalMatchKO.id}` : undefined}
+                playerCategories={koCats} tierLabels={koLabels} />
             </div>
           )}
           {thirdMatchKO && (
@@ -1436,7 +1474,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               <MatchCard match={thirdMatchKO} players={players}
                 onClick={() => setActiveMatch({ match: thirdMatchKO, stage: "knockout" })}
                 onDirectScore={handleDirectScore(thirdMatchKO.id)}
-                refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${thirdMatchKO.id}` : undefined} />
+                refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${thirdMatchKO.id}` : undefined}
+                playerCategories={koCats} tierLabels={koLabels} />
             </div>
           )}
         </div>
