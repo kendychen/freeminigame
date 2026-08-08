@@ -111,12 +111,19 @@ function AdminMatchScore({
 
 // ── MatchCard ──────────────────────────────────────────────────────────────────
 
-function TierBadge({ cat }: { cat: "A" | "B" | undefined }) {
+type TierLabels = { A: string; B: string } | undefined;
+
+function TierBadge({ cat, labels }: { cat: "A" | "B" | undefined; labels?: TierLabels }) {
   if (!cat) return null;
+  const text = labels?.[cat] ?? cat;
+  const cls =
+    cat === "A"
+      ? "bg-blue-500/20 text-blue-600"
+      : labels?.B === "Nữ"
+        ? "bg-pink-500/20 text-pink-600"
+        : "bg-orange-500/20 text-orange-600";
   return (
-    <span className={`inline-flex h-3.5 w-4 shrink-0 items-center justify-center rounded text-[8px] font-bold ${
-      cat === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"
-    }`}>{cat}</span>
+    <span className={`inline-flex h-3.5 min-w-4 shrink-0 items-center justify-center rounded px-0.5 text-[8px] font-bold ${cls}`}>{text}</span>
   );
 }
 
@@ -131,11 +138,12 @@ function SlotTag({ slot }: { slot: string | undefined }) {
   );
 }
 
-function PlayerRow({ player, cat, slot, won }: {
+function PlayerRow({ player, cat, slot, won, tierLabels }: {
   player: PicPlayer | undefined;
   cat: "A" | "B" | undefined;
   slot: string | undefined;
   won: boolean;
+  tierLabels?: TierLabels;
 }) {
   const nameClass = `text-xs font-semibold leading-tight break-words ${won ? "text-primary" : ""}`;
   return (
@@ -143,7 +151,7 @@ function PlayerRow({ player, cat, slot, won }: {
       {(slot || cat) && (
         <span className="flex items-center justify-center gap-1">
           <SlotTag slot={slot} />
-          <TierBadge cat={cat} />
+          <TierBadge cat={cat} labels={tierLabels} />
         </span>
       )}
       <span className={nameClass}>{player?.name ?? "?"}</span>
@@ -151,11 +159,12 @@ function PlayerRow({ player, cat, slot, won }: {
   );
 }
 
-function PairLabel({ id1, id2, players, categories, slots, won, align }: {
+function PairLabel({ id1, id2, players, categories, slots, won, align, tierLabels }: {
   id1: string; id2: string; players: PicPlayer[];
   categories?: Record<string, "A" | "B">;
   slots?: Record<string, string>;
   won: boolean; align: "left" | "right";
+  tierLabels?: TierLabels;
 }) {
   const p1 = players.find(p => p.id === id1);
   const p2 = players.find(p => p.id === id2);
@@ -166,18 +175,19 @@ function PairLabel({ id1, id2, players, categories, slots, won, align }: {
     <div className={`min-w-0 w-full rounded-md border px-2 py-1.5 space-y-1.5 ${
       won ? "border-primary/50 bg-primary/5" : "bg-card/50"
     }`}>
-      <PlayerRow player={p1} cat={categories?.[id1]} slot={slots?.[id1]} won={won} />
-      <PlayerRow player={p2} cat={categories?.[id2]} slot={slots?.[id2]} won={won} />
+      <PlayerRow player={p1} cat={categories?.[id1]} slot={slots?.[id1]} won={won} tierLabels={tierLabels} />
+      <PlayerRow player={p2} cat={categories?.[id2]} slot={slots?.[id2]} won={won} tierLabels={tierLabels} />
     </div>
   );
 }
 
-function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl, playerCategories, playerSlots }: {
+function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl, playerCategories, playerSlots, tierLabels }: {
   match: PicMatch; players: PicPlayer[]; groupLabel?: string;
   onClick?: () => void; onDirectScore?: (scoreA: number, scoreB: number) => void;
   refUrl?: string;
   playerCategories?: Record<string, "A" | "B">;
   playerSlots?: Record<string, string>;
+  tierLabels?: TierLabels;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftA, setDraftA] = useState("");
@@ -261,7 +271,7 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl,
       )}
       <div className="min-w-0 flex-1">
         {match.a1 && (playerCategories || playerSlots) ? (
-          <PairLabel id1={match.a1} id2={match.a2} players={players} categories={playerCategories} slots={playerSlots} won={aWon} align="left" />
+          <PairLabel id1={match.a1} id2={match.a2} players={players} categories={playerCategories} slots={playerSlots} won={aWon} align="left" tierLabels={tierLabels} />
         ) : (
           <p className={`truncate text-sm font-semibold leading-tight ${aWon ? "text-primary" : ""}`}>
             {aName}{aWon && <Trophy className="ml-1 inline size-3.5 text-primary" />}
@@ -271,7 +281,7 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl,
       <span className="shrink-0 text-[10px] font-medium text-muted-foreground">vs</span>
       <div className="min-w-0 flex-1 text-right">
         {match.b1 && (playerCategories || playerSlots) ? (
-          <PairLabel id1={match.b1} id2={match.b2} players={players} categories={playerCategories} slots={playerSlots} won={bWon} align="right" />
+          <PairLabel id1={match.b1} id2={match.b2} players={players} categories={playerCategories} slots={playerSlots} won={bWon} align="right" tierLabels={tierLabels} />
         ) : (
           <p className={`truncate text-sm font-semibold leading-tight ${bWon ? "text-primary" : "text-muted-foreground"}`}>
             {bWon && <Trophy className="mr-1 inline size-3.5 text-primary" />}{bName}
@@ -429,12 +439,13 @@ function FinalDraw({
 
 // ── StandingsTable ─────────────────────────────────────────────────────────────
 
-function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder, playerCategories, playerSlots }: {
+function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsForLoss, tiebreakerOrder, playerCategories, playerSlots, tierLabels }: {
   group: PicGroup; players: PicPlayer[]; advancePerGroup: number;
   pointsForWin: number; pointsForLoss: number;
   tiebreakerOrder?: "diff_first" | "wins_first";
   playerCategories?: Record<string, "A" | "B">;
   playerSlots?: Record<string, string>;
+  tierLabels?: TierLabels;
 }) {
   const gPlayers = group.playerIds
     .map((id) => players.find((p) => p.id === id))
@@ -476,9 +487,9 @@ function StandingsTable({ group, players, advancePerGroup, pointsForWin, pointsF
                     <span className="shrink-0 font-mono text-[10px] font-bold text-muted-foreground/80">{slot}</span>
                   )}
                   {cat && (
-                    <span className={`flex h-4 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold ${
-                      cat === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"
-                    }`}>{cat}</span>
+                    <span className={`flex h-4 min-w-5 shrink-0 items-center justify-center rounded px-0.5 text-[9px] font-bold ${
+                      cat === "A" ? "bg-blue-500/20 text-blue-600" : tierLabels?.B === "Nữ" ? "bg-pink-500/20 text-pink-600" : "bg-orange-500/20 text-orange-600"
+                    }`}>{tierLabels?.[cat] ?? cat}</span>
                   )}
                   <span className="break-words">{s.name}</span>
                 </span>
@@ -523,6 +534,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const [copiedRefKey, setCopiedRefKey] = useState<string | null>(null);
 
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
+  const tierLabels = config.tierLabels;
 
   // Gender/tier tags cho bốc cặp (persisted in config)
   const [genders, setGenders] = useState<Record<string, "M" | "F">>(
@@ -1180,7 +1192,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
           {groups.map((g) => (
             <div key={g.id} className="space-y-2">
-              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} />
+              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} tierLabels={tierLabels} />
               <div className="overflow-hidden rounded-xl border bg-card">
                 <div className="border-b bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground">
                   Kết quả trận — Bảng {g.label}
@@ -1386,7 +1398,8 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               onDirectScore={handleDirectScore(m.id)}
               refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
               playerCategories={playerCategories}
-              playerSlots={playerSlots} />
+              playerSlots={playerSlots}
+              tierLabels={tierLabels} />
           ))}
           {allGroupDone && (
             <Button disabled={pending} onClick={() => { startTransition(async () => { await picAdvanceToDraw(eventId); router.refresh(); }); }} size="lg" className="mt-2 w-full">
@@ -1399,7 +1412,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       {stage === "group" && viewTab === "standings" && (
         <div className="space-y-4">
           {groups.map((g) => (
-            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} />
+            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} tierLabels={tierLabels} />
           ))}
           {allGroupDone && (
             <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="w-full">

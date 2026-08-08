@@ -393,12 +393,47 @@ export default function PicPlayersClient({
   };
 
   // State 2 handlers
+  const seedCategoriesFromGenders = () => {
+    const next: Record<string, Category> = {};
+    for (const p of players) {
+      const g = genders[p.id];
+      if (g === "M") next[p.id] = "A";
+      else if (g === "F") next[p.id] = "B";
+    }
+    setCategories(next);
+    setActiveTier(null);
+    toast({ title: "Đã dùng Nam/Nữ làm phân hạng", description: "Nam = A, Nữ = B — mỗi đội xoay cặp sẽ là 1 nam + 1 nữ" });
+  };
+
+  // Tự seed Nam→A / Nữ→B khi vào màn phân hạng mà chưa có tag nào lưu trước đó
+  useEffect(() => {
+    if (!hasGroups || hasMatches || !allGendered) return;
+    if (localStorage.getItem(`pic-cat-${eventId}`)) return;
+    if (Object.keys(categories).length > 0) return;
+    seedCategoriesFromGenders();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasGroups, hasMatches, allGendered]);
+
+  // Categories khớp Nam→A/Nữ→B? → lịch là lịch nam nữ, badge hiển thị Nam/Nữ
+  const categoriesMatchGenders =
+    allGendered &&
+    players.length > 0 &&
+    players.every(p => {
+      const g = genders[p.id];
+      const c = categories[p.id];
+      return (g === "M" && c === "A") || (g === "F" && c === "B");
+    });
+
   const onGenerateCrossTierMatches = () => {
     startTransition(async () => {
       const res = await generateCrossTierGroupMatches(eventId, categories);
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+      // Nếu phân hạng đúng theo giới tính → badge hiển thị "Nam"/"Nữ" thay vì A/B
+      await updatePicConfig(eventId, {
+        tierLabels: categoriesMatchGenders ? { A: "Nam", B: "Nữ" } : undefined,
+      });
       localStorage.removeItem(`pic-cat-${eventId}`);
-      toast({ title: "Đã tạo lịch A/B!" });
+      toast({ title: categoriesMatchGenders ? "Đã tạo lịch Nam + Nữ!" : "Đã tạo lịch A/B!" });
       router.refresh();
     });
   };
@@ -906,9 +941,30 @@ export default function PicPlayersClient({
               <Shuffle className="size-5 text-primary" />
               Phân hạng A/B trong từng bảng
             </CardTitle>
-            <CardDescription>Mỗi bảng cần số VĐV hạng A = hạng B (2+2 hoặc 4+4)</CardDescription>
+            <CardDescription>
+              Mỗi đội xoay cặp = 1 VĐV hạng A + 1 hạng B. Giải nam nữ: dùng Nam = A, Nữ = B
+              → nam luôn cặp với nữ. Mỗi bảng cần A = B (2+2 hoặc 4+4).
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {allGendered && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-pink-400/40 bg-pink-500/5 p-3">
+                <div>
+                  <p className="text-sm font-medium">💑 Giải nam nữ — dùng luôn Nam/Nữ đã gán</p>
+                  <p className="text-xs text-muted-foreground">
+                    Nam = A, Nữ = B → lịch xoay cặp luôn ghép 1 nam + 1 nữ, badge hiện Nam/Nữ
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={categoriesMatchGenders ? "outline" : "default"}
+                  onClick={seedCategoriesFromGenders}
+                  disabled={pending || categoriesMatchGenders}
+                >
+                  {categoriesMatchGenders ? <><Check className="size-3.5" />Đang dùng Nam/Nữ</> : "Áp dụng Nam/Nữ"}
+                </Button>
+              </div>
+            )}
             {/* Schedule mode selector */}
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
               <p className="text-xs font-medium">Kiểu lịch thi đấu — đổi trước khi tạo lịch</p>
@@ -988,7 +1044,8 @@ export default function PicPlayersClient({
             {/* Actions */}
             <div className="grid gap-2 sm:grid-cols-2">
               <Button onClick={onGenerateCrossTierMatches} disabled={!canGenerateCrossTier || pending}>
-                <Check className="size-4" />{pending ? "Đang tạo…" : "Tạo lịch A/B"}
+                <Check className="size-4" />
+                {pending ? "Đang tạo…" : categoriesMatchGenders ? "💑 Tạo lịch Nam + Nữ" : "Tạo lịch A/B"}
               </Button>
               <Button variant="outline" onClick={onGenerateNormalMatches} disabled={pending}>
                 <Shuffle className="size-4" />{pending ? "Đang tạo…" : "Tạo lịch ngẫu nhiên"}

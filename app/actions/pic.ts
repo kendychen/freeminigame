@@ -160,7 +160,7 @@ export async function createPicEvent(
 
 export async function updatePicConfig(
   eventId: string,
-  patch: Partial<Pick<PicConfig, "name" | "targetGroup" | "targetKnockout" | "hasThirdPlace" | "pointsForWin" | "pointsForLoss" | "tiebreakerOrder" | "playerGenders" | "playerCategories" | "bestExtraCount">>,
+  patch: Partial<Pick<PicConfig, "name" | "targetGroup" | "targetKnockout" | "hasThirdPlace" | "pointsForWin" | "pointsForLoss" | "tiebreakerOrder" | "playerGenders" | "playerCategories" | "bestExtraCount" | "tierLabels">>,
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
