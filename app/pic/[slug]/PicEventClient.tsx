@@ -310,7 +310,7 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl,
 // ── FinalDraw: xoay cặp trước Chung Kết / Hạng 3 ──────────────────────────────
 
 function FinalDraw({
-  label, pool, players, storageKey, currentPairs, onConfirm, confirming,
+  label, pool, players, storageKey, currentPairs, onConfirm, confirming, genders,
 }: {
   label: string;
   pool: string[];
@@ -319,6 +319,7 @@ function FinalDraw({
   currentPairs?: [[string, string], [string, string]];
   onConfirm: (pairs: [[string, string], [string, string]]) => void;
   confirming: boolean;
+  genders?: Record<string, "M" | "F">;
 }) {
   const [pairs, setPairs] = useState<[[string, string], [string, string]] | null>(null);
   const [isDone, setIsDone] = useState(false);
@@ -348,8 +349,18 @@ function FinalDraw({
     const progId = setInterval(() => setProgress(Math.min(99, ((Date.now() - start) / DURATION) * 100)), 50);
     setTimeout(() => {
       clearInterval(tickId); clearInterval(progId);
-      const s = [...pool].sort(() => Math.random() - 0.5);
-      const result: [[string, string], [string, string]] = [[s[0]!, s[1]!], [s[2]!, s[3]!]];
+      // Đủ 2 nam + 2 nữ → luôn xoay thành cặp nam-nữ; thiếu thì random thuần
+      const males = pool.filter((id) => genders?.[id] === "M");
+      const females = pool.filter((id) => genders?.[id] === "F");
+      let result: [[string, string], [string, string]];
+      if (males.length === 2 && females.length === 2) {
+        const m = [...males].sort(() => Math.random() - 0.5);
+        const f = [...females].sort(() => Math.random() - 0.5);
+        result = [[m[0]!, f[0]!], [m[1]!, f[1]!]];
+      } else {
+        const s = [...pool].sort(() => Math.random() - 0.5);
+        result = [[s[0]!, s[1]!], [s[2]!, s[3]!]];
+      }
       setPairs(result);
       localStorage.setItem(storageKey, JSON.stringify(result));
       setProgress(100); setIsDrawing(false); setIsDone(true);
@@ -376,10 +387,18 @@ function FinalDraw({
           <p className="text-[11px] text-muted-foreground">Cặp bán kết (giữ nguyên nếu không xoay):</p>
           {pairs.map((pair, pi) => (
             <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
-              <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
-                {pi === 0 ? "A" : "B"}
+              <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium">
+                {pair.map((id, idx) => {
+                  const g = genders?.[id];
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1">
+                      {idx > 0 && <span className="opacity-50">&</span>}
+                      {byId(id)?.name ?? "?"}
+                      {g && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${g === "M" ? "bg-blue-500/20 text-blue-600" : "bg-pink-500/20 text-pink-600"}`}>{g === "M" ? "Nam" : "Nữ"}</span>}
+                    </span>
+                  );
+                })}
               </span>
-              <span className="flex-1 text-sm font-medium">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
             </div>
           ))}
         </div>
@@ -421,10 +440,18 @@ function FinalDraw({
         <div className="space-y-2">
           {pairs.map((pair, pi) => (
             <div key={pi} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${pi === 0 ? "bg-blue-500/10" : "bg-orange-500/10"}`}>
-              <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${pi === 0 ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>
-                {pi === 0 ? "A" : "B"}
+              <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-semibold">
+                {pair.map((id, idx) => {
+                  const g = genders?.[id];
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1">
+                      {idx > 0 && <span className="opacity-50">&</span>}
+                      {byId(id)?.name ?? "?"}
+                      {g && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${g === "M" ? "bg-blue-500/20 text-blue-600" : "bg-pink-500/20 text-pink-600"}`}>{g === "M" ? "Nam" : "Nữ"}</span>}
+                    </span>
+                  );
+                })}
               </span>
-              <span className="flex-1 text-sm font-semibold">{pair.map((id) => byId(id)?.name).join(" & ")}</span>
             </div>
           ))}
           <Button disabled={confirming} onClick={() => onConfirm(pairs)} size="lg" className="w-full">
@@ -1484,6 +1511,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                 label="Bốc thăm cặp đôi Chung Kết"
                 pool={semiWinners}
                 players={players}
+                genders={genders}
                 storageKey={`pic-final-draw-${eventId}`}
                 currentPairs={finalMatchKO?.a1 ? [[finalMatchKO.a1, finalMatchKO.a2], [finalMatchKO.b1, finalMatchKO.b2]] : undefined}
                 confirming={pending}
@@ -1500,6 +1528,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                   label="Bốc thăm cặp đôi Tranh Hạng 3–4"
                   pool={semiLosers}
                   players={players}
+                  genders={genders}
                   storageKey={`pic-third-draw-${eventId}`}
                   currentPairs={thirdMatchKO.a1 ? [[thirdMatchKO.a1, thirdMatchKO.a2], [thirdMatchKO.b1, thirdMatchKO.b2]] : undefined}
                   confirming={pending}
