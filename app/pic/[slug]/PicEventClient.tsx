@@ -872,6 +872,52 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
             </p>
           </div>
 
+          {/* Chỉnh "Vào vòng trong" ngay tại đây (trước khi bốc) */}
+          {!drawDone && !isDrawing && !koLive && (() => {
+            const gSizes = groups.map((g) => g.playerIds.length);
+            const minSize = gSizes.length ? Math.min(...gSizes) : 0;
+            const gCount = groups.length;
+            const opts: { v: number; e: number }[] = [];
+            for (let v = 1; v < minSize; v++) {
+              if ((gCount * v) % 2 === 0 && gCount * v >= 2) opts.push({ v, e: 0 });
+              if (v + 1 <= minSize) {
+                for (const t of [4, 8, 16]) {
+                  const e = t - gCount * v;
+                  if (e >= 1 && e < gCount) opts.push({ v, e });
+                }
+              }
+            }
+            opts.sort((a, b) => (gCount * a.v + a.e) - (gCount * b.v + b.e) || a.v - b.v);
+            if (opts.length <= 1) return null;
+            return (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vào vòng trong</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {opts.map((o) => {
+                    const selected = config.advancePerGroup === o.v && bestExtraCount === o.e;
+                    const total = gCount * o.v + o.e;
+                    return (
+                      <button
+                        key={`${o.v}-${o.e}`}
+                        disabled={pending}
+                        onClick={() => {
+                          startTransition(async () => {
+                            await updatePicConfig(eventId, { advancePerGroup: o.v, bestExtraCount: o.e });
+                            router.refresh();
+                          });
+                        }}
+                        className={`rounded-md border px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${selected ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}
+                      >
+                        Top {o.v}/bảng{o.e > 0 ? ` +${o.e} vớt` : ""}
+                        <span className="ml-1 font-normal opacity-60">→ {total}ng</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {multiGroup && (
             <div className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người đi tiếp</h2>
