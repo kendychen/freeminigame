@@ -458,6 +458,19 @@ function FinalDraw({
             <CheckCircle2 className="size-4" />
             {confirming ? "Đang cập nhật…" : "✅ Xác nhận cặp & Bắt đầu"}
           </Button>
+          <button
+            onClick={() => {
+              if (!confirm("Xoay lại cặp? Kết quả vừa quay sẽ bị bỏ.")) return;
+              localStorage.removeItem(storageKey);
+              setPairs(currentPairs ?? null);
+              setIsDone(false);
+            }}
+            disabled={confirming || isDrawing}
+            className="mx-auto flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            <Shuffle className="size-3" />
+            Xoay lại
+          </button>
         </div>
       )}
     </div>
