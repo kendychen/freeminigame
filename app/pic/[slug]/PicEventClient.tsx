@@ -702,9 +702,56 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const L = config.pointsForLoss ?? 0;
   const TB = config.tiebreakerOrder ?? "diff_first";
 
-  const advancingByGroup = groups.map((g) => {
+  const groupStandingsAll = groups.map((g) => {
     const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
-    return computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup).map((s) => s.playerId);
+    return { label: g.label, st: computeStandings(gPlayers, g.matches, W, L, TB) };
+  });
+
+  const cmpStanding = (
+    a: { pts: number; wins: number; diff: number; name: string },
+    b: { pts: number; wins: number; diff: number; name: string },
+  ) => {
+    if (b.pts !== a.pts) return b.pts - a.pts;
+    if (TB === "wins_first") {
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      if (b.diff !== a.diff) return b.diff - a.diff;
+    } else {
+      if (b.diff !== a.diff) return b.diff - a.diff;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+    }
+    return a.name.localeCompare(b.name);
+  };
+
+  // Đôi nam nữ: mỗi bảng lấy (v/2) nam + (v/2) nữ tốt nhất thay vì top v thuần điểm
+  const allGroupPlayersGendered = groups.every((g) =>
+    g.playerIds.every((id) => !!genders[id]),
+  );
+  const mixedAdvance =
+    drawMode === "mixed_gender" &&
+    config.advancePerGroup % 2 === 0 &&
+    allGroupPlayersGendered;
+
+  const advancingByGroup = groupStandingsAll.map(({ st }) => {
+    if (mixedAdvance) {
+      const half = config.advancePerGroup / 2;
+      const picked = [
+        ...st.filter((s) => genders[s.playerId] === "M").slice(0, half),
+        ...st.filter((s) => genders[s.playerId] === "F").slice(0, half),
+      ].sort((a, b) => a.rank - b.rank);
+      // Bảng lệch giới (thiếu nam/nữ) → bù bằng hạng cao nhất còn lại
+      if (picked.length < config.advancePerGroup) {
+        const chosen = new Set(picked.map((s) => s.playerId));
+        for (const s of st) {
+          if (picked.length >= config.advancePerGroup) break;
+          if (!chosen.has(s.playerId)) {
+            picked.push(s);
+            chosen.add(s.playerId);
+          }
+        }
+      }
+      return picked.map((s) => s.playerId);
+    }
+    return st.slice(0, config.advancePerGroup).map((s) => s.playerId);
   });
 
   // Tag hợp lệ cho mode Đôi nam nữ / Đôi A+B
@@ -714,25 +761,24 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const bestExtraCount = config.bestExtraCount ?? 0;
   const extraCandidatesAll = (() => {
     if (bestExtraCount <= 0) return [];
-    return groups
-      .map((g) => {
-        const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
-        const st = computeStandings(gPlayers, g.matches, W, L, TB);
+    if (mixedAdvance) {
+      // Pool = MỌI VĐV chưa vào vòng trong (liên bảng) — để chọn nam/nữ tốt nhất còn lại
+      const qualified = new Set(advancingByGroup.flat());
+      return groupStandingsAll
+        .flatMap(({ label, st }) =>
+          st
+            .filter((s) => !qualified.has(s.playerId))
+            .map((s) => ({ ...s, groupLabel: label })),
+        )
+        .sort(cmpStanding);
+    }
+    return groupStandingsAll
+      .map(({ label, st }) => {
         const c = st[config.advancePerGroup];
-        return c ? { ...c, groupLabel: g.label } : null;
+        return c ? { ...c, groupLabel: label } : null;
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
-      .sort((a, b) => {
-        if (b.pts !== a.pts) return b.pts - a.pts;
-        if (TB === "wins_first") {
-          if (b.wins !== a.wins) return b.wins - a.wins;
-          if (b.diff !== a.diff) return b.diff - a.diff;
-        } else {
-          if (b.diff !== a.diff) return b.diff - a.diff;
-          if (b.wins !== a.wins) return b.wins - a.wins;
-        }
-        return a.name.localeCompare(b.name);
-      });
+      .sort(cmpStanding);
   })();
 
   const vTagOf = (id: string): string | null =>
@@ -939,9 +985,17 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
           {multiGroup && (
             <div className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Người đi tiếp</h2>
-              {groups.map((g) => {
-                const gPlayers = g.playerIds.map((id) => players.find((p) => p.id === id)).filter((p): p is PicPlayer => !!p);
-                const top = computeStandings(gPlayers, g.matches, W, L, TB).slice(0, config.advancePerGroup);
+              {mixedAdvance && (
+                <p className="text-[11px] text-muted-foreground">
+                  💑 Đôi nam nữ: mỗi bảng lấy {config.advancePerGroup / 2} nam + {config.advancePerGroup / 2} nữ
+                  có thành tích tốt nhất{bestExtraCount > 0 ? ` · vớt = ${Math.floor(bestExtraCount / 2)} nam + ${Math.floor(bestExtraCount / 2)} nữ tốt nhất còn lại liên bảng` : ""}
+                </p>
+              )}
+              {groups.map((g, gi) => {
+                const st = groupStandingsAll[gi]?.st ?? [];
+                const top = (advancingByGroup[gi] ?? [])
+                  .map((id) => st.find((s) => s.playerId === id))
+                  .filter((s): s is NonNullable<typeof s> => !!s);
                 return (
                   <div key={g.id} className="rounded-xl border bg-card px-3 py-2">
                     <p className="mb-1 text-xs font-bold text-primary">Bảng {g.label}</p>
@@ -966,7 +1020,10 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               {extraQualifiers.length > 0 && (
                 <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-3 py-2">
                   <p className="mb-1 text-xs font-bold text-amber-600">
-                    🎟️ Vớt — hạng {config.advancePerGroup + 1} tốt nhất liên bảng
+                    🎟️ Vớt —{" "}
+                    {mixedAdvance
+                      ? "nam & nữ tốt nhất còn lại liên bảng"
+                      : `hạng ${config.advancePerGroup + 1} tốt nhất liên bảng`}
                   </p>
                   {extraQualifiers.map((s) => {
                     const vt = vTagOf(s.playerId);
