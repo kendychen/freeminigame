@@ -927,13 +927,21 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                 return (
                   <div key={g.id} className="rounded-xl border bg-card px-3 py-2">
                     <p className="mb-1 text-xs font-bold text-primary">Bảng {g.label}</p>
-                    {top.map((s) => (
-                      <div key={s.playerId} className="flex items-center gap-2 py-0.5">
-                        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">{s.rank}</span>
-                        <span className="flex-1 text-sm">{s.name}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{s.wins}T {s.diff > 0 ? "+" : ""}{s.diff}</span>
-                      </div>
-                    ))}
+                    {top.map((s) => {
+                      const g = genders[s.playerId];
+                      return (
+                        <div key={s.playerId} className="flex items-center gap-2 py-0.5">
+                          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">{s.rank}</span>
+                          <span className="flex-1 text-sm">{s.name}</span>
+                          {g && (
+                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              g === "M" ? "bg-blue-500/15 text-blue-600" : "bg-pink-500/15 text-pink-600"
+                            }`}>{g === "M" ? "Nam" : "Nữ"}</span>
+                          )}
+                          <span className="font-mono text-xs text-muted-foreground">{s.wins}T {s.diff > 0 ? "+" : ""}{s.diff}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
