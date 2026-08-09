@@ -34,15 +34,18 @@ const SCHEDULES: Record<number, MatchSlot[]> = {
     { a: [5, 6], b: [0, 2] },
     { a: [0, 6], b: [1, 3] },
   ],
+  // 8: balanced — mỗi cặp VĐV chạm mặt tối đa 2 lần (không còn ca "dính" 1 người
+  // 3/4 trận như lịch cũ), đủ 28/28 cặp gặp nhau ≥1 lần, không lặp đồng đội,
+  // không ai đánh >2 trận liên tiếp hay chờ >2 trận.
   8: [
-    { a: [0, 1], b: [2, 3] },
-    { a: [4, 5], b: [6, 7] },
-    { a: [0, 4], b: [1, 5] },
-    { a: [2, 6], b: [3, 7] },
-    { a: [0, 6], b: [1, 7] },
-    { a: [2, 4], b: [3, 5] },
-    { a: [0, 2], b: [4, 6] },
-    { a: [1, 3], b: [5, 7] },
+    { a: [0, 2], b: [4, 5] },
+    { a: [0, 3], b: [6, 7] },
+    { a: [1, 7], b: [2, 5] },
+    { a: [0, 4], b: [1, 3] },
+    { a: [4, 7], b: [5, 6] },
+    { a: [0, 6], b: [1, 2] },
+    { a: [2, 7], b: [3, 4] },
+    { a: [1, 6], b: [3, 5] },
   ],
   // 9/10: cyclic a:[i,i+1] b:[i+2,i+4] (mod n) — same construction as 7.
   // Each player plays exactly 4 matches, never repeats a partner or an opponent.
