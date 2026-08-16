@@ -675,8 +675,31 @@ export async function generateCrossTierGroupMatches(
       return { error: `Bảng ${grp.label}: số VĐV hạng A (${aPlayers.length}) ≠ hạng B (${bPlayers.length})` };
 
     const nPerTier = aPlayers.length;
-    if (nPerTier !== 2 && nPerTier !== 4)
-      return { error: `Bảng ${grp.label}: chỉ hỗ trợ 2 hoặc 4 VĐV mỗi trình (hiện có ${nPerTier})` };
+    if (nPerTier < 2 || nPerTier > 8)
+      return { error: `Bảng ${grp.label}: cần 2–8 VĐV mỗi trình (hiện có ${nPerTier})` };
+
+    // 3/5/6/7/8 mỗi trình: sinh lịch 100% cặp chéo trình bằng generator cân bằng
+    if (nPerTier !== 2 && nPerTier !== 4) {
+      const combined = [...aPlayers, ...bPlayers];
+      const genderArr = combined.map((_, i) => (i < aPlayers.length ? "M" : "F") as "M" | "F");
+      const typed = generateGenderTypedSchedule(genderArr, { forceAllMixed: true });
+      if (!typed)
+        return { error: `Bảng ${grp.label}: không xếp được lịch chéo trình cho ${nPerTier}+${nPerTier} VĐV` };
+      for (let i = 0; i < typed.length; i++) {
+        const slot = typed[i]!;
+        matchRows.push({
+          event_id: eventId,
+          group_id: grp.id,
+          round: i + 1,
+          stage: "group",
+          a1_id: combined[slot.a[0]]!,
+          a2_id: combined[slot.a[1]]!,
+          b1_id: combined[slot.b[0]]!,
+          b2_id: combined[slot.b[1]]!,
+        });
+      }
+      continue;
+    }
 
     const schedule = generateCrossSchedule(nPerTier);
     for (let i = 0; i < schedule.length; i++) {

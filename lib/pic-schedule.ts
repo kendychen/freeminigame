@@ -223,6 +223,7 @@ export function generateGroupSchedule(n: number, mode: ScheduleMode = "standard"
  */
 export function generateGenderTypedSchedule(
   genders: ("M" | "F")[],
+  opts?: { forceAllMixed?: boolean },
 ): MatchSlot[] | null {
   const males: number[] = [];
   const females: number[] = [];
@@ -232,7 +233,10 @@ export function generateGenderTypedSchedule(
   const n = M + F;
   if (n < 4 || n > 16) return null;
 
-  // Các phương án z hợp lệ, ưu tiên gần mức "trộn tối đa"
+  // forceAllMixed: 100% trận nam-nữ (dùng cho lịch Nam+Nữ / A+B) — cần M = F
+  if (opts?.forceAllMixed && M !== F) return null;
+
+  // Các phương án z hợp lệ, ưu tiên cân cả 3 loại trận (z ≈ chẵn(min(M,F)))
   const zOptions: number[] = [];
   for (let z = 2 * Math.min(M, F); z >= 0; z -= 2) {
     const x = M - z / 2;
@@ -241,7 +245,12 @@ export function generateGenderTypedSchedule(
     if (x > 0 && M < 4) continue; // trận đôi nam cần ≥4 nam
     if (y > 0 && F < 4) continue;
     if (z > 0 && (M < 2 || F < 2)) continue;
+    if (opts?.forceAllMixed && z !== 2 * M) continue;
     zOptions.push(z);
+  }
+  if (!opts?.forceAllMixed) {
+    const zPref = 2 * Math.floor(Math.min(M, F) / 2);
+    zOptions.sort((a, b) => Math.abs(a - zPref) - Math.abs(b - zPref));
   }
 
   const key = (a: number, b: number) => (a < b ? a * 100 + b : b * 100 + a);

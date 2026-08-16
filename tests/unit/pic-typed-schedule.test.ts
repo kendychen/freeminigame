@@ -53,4 +53,35 @@ describe("generateGenderTypedSchedule", () => {
   it("quá ít người → null", () => {
     expect(generateGenderTypedSchedule(["M", "F", "M"])).toBeNull();
   });
+
+  it("6/6 có đủ cả 3 loại trận (MD + WD + XD)", () => {
+    const genders: ("M" | "F")[] = [...Array<"M">(6).fill("M"), ...Array<"F">(6).fill("F")];
+    const s = generateGenderTypedSchedule(genders)!;
+    const typeOf = (t: [number, number]) => [genders[t[0]], genders[t[1]]].sort().join("");
+    const counts = { FF: 0, FM: 0, MM: 0 };
+    for (const m of s) counts[typeOf(m.a) as keyof typeof counts]++;
+    expect(counts.MM).toBeGreaterThan(0);
+    expect(counts.FF).toBeGreaterThan(0);
+    expect(counts.FM).toBeGreaterThan(0);
+  });
+
+  it("forceAllMixed 6+6: 12 trận toàn nam-nữ, mỗi người 4 trận", () => {
+    const genders: ("M" | "F")[] = [...Array<"M">(6).fill("M"), ...Array<"F">(6).fill("F")];
+    const s = generateGenderTypedSchedule(genders, { forceAllMixed: true })!;
+    expect(s).not.toBeNull();
+    expect(s.length).toBe(12);
+    const games = new Array(12).fill(0) as number[];
+    for (const m of s) {
+      for (const t of [m.a, m.b]) {
+        expect([genders[t[0]], genders[t[1]]].sort().join("")).toBe("FM");
+      }
+      for (const p of [...m.a, ...m.b]) games[p]!++;
+    }
+    for (const g of games) expect(g).toBe(4);
+  });
+
+  it("forceAllMixed lệch giới → null", () => {
+    const genders: ("M" | "F")[] = [...Array<"M">(7).fill("M"), ...Array<"F">(5).fill("F")];
+    expect(generateGenderTypedSchedule(genders, { forceAllMixed: true })).toBeNull();
+  });
 });

@@ -245,7 +245,7 @@ export default function PicPlayersClient({
       const untagged = g.playerIds.filter(id => !categories[id]);
       if (untagged.length > 0) errors[g.id] = `Còn ${untagged.length} VĐV chưa phân hạng`;
       else if (aPs.length !== bPs.length) errors[g.id] = `A: ${aPs.length} ≠ B: ${bPs.length}`;
-      else if (aPs.length !== 2 && aPs.length !== 4) errors[g.id] = `Cần 2 hoặc 4 VĐV mỗi trình`;
+      else if (aPs.length < 2 || aPs.length > 8) errors[g.id] = `Cần 2–8 VĐV mỗi trình`;
     }
     return errors;
   }, [hasGroups, hasMatches, initialGroups, categories]);
