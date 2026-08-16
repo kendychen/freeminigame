@@ -171,12 +171,23 @@ export default function PicPlayersClient({
       }
       return result;
     }
-    if (aCount === 0 || aCount !== bCount) return [];
+    // Chế độ A/B: vòng tròn ghép cặp — mỗi bảng cần 2–8 VĐV mỗi trình, A×B chẵn.
+    // Cho phép lệch trình (vd 6A + 5B) và 1 bảng chung.
+    if (aCount < 2 || bCount < 2) return [];
     const result: number[] = [];
-    for (let g = 1; g <= aCount; g++) {
-      if (aCount % g !== 0) continue;
-      const n = aCount / g;
-      if (n === 2 || n === 4) result.push(g);
+    for (let g = 1; g <= Math.floor(Math.min(aCount, bCount) / 2); g++) {
+      const aS = snakePreview(aCount, g);
+      const bS = snakePreview(bCount, g);
+      let ok = true;
+      for (let i = 0; i < g; i++) {
+        const aN = aS[i] ?? 0;
+        const bN = bS[i] ?? 0;
+        if (aN < 2 || bN < 2 || aN > 8 || bN > 8 || (aN * bN) % 2 !== 0) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) result.push(g);
     }
     return result;
   }, [pc, crossTierMode, aCount, bCount, typedMode]);
@@ -187,9 +198,19 @@ export default function PicPlayersClient({
 
   const groupSizes = useMemo(() => {
     if (!crossTierMode) return snakePreview(pc, effG);
-    if (aCount === 0 || aCount !== bCount || validGroupCounts.length === 0) return [];
-    return Array.from({ length: effG }, () => (aCount / effG) * 2);
+    if (aCount < 2 || bCount < 2 || validGroupCounts.length === 0) return [];
+    const aS = snakePreview(aCount, effG);
+    const bS = snakePreview(bCount, effG);
+    return aS.map((a, i) => a + (bS[i] ?? 0));
   }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length]);
+
+  const tierSplits = useMemo(
+    () =>
+      crossTierMode
+        ? { a: snakePreview(aCount, effG), b: snakePreview(bCount, effG) }
+        : null,
+    [crossTierMode, aCount, bCount, effG],
+  );
 
   const validAdvanceOptions = useMemo<{ v: number; e: number }[]>(() => {
     if (crossTierMode || groupSizes.length === 0) return [{ v: 1, e: 0 }];
@@ -225,9 +246,9 @@ export default function PicPlayersClient({
   const crossTierError = useMemo(() => {
     if (!crossTierMode) return null;
     if (untaggedCount > 0) return `Còn ${untaggedCount} VĐV chưa được phân hạng`;
-    if (aCount !== bCount) return `Hạng A: ${aCount} — Hạng B: ${bCount} — phải bằng nhau`;
-    if (aCount === 0) return "Chưa phân hạng A/B";
-    if (validGroupCounts.length === 0) return "Không thể chia bảng (cần 2 hoặc 4 VĐV mỗi trình mỗi bảng)";
+    if (aCount < 2 || bCount < 2) return `Mỗi trình cần ít nhất 2 VĐV (A: ${aCount}, B: ${bCount})`;
+    if (validGroupCounts.length === 0)
+      return "Không chia được bảng (mỗi bảng cần 2–8 VĐV mỗi trình và số cặp A×B phải chẵn — thêm/bớt 1 VĐV)";
     return null;
   }, [crossTierMode, untaggedCount, aCount, bCount, validGroupCounts.length]);
 
@@ -853,7 +874,7 @@ export default function PicPlayersClient({
                         <div className="flex flex-wrap gap-1.5">
                           {validGroupCounts.map(g => {
                             const sizes = crossTierMode
-                              ? Array.from({ length: g }, () => (aCount / g) * 2)
+                              ? snakePreview(aCount, g).map((a, i) => a + (snakePreview(bCount, g)[i] ?? 0))
                               : snakePreview(pc, g);
                             const unique = [...new Set(sizes)].sort((a, b) => a - b);
                             const tag = unique.length === 1 ? `${unique[0]}ng` : `${unique[0]}–${unique[unique.length - 1]}ng`;
@@ -908,7 +929,9 @@ export default function PicPlayersClient({
                         <div key={gi} className="space-y-0.5">
                           <p className="text-xs font-bold text-primary">Bảng {String.fromCharCode(65 + gi)}</p>
                           <p className="text-[11px] text-muted-foreground">
-                            {crossTierMode ? `${size / 2}A + ${size / 2}B` : `${size} người`}
+                            {crossTierMode && tierSplits
+                              ? `${tierSplits.a[gi] ?? 0}A + ${tierSplits.b[gi] ?? 0}B`
+                              : `${size} người`}
                           </p>
                         </div>
                       ))}
