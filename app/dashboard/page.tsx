@@ -65,16 +65,24 @@ export default async function DashboardPage() {
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 space-y-10">
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-8 px-4 py-5 sm:space-y-10 sm:py-8">
 
         {/* PIC xoay cặp section */}
         <section>
-          <div className="mb-4">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Users className="size-5 text-primary" />
-              PIC xoay cặp
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">Giải đấu xoay cặp đôi cá nhân</p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Users className="size-5 text-primary" />
+                PIC xoay cặp
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">Giải đấu xoay cặp đôi cá nhân</p>
+            </div>
+            <Link href="/pic/new">
+              <Button size="sm" variant="outline">
+                <Plus className="size-4" />
+                Tạo giải PIC
+              </Button>
+            </Link>
           </div>
           {picList.length === 0 ? (
             <Card>
@@ -110,8 +118,8 @@ export default async function DashboardPage() {
 
         {/* Team events section */}
         <section>
-          <div className="mb-4 flex items-center justify-between">
-            <div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Swords className="size-5 text-primary" />
                 Giải đồng đội
@@ -121,7 +129,7 @@ export default async function DashboardPage() {
             <Link href="/team/new">
               <Button size="sm" variant="outline">
                 <Plus className="size-4" />
-                Tạo giải đồng đội
+                Tạo giải
               </Button>
             </Link>
           </div>
@@ -159,8 +167,8 @@ export default async function DashboardPage() {
 
         {/* Live tournaments section */}
         <section>
-          <div className="mb-4 flex items-center justify-between">
-            <div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
               <h2 className="text-xl font-bold">Giải đấu Live</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">Quản lý các giải đấu Live Mode</p>
             </div>

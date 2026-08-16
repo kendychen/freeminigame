@@ -107,7 +107,7 @@ function LoginInner() {
           <ThemeToggle />
         </div>
       </header>
-      <main className="flex flex-1 items-center justify-center p-4">
+      <main className="flex flex-1 items-start justify-center p-4 pt-8 sm:items-center sm:pt-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Đăng nhập</CardTitle>
@@ -130,7 +130,7 @@ function LoginInner() {
             )}
             <Button
               variant="outline"
-              className="w-full"
+              className="h-11 w-full"
               onClick={onGoogleLogin}
               disabled={submitting}
             >
@@ -159,6 +159,11 @@ function LoginInner() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  className="h-11"
                 />
               </div>
               <div className="space-y-2">
@@ -169,9 +174,11 @@ function LoginInner() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className="h-11"
                 />
               </div>
-              <Button type="submit" className="w-full" disabled={submitting}>
+              <Button type="submit" className="h-11 w-full" disabled={submitting}>
                 <Mail className="size-4" />
                 {submitting ? "Đang đăng nhập…" : "Đăng nhập với email"}
               </Button>

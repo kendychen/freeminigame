@@ -165,8 +165,9 @@ export default async function HomePage() {
                 động trên điện thoại — kết quả tự cập nhật cho viewer.
               </p>
 
-              <div className="mt-8 grid w-full gap-2.5 sm:w-auto sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
-                <Link href="/pair/new" className="w-full sm:w-auto">
+              {/* Mobile: 2 cột gọn để thấy đủ 6 lựa chọn không cần cuộn */}
+              <div className="mt-8 grid w-full grid-cols-2 gap-2.5 sm:w-auto sm:gap-3 lg:grid-cols-3">
+                <Link href="/pair/new" className="col-span-2 w-full sm:col-span-1 sm:w-auto">
                   <Button size="lg" className="w-full sm:min-w-[180px]">
                     <Radio className="size-4" />
                     Bốc thăm realtime
@@ -176,7 +177,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full sm:min-w-[180px]"
+                    className="w-full px-2 text-[13px] sm:min-w-[180px] sm:px-8 sm:text-sm"
                   >
                     <Gavel className="size-4" />
                     Tỷ số nhanh
@@ -186,7 +187,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full sm:min-w-[180px]"
+                    className="w-full px-2 text-[13px] sm:min-w-[180px] sm:px-8 sm:text-sm"
                   >
                     <Zap className="size-4" />
                     Chia cặp nhanh
@@ -196,7 +197,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full sm:min-w-[180px]"
+                    className="w-full px-2 text-[13px] sm:min-w-[180px] sm:px-8 sm:text-sm"
                   >
                     <Users className="size-4" />
                     PIC xoay cặp
@@ -206,7 +207,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="w-full sm:min-w-[180px]"
+                    className="w-full px-2 text-[13px] sm:min-w-[180px] sm:px-8 sm:text-sm"
                   >
                     <Users className="size-4" />
                     Giải đồng đội
@@ -219,7 +220,7 @@ export default async function HomePage() {
                   <Button
                     size="lg"
                     variant="ghost"
-                    className="w-full sm:min-w-[180px]"
+                    className="w-full px-2 text-[13px] sm:min-w-[180px] sm:px-8 sm:text-sm"
                   >
                     <Trophy className="size-4" />
                     {user ? "Bảng điều khiển" : "Giải đấu Live"}
@@ -248,7 +249,7 @@ export default async function HomePage() {
               {FORMATS.map((f) => (
                 <div
                   key={f.name}
-                  className="rounded-xl border bg-background p-4 transition-all hover:border-primary/40 hover:shadow-md sm:p-5"
+                  className="rounded-xl border bg-background p-4 transition-all last:col-span-2 hover:border-primary/40 hover:shadow-md sm:p-5 lg:last:col-span-1"
                 >
                   <div className="inline-flex size-9 items-center justify-center rounded-lg bg-primary/10">
                     <f.icon className="size-5 text-primary" />
@@ -418,7 +419,7 @@ export default async function HomePage() {
                   </div>
                 </div>
               </div>
-              <div className="flex justify-center lg:justify-end">
+              <div className="hidden justify-center sm:flex lg:justify-end">
                 <div className="flex size-48 items-center justify-center rounded-3xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-2xl">
                   <PickleballLogo size={120} />
                 </div>
