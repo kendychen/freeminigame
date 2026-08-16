@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/auth";
 import { ensureSafeSlug, withRandomSuffix } from "@/lib/slug";
-import { generateGroupSchedule, generateCrossSchedule } from "@/lib/pic-schedule";
+import { generateGroupSchedule, generateCrossSchedule, generateGenderTypedSchedule } from "@/lib/pic-schedule";
 import type { PicConfig, PicPlayer, PicGroup, PicMatch, PicState, PicStage } from "@/stores/pic-tournament";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -413,6 +413,113 @@ export async function generatePicGroups(
     if (n < 4) continue;
     const scheduleMode = ((ev.config as { scheduleMode?: "standard" | "hd" })?.scheduleMode) ?? "standard";
     const schedule = generateGroupSchedule(Math.min(n, 10), scheduleMode);
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
+    );
+  }
+
+  const cfg = ev.config as Record<string, unknown>;
+  await svc
+    .from("pic_events")
+    .update({
+      config: { ...cfg, advancePerGroup },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId);
+
+  revalidatePath(`/pic`);
+  return { ok: true };
+}
+
+/**
+ * Chế độ "trận cùng loại": đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ.
+ * Chia bảng cân giới (nam/nữ rải đều), lịch sinh theo số nam/nữ thực tế của từng bảng.
+ * Hỗ trợ 1 bảng tới 16 người. Sinh bảng + lịch trong 1 bước (không qua State 2).
+ */
+export async function generateTypedGroupMatches(
+  eventId: string,
+  groupCount: number,
+  advancePerGroup: number,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingGroups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId);
+  if (existingGroups && existingGroups.length > 0)
+    return { error: "schedule_already_generated" };
+
+  const { data: players } = await svc
+    .from("pic_players")
+    .select("id")
+    .eq("event_id", eventId);
+  if (!players || players.length < 4) return { error: "need_at_least_4_players" };
+
+  const genderMap =
+    ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+      ?.playerGenders) ?? {};
+  const males = players.filter((p) => genderMap[p.id] === "M").map((p) => p.id);
+  const females = players.filter((p) => genderMap[p.id] === "F").map((p) => p.id);
+  if (males.length + females.length !== players.length)
+    return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi tạo lịch" };
+
+  const shuffleIds = (arr: string[]) => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+  };
+  const maleGroups = snakeDistribute(shuffleIds(males), groupCount);
+  const femaleGroups = snakeDistribute(shuffleIds(females), groupCount).reverse();
+  const groupSlots = Array.from({ length: groupCount }, (_, i) => [
+    ...(maleGroups[i] ?? []),
+    ...(femaleGroups[i] ?? []),
+  ]);
+  if (groupSlots.some((g) => g.length < 4 || g.length > 16))
+    return { error: "invalid_group_count" };
+
+  for (let gi = 0; gi < groupSlots.length; gi++) {
+    const slotIds = groupSlots[gi]!;
+    const genders = slotIds.map(
+      (id) => (genderMap[id] === "M" ? "M" : "F") as "M" | "F",
+    );
+    const schedule = generateGenderTypedSchedule(genders);
+    if (!schedule)
+      return {
+        error: `Không xếp được lịch cùng loại cho bảng ${String.fromCharCode(65 + gi)} — thử đổi số bảng hoặc kiểm tra tỉ lệ nam/nữ`,
+      };
+
+    const label = String.fromCharCode(65 + gi);
+    const { data: grp, error: grpErr } = await svc
+      .from("pic_groups")
+      .insert({ event_id: eventId, label })
+      .select("id")
+      .single();
+    if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
+
+    await svc.from("pic_group_players").insert(
+      slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
     await svc.from("pic_matches").insert(
       schedule.map((slot, i) => ({
         event_id: eventId,

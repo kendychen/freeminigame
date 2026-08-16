@@ -10,7 +10,7 @@ import { toast } from "@/components/ui/toast";
 import {
   addPicPlayer, removePicPlayer, updatePicPlayer, bulkAddPicPlayers,
   generatePicGroups, generateCrossTierGroupMatches, generateNormalGroupMatches,
-  generateCrossTierGroupsFull, createPicDraw, applyPicDraw, resetPicGroups,
+  generateCrossTierGroupsFull, generateTypedGroupMatches, createPicDraw, applyPicDraw, resetPicGroups,
   createPicIndividualDrawSession, cancelPicIndividualDrawSession,
   setPicScheduleMode, updatePicConfig,
 } from "@/app/actions/pic";
@@ -122,6 +122,8 @@ export default function PicPlayersClient({
   // Gender tags (persisted server-side in config.playerGenders)
   const [genders, setGenders] = useState<Record<string, "M" | "F">>(initialPlayerGenders ?? {});
   const [genderQuota, setGenderQuota] = useState(false);
+  // Trận cùng loại: đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ
+  const [typedMode, setTypedMode] = useState(false);
   // Vớt: lấy thêm N người hạng kế tiếp có thành tích tốt nhất liên bảng
   const [bestExtra, setBestExtra] = useState(initialBestExtra ?? 0);
 
@@ -160,10 +162,11 @@ export default function PicPlayersClient({
 
   const validGroupCounts = useMemo(() => {
     if (!crossTierMode) {
+      const maxSize = typedMode ? 16 : 10; // trận cùng loại: 1 bảng chứa được tới 16 người
       const result: number[] = [];
       for (let g = 1; g <= Math.ceil(pc / 4); g++) {
         const sizes = snakePreview(pc, g);
-        if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 10)
+        if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= maxSize)
           result.push(g);
       }
       return result;
@@ -176,7 +179,7 @@ export default function PicPlayersClient({
       if (n === 2 || n === 4) result.push(g);
     }
     return result;
-  }, [pc, crossTierMode, aCount, bCount]);
+  }, [pc, crossTierMode, aCount, bCount, typedMode]);
 
   const effG = validGroupCounts.includes(groupCount) ? groupCount : (validGroupCounts[0] ?? 1);
 
@@ -230,7 +233,7 @@ export default function PicPlayersClient({
 
   const canGenerate = pc >= 4 && !hasGroups && (
     crossTierMode ? crossTierError === null : validGroupCounts.length > 0
-  );
+  ) && (!typedMode || allGendered);
 
   // State 2: validate A/B per group
   const groupCategoryErrors = useMemo(() => {
@@ -303,8 +306,18 @@ export default function PicPlayersClient({
   const onDrawOrPreview = () => {
     if (!canGenerate) return;
     if (crossTierMode) { setPreview(computePreview()); return; }
-    if (genderQuota && !allGendered) {
+    if ((genderQuota || typedMode) && !allGendered) {
       toast({ title: "Chưa gán đủ Nam/Nữ", description: `Còn ${ungenderedCount} VĐV chưa gán`, variant: "destructive" });
+      return;
+    }
+    if (typedMode) {
+      // Trận cùng loại: chia bảng cân giới + sinh lịch MD/WD/XD trong 1 bước
+      startTransition(async () => {
+        const res = await generateTypedGroupMatches(eventId, effG, advancePerGroup);
+        if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+        toast({ title: "Đã tạo lịch trận cùng loại!", description: "Đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ" });
+        router.refresh();
+      });
       return;
     }
     // Always crossTierMode=true for random draw — goes to State 2 for A/B assignment
@@ -710,6 +723,25 @@ export default function PicPlayersClient({
                 </div>
               </label>
 
+              {/* Trận cùng loại: MD vs MD · WD vs WD · XD vs XD */}
+              {!crossTierMode && (
+                <label className="flex cursor-pointer items-center justify-between rounded-lg border bg-card p-3">
+                  <div>
+                    <p className="text-sm font-medium">Chế độ trận cùng loại 🔵🩷💑</p>
+                    <p className="text-xs text-muted-foreground">
+                      Đôi nam đấu đôi nam · đôi nữ đấu đôi nữ · đôi nam-nữ đấu đôi nam-nữ.
+                      Nam nữ lệch nhau vẫn chạy, hỗ trợ 1 bảng tới 16 người, mỗi VĐV đúng 4 trận.
+                    </p>
+                  </div>
+                  <div
+                    onClick={() => setTypedMode(v => !v)}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${typedMode ? "bg-primary" : "bg-muted"}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${typedMode ? "translate-x-5" : "translate-x-0.5"}`} />
+                  </div>
+                </label>
+              )}
+
               {/* Gender tags + per-group Nam/Nữ quota */}
               {!crossTierMode && (
                 <div className="space-y-2 rounded-lg border bg-card p-3">
@@ -725,16 +757,18 @@ export default function PicPlayersClient({
                       <span className="rounded bg-pink-500/15 px-2 py-0.5 text-pink-600">Nữ: {femaleCount}</span>
                     </div>
                   </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={genderQuota}
-                      onChange={e => setGenderQuota(e.target.checked)}
-                      className="size-4 accent-primary"
-                    />
-                    Giới hạn Nam/Nữ mỗi bảng khi quay (chia đều nam, đều nữ vào các bảng)
-                  </label>
-                  {genderQuota && !allGendered && (
+                  {!typedMode && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={genderQuota}
+                        onChange={e => setGenderQuota(e.target.checked)}
+                        className="size-4 accent-primary"
+                      />
+                      Giới hạn Nam/Nữ mỗi bảng khi quay (chia đều nam, đều nữ vào các bảng)
+                    </label>
+                  )}
+                  {(genderQuota || typedMode) && !allGendered && (
                     <p className="text-xs font-medium text-destructive">
                       Còn {ungenderedCount} VĐV chưa gán Nam/Nữ — gán đủ mới quay được
                     </p>
@@ -882,35 +916,36 @@ export default function PicPlayersClient({
                   <div className={`grid gap-2 ${crossTierMode ? "" : "sm:grid-cols-2 lg:grid-cols-4"}`}>
                     <Button onClick={onDrawOrPreview} disabled={!canGenerate || pending || !!drawCode || !!liveDraw} variant="outline" size="lg">
                       <Shuffle className="size-4" />
-                      {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : "🎲 Quay ngay"}
+                      {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : typedMode ? "🎲 Tạo lịch cùng loại" : "🎲 Quay ngay"}
                     </Button>
                     {!crossTierMode && (
                       <>
                         <Button
                           onClick={() => setIndividualDrawMode(true)}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode}
                           variant="outline"
                           size="lg"
                           className="border-primary/40 text-primary hover:bg-primary/10"
-                          title={genderQuota ? "Chế độ này chưa hỗ trợ giới hạn Nam/Nữ" : undefined}
+                          title={genderQuota || typedMode ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
                         >
                           <Sparkles className="size-4" />
                           ✨ Cá nhân
                         </Button>
                         <Button
                           onClick={onCreateLiveIndividualDraw}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || typedMode}
                           size="lg"
                           className="bg-red-500 hover:bg-red-600 text-white"
+                          title={typedMode ? "Trận cùng loại chưa hỗ trợ bốc LIVE — dùng Tạo lịch cùng loại" : undefined}
                         >
                           <Sparkles className="size-4" />
                           🌐 Cá nhân LIVE
                         </Button>
                         <Button
                           onClick={onCreateLiveDraw}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode}
                           size="lg"
-                          title={genderQuota ? "Chế độ này chưa hỗ trợ giới hạn Nam/Nữ" : undefined}
+                          title={genderQuota || typedMode ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
                         >
                           <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 LIVE bảng"}
                         </Button>

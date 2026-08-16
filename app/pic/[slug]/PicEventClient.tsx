@@ -576,6 +576,30 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const { id: eventId, config, players, groups, knockoutMatches, stage } = state;
   const tierLabels = config.tierLabels;
 
+  // Badge Nam/Nữ cho vòng bảng khi mọi VĐV đã gán giới tính.
+  // Ưu tiên: hạng A/B thật trong config > giới tính > suy từ lịch cross-tier.
+  const allGenderCats = useMemo<Record<string, "A" | "B"> | null>(() => {
+    const src = config.playerGenders ?? {};
+    if (players.length === 0) return null;
+    const cats: Record<string, "A" | "B"> = {};
+    for (const p of players) {
+      const g = src[p.id];
+      if (!g) return null;
+      cats[p.id] = g === "M" ? "A" : "B";
+    }
+    return cats;
+  }, [players, config.playerGenders]);
+  const hasConfigCats =
+    !!config.playerCategories && Object.keys(config.playerCategories).length > 0;
+  const groupCats = hasConfigCats
+    ? playerCategories
+    : (allGenderCats ?? playerCategories);
+  const groupLabels = hasConfigCats
+    ? tierLabels
+    : allGenderCats
+      ? { A: "Nam", B: "Nữ" }
+      : tierLabels;
+
   // Gender/tier tags cho bốc cặp (persisted in config)
   const [genders, setGenders] = useState<Record<string, "M" | "F">>(
     () => config.playerGenders ?? {},
@@ -1386,7 +1410,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thống kê vòng bảng</h2>
           {groups.map((g) => (
             <div key={g.id} className="space-y-2">
-              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} tierLabels={tierLabels} />
+              <StandingsTable group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={groupCats} playerSlots={playerSlots} tierLabels={groupLabels} />
               <div className="overflow-hidden rounded-xl border bg-card">
                 <div className="border-b bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground">
                   Kết quả trận — Bảng {g.label}
@@ -1598,9 +1622,9 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               onClick={() => setActiveMatch({ match: m, groupId: activeGroup.id, stage: "group" })}
               onDirectScore={handleDirectScore(m.id)}
               refUrl={refToken ? `${window.location.origin}/pic/r/${refToken}?m=${m.id}` : undefined}
-              playerCategories={playerCategories}
+              playerCategories={groupCats}
               playerSlots={playerSlots}
-              tierLabels={tierLabels} />
+              tierLabels={groupLabels} />
           ))}
           {allGroupDone && (
             <Button disabled={pending} onClick={() => { startTransition(async () => { await picAdvanceToDraw(eventId); router.refresh(); }); }} size="lg" className="mt-2 w-full">
@@ -1613,7 +1637,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
       {stage === "group" && viewTab === "standings" && (
         <div className="space-y-4">
           {groups.map((g) => (
-            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={playerCategories} playerSlots={playerSlots} tierLabels={tierLabels} />
+            <StandingsTable key={g.id} group={g} players={players} advancePerGroup={config.advancePerGroup} pointsForWin={W} pointsForLoss={L} tiebreakerOrder={TB} playerCategories={groupCats} playerSlots={playerSlots} tierLabels={groupLabels} />
           ))}
           {allGroupDone && (
             <Button onClick={() => { startTransition(async () => { router.refresh(); }); }} size="lg" className="w-full">
