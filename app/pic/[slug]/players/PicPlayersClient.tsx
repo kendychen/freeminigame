@@ -244,8 +244,10 @@ export default function PicPlayersClient({
       const bPs = g.playerIds.filter(id => categories[id] === "B");
       const untagged = g.playerIds.filter(id => !categories[id]);
       if (untagged.length > 0) errors[g.id] = `Còn ${untagged.length} VĐV chưa phân hạng`;
-      else if (aPs.length !== bPs.length) errors[g.id] = `A: ${aPs.length} ≠ B: ${bPs.length}`;
-      else if (aPs.length < 2 || aPs.length > 8) errors[g.id] = `Cần 2–8 VĐV mỗi trình`;
+      else if (aPs.length < 2 || bPs.length < 2) errors[g.id] = `Mỗi trình cần ≥2 VĐV (A: ${aPs.length}, B: ${bPs.length})`;
+      else if (aPs.length > 8 || bPs.length > 8) errors[g.id] = `Tối đa 8 VĐV mỗi trình`;
+      else if ((aPs.length * bPs.length) % 2 !== 0)
+        errors[g.id] = `${aPs.length}×${bPs.length} = ${aPs.length * bPs.length} cặp (lẻ) — thêm/bớt 1 VĐV`;
     }
     return errors;
   }, [hasGroups, hasMatches, initialGroups, categories]);
@@ -977,8 +979,9 @@ export default function PicPlayersClient({
               Phân hạng A/B trong từng bảng
             </CardTitle>
             <CardDescription>
-              Mỗi đội xoay cặp = 1 VĐV hạng A + 1 hạng B. Giải nam nữ: dùng Nam = A, Nữ = B
-              → nam luôn cặp với nữ. Mỗi bảng cần A = B (2+2 hoặc 4+4).
+              VÒNG TRÒN GHÉP CẶP: mỗi đội = 1 VĐV hạng A + 1 hạng B, mọi tổ hợp A×B
+              cặp với nhau đúng 1 lần (A đánh số-B trận, B đánh số-A trận). Giải nam nữ:
+              Nam = A, Nữ = B. Cho phép lệch số lượng — chỉ cần A×B là số chẵn.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

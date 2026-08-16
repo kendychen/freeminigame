@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/auth";
 import { ensureSafeSlug, withRandomSuffix } from "@/lib/slug";
-import { generateGroupSchedule, generateCrossSchedule, generateGenderTypedSchedule } from "@/lib/pic-schedule";
+import { generateGroupSchedule, generateCrossSchedule, generateGenderTypedSchedule, generateFullPairCross } from "@/lib/pic-schedule";
 import type { PicConfig, PicPlayer, PicGroup, PicMatch, PicState, PicStage } from "@/stores/pic-tournament";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -671,37 +671,38 @@ export async function generateCrossTierGroupMatches(
     const aPlayers = slotIds.filter((id) => playerCategories[id] === "A");
     const bPlayers = slotIds.filter((id) => playerCategories[id] === "B");
 
-    if (aPlayers.length !== bPlayers.length)
-      return { error: `Bảng ${grp.label}: số VĐV hạng A (${aPlayers.length}) ≠ hạng B (${bPlayers.length})` };
+    const aN = aPlayers.length;
+    const bN = bPlayers.length;
+    if (aN < 2 || bN < 2)
+      return { error: `Bảng ${grp.label}: mỗi trình cần ít nhất 2 VĐV (A: ${aN}, B: ${bN})` };
+    if (aN > 8 || bN > 8)
+      return { error: `Bảng ${grp.label}: tối đa 8 VĐV mỗi trình (A: ${aN}, B: ${bN})` };
+    if ((aN * bN) % 2 !== 0)
+      return { error: `Bảng ${grp.label}: ${aN}×${bN} = ${aN * bN} cặp (lẻ) — không xếp vòng tròn ghép cặp được, thêm/bớt 1 VĐV` };
 
-    const nPerTier = aPlayers.length;
-    if (nPerTier < 2 || nPerTier > 8)
-      return { error: `Bảng ${grp.label}: cần 2–8 VĐV mỗi trình (hiện có ${nPerTier})` };
-
-    // 3/5/6/7/8 mỗi trình: sinh lịch 100% cặp chéo trình bằng generator cân bằng
-    if (nPerTier !== 2 && nPerTier !== 4) {
-      const combined = [...aPlayers, ...bPlayers];
-      const genderArr = combined.map((_, i) => (i < aPlayers.length ? "M" : "F") as "M" | "F");
-      const typed = generateGenderTypedSchedule(genderArr, { forceAllMixed: true });
-      if (!typed)
-        return { error: `Bảng ${grp.label}: không xếp được lịch chéo trình cho ${nPerTier}+${nPerTier} VĐV` };
-      for (let i = 0; i < typed.length; i++) {
-        const slot = typed[i]!;
+    // Khác cấu hình 2+2 / 4+4 cũ: VÒNG TRÒN GHÉP CẶP — mọi tổ hợp A×B
+    // làm đồng đội đúng 1 lần (A đánh bN trận, B đánh aN trận)
+    if (!(aN === bN && (aN === 2 || aN === 4))) {
+      const full = generateFullPairCross(aN, bN);
+      if (!full)
+        return { error: `Bảng ${grp.label}: không xếp được vòng tròn ghép cặp cho ${aN}+${bN} VĐV` };
+      for (let i = 0; i < full.length; i++) {
+        const slot = full[i]!;
         matchRows.push({
           event_id: eventId,
           group_id: grp.id,
           round: i + 1,
           stage: "group",
-          a1_id: combined[slot.a[0]]!,
-          a2_id: combined[slot.a[1]]!,
-          b1_id: combined[slot.b[0]]!,
-          b2_id: combined[slot.b[1]]!,
+          a1_id: aPlayers[slot.teamA[0]]!,
+          a2_id: bPlayers[slot.teamA[1]]!,
+          b1_id: aPlayers[slot.teamB[0]]!,
+          b2_id: bPlayers[slot.teamB[1]]!,
         });
       }
       continue;
     }
 
-    const schedule = generateCrossSchedule(nPerTier);
+    const schedule = generateCrossSchedule(aN);
     for (let i = 0; i < schedule.length; i++) {
       const slot = schedule[i]!;
       matchRows.push({
@@ -1307,14 +1308,19 @@ export async function generateCrossTierGroupsFull(
     const aPlayers = slotIds.filter((id) => playerCategories[id] === "A");
     const bPlayers = slotIds.filter((id) => playerCategories[id] === "B");
 
-    if (aPlayers.length !== bPlayers.length)
-      return { error: `Bảng ${label}: số VĐV hạng A (${aPlayers.length}) ≠ hạng B (${bPlayers.length})` };
+    const aN = aPlayers.length;
+    const bN = bPlayers.length;
+    if (aN < 2 || bN < 2 || aN > 8 || bN > 8)
+      return { error: `Bảng ${label}: mỗi trình cần 2–8 VĐV (A: ${aN}, B: ${bN})` };
+    if ((aN * bN) % 2 !== 0)
+      return { error: `Bảng ${label}: ${aN}×${bN} = ${aN * bN} cặp (lẻ) — thêm/bớt 1 VĐV` };
 
-    const nPerTier = aPlayers.length;
-    if (nPerTier !== 2 && nPerTier !== 4)
-      return { error: `Bảng ${label}: chỉ hỗ trợ 2 hoặc 4 VĐV mỗi trình` };
-
-    const schedule = generateCrossSchedule(nPerTier);
+    const schedule =
+      aN === bN && (aN === 2 || aN === 4)
+        ? generateCrossSchedule(aN)
+        : generateFullPairCross(aN, bN);
+    if (!schedule)
+      return { error: `Bảng ${label}: không xếp được vòng tròn ghép cặp cho ${aN}+${bN} VĐV` };
     for (let i = 0; i < schedule.length; i++) {
       const slot = schedule[i]!;
       matchRows.push({

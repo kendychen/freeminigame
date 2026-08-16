@@ -390,3 +390,88 @@ export function generateCrossSchedule(n: number): CrossMatchSlot[] {
   if (!s) throw new Error(`Chế độ A/B chỉ hỗ trợ 2 hoặc 4 VĐV mỗi trình mỗi bảng`);
   return s;
 }
+
+/**
+ * VÒNG TRÒN GHÉP CẶP chéo trình/giới: MỌI tổ hợp (A_i, B_j) làm đồng đội ĐÚNG 1 LẦN.
+ * M, F được phép lệch nhau — mỗi VĐV trình A đánh F trận, trình B đánh M trận.
+ * Số trận = M×F/2 nên M×F phải chẵn (vd 5+5 = 25 cặp lẻ → không xếp được).
+ * Đối thủ cùng trình được rải đều (cap 2, nới dần); thứ tự trận rải để nghỉ đều.
+ */
+export function generateFullPairCross(M: number, F: number): CrossMatchSlot[] | null {
+  if (M < 2 || F < 2 || M > 8 || F > 8) return null;
+  if ((M * F) % 2 !== 0) return null;
+
+  const shuffle = <T,>(arr: T[]): T[] => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+  };
+  const key = (x: number, y: number) => (x < y ? x * 10 + y : y * 10 + x);
+
+  const attempt = (cap: number): CrossMatchSlot[] | null => {
+    const parts: [number, number][] = [];
+    for (let i = 0; i < M; i++) for (let a = 0; a < F; a++) parts.push([i, a]);
+    const pool = shuffle(parts);
+    const aOpp = new Map<number, number>();
+    const bOpp = new Map<number, number>();
+    const out: CrossMatchSlot[] = [];
+    while (pool.length) {
+      const p1 = pool.shift()!;
+      let bestIdx = -1;
+      let bestScore = Infinity;
+      for (let k = 0; k < pool.length; k++) {
+        const p2 = pool[k]!;
+        if (p2[0] === p1[0] || p2[1] === p1[1]) continue;
+        const ca = aOpp.get(key(p1[0], p2[0])) ?? 0;
+        const cb = bOpp.get(key(p1[1], p2[1])) ?? 0;
+        if (ca >= cap || cb >= cap) continue;
+        const score = ca + cb + Math.random();
+        if (score < bestScore) {
+          bestScore = score;
+          bestIdx = k;
+        }
+      }
+      if (bestIdx < 0) return null;
+      const p2 = pool.splice(bestIdx, 1)[0]!;
+      aOpp.set(key(p1[0], p2[0]), (aOpp.get(key(p1[0], p2[0])) ?? 0) + 1);
+      bOpp.set(key(p1[1], p2[1]), (bOpp.get(key(p1[1], p2[1])) ?? 0) + 1);
+      out.push({ teamA: [p1[0], p1[1]], teamB: [p2[0], p2[1]] });
+    }
+    return out;
+  };
+
+  let built: CrossMatchSlot[] | null = null;
+  outer: for (const cap of [2, 3, 99]) {
+    for (let t = 0; t < 800; t++) {
+      built = attempt(cap);
+      if (built) break outer;
+    }
+  }
+  if (!built) return null;
+
+  // Rải thứ tự để hạn chế đánh liên tiếp
+  const playersOf = (m: CrossMatchSlot) => [
+    `a${m.teamA[0]}`, `b${m.teamA[1]}`, `a${m.teamB[0]}`, `b${m.teamB[1]}`,
+  ];
+  const order: CrossMatchSlot[] = [];
+  const rem = [...built];
+  let prev: string[] = [];
+  while (rem.length) {
+    let bi = 0;
+    let bs = Infinity;
+    for (let i = 0; i < rem.length; i++) {
+      const s = playersOf(rem[i]!).filter((p) => prev.includes(p)).length * 10 + Math.random();
+      if (s < bs) {
+        bs = s;
+        bi = i;
+      }
+    }
+    const nx = rem.splice(bi, 1)[0]!;
+    order.push(nx);
+    prev = playersOf(nx);
+  }
+  return order;
+}
