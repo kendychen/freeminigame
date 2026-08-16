@@ -35,6 +35,23 @@ function verify(M: number, F: number) {
   // A đánh F trận, B đánh M trận
   for (const g of aGames) expect(g).toBe(F);
   for (const g of bGames) expect(g).toBe(M);
+
+  // Cân bằng chạm mặt: tổng tương tác (đồng đội + đối đầu) của MỌI cặp VĐV ≤ 3
+  const inter = new Map<string, number>();
+  const bump = (k: string) => inter.set(k, (inter.get(k) ?? 0) + 1);
+  for (const m of s) {
+    bump(`a${m.teamA[0]}-b${m.teamA[1]}`); // đồng đội
+    bump(`a${m.teamB[0]}-b${m.teamB[1]}`);
+    const [x, y] = [m.teamA[0], m.teamB[0]].sort((p, q) => p - q);
+    bump(`aa${x}-${y}`); // đối đầu cùng trình A
+    const [u, v] = [m.teamA[1], m.teamB[1]].sort((p, q) => p - q);
+    bump(`bb${u}-${v}`); // đối đầu cùng trình B
+    bump(`a${m.teamA[0]}-b${m.teamB[1]}`); // đối đầu chéo
+    bump(`a${m.teamB[0]}-b${m.teamA[1]}`);
+  }
+  for (const [k, c] of inter) {
+    expect(c, `cặp ${k} chạm mặt ${c} lần (${M}+${F})`).toBeLessThanOrEqual(3);
+  }
 }
 
 describe("generateFullPairCross (vòng tròn ghép cặp)", () => {

@@ -411,12 +411,16 @@ export function generateFullPairCross(M: number, F: number): CrossMatchSlot[] | 
   };
   const key = (x: number, y: number) => (x < y ? x * 10 + y : y * 10 + x);
 
-  const attempt = (cap: number): CrossMatchSlot[] | null => {
+  // capSame: giới hạn đối đầu cùng trình (A vs A, B vs B)
+  // capCross: giới hạn đối đầu chéo trình (A_i vs B_j bên kia lưới) — cặp chéo
+  //           đã là đồng đội 1 lần, cap 1 nghĩa là tổng chạm mặt tối đa 2
+  const attempt = (capSame: number, capCross: number): CrossMatchSlot[] | null => {
     const parts: [number, number][] = [];
     for (let i = 0; i < M; i++) for (let a = 0; a < F; a++) parts.push([i, a]);
     const pool = shuffle(parts);
     const aOpp = new Map<number, number>();
     const bOpp = new Map<number, number>();
+    const cOpp = new Map<number, number>(); // key i*10+a (không đối xứng theo trình)
     const out: CrossMatchSlot[] = [];
     while (pool.length) {
       const p1 = pool.shift()!;
@@ -427,8 +431,10 @@ export function generateFullPairCross(M: number, F: number): CrossMatchSlot[] | 
         if (p2[0] === p1[0] || p2[1] === p1[1]) continue;
         const ca = aOpp.get(key(p1[0], p2[0])) ?? 0;
         const cb = bOpp.get(key(p1[1], p2[1])) ?? 0;
-        if (ca >= cap || cb >= cap) continue;
-        const score = ca + cb + Math.random();
+        const cx1 = cOpp.get(p1[0] * 10 + p2[1]) ?? 0;
+        const cx2 = cOpp.get(p2[0] * 10 + p1[1]) ?? 0;
+        if (ca >= capSame || cb >= capSame || cx1 >= capCross || cx2 >= capCross) continue;
+        const score = ca + cb + cx1 + cx2 + Math.random();
         if (score < bestScore) {
           bestScore = score;
           bestIdx = k;
@@ -438,15 +444,17 @@ export function generateFullPairCross(M: number, F: number): CrossMatchSlot[] | 
       const p2 = pool.splice(bestIdx, 1)[0]!;
       aOpp.set(key(p1[0], p2[0]), (aOpp.get(key(p1[0], p2[0])) ?? 0) + 1);
       bOpp.set(key(p1[1], p2[1]), (bOpp.get(key(p1[1], p2[1])) ?? 0) + 1);
+      cOpp.set(p1[0] * 10 + p2[1], (cOpp.get(p1[0] * 10 + p2[1]) ?? 0) + 1);
+      cOpp.set(p2[0] * 10 + p1[1], (cOpp.get(p2[0] * 10 + p1[1]) ?? 0) + 1);
       out.push({ teamA: [p1[0], p1[1]], teamB: [p2[0], p2[1]] });
     }
     return out;
   };
 
   let built: CrossMatchSlot[] | null = null;
-  outer: for (const cap of [2, 3, 99]) {
+  outer: for (const [capSame, capCross] of [[2, 1], [2, 2], [3, 2], [3, 3], [99, 99]] as const) {
     for (let t = 0; t < 800; t++) {
-      built = attempt(cap);
+      built = attempt(capSame, capCross);
       if (built) break outer;
     }
   }
