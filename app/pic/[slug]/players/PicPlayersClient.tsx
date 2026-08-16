@@ -162,7 +162,7 @@ export default function PicPlayersClient({
 
   const validGroupCounts = useMemo(() => {
     if (!crossTierMode) {
-      const maxSize = typedMode ? 16 : 10; // trận cùng loại: 1 bảng chứa được tới 16 người
+      const maxSize = 16; // 1 bảng chung hỗ trợ tới 16 người (lịch 11-16 đã có)
       const result: number[] = [];
       for (let g = 1; g <= Math.ceil(pc / 4); g++) {
         const sizes = snakePreview(pc, g);
