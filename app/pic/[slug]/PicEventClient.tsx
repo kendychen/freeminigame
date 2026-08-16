@@ -310,7 +310,7 @@ function MatchCard({ match, players, groupLabel, onClick, onDirectScore, refUrl,
 // ── FinalDraw: xoay cặp trước Chung Kết / Hạng 3 ──────────────────────────────
 
 function FinalDraw({
-  label, pool, players, storageKey, currentPairs, onConfirm, confirming, genders,
+  label, pool, players, storageKey, currentPairs, onConfirm, confirming, genders, tiers,
 }: {
   label: string;
   pool: string[];
@@ -320,6 +320,7 @@ function FinalDraw({
   onConfirm: (pairs: [[string, string], [string, string]]) => void;
   confirming: boolean;
   genders?: Record<string, "M" | "F">;
+  tiers?: Record<string, "A" | "B">;
 }) {
   const [pairs, setPairs] = useState<[[string, string], [string, string]] | null>(null);
   const [isDone, setIsDone] = useState(false);
@@ -328,6 +329,17 @@ function FinalDraw({
   const [progress, setProgress] = useState(0);
 
   const byId = (id: string) => players.find((p) => p.id === id);
+
+  // Chế độ xoay: random / đôi nam nữ / đôi A+B — tuỳ tag của 4 người trong pool
+  const poolMales = pool.filter((id) => genders?.[id] === "M");
+  const poolFemales = pool.filter((id) => genders?.[id] === "F");
+  const poolTierA = pool.filter((id) => tiers?.[id] === "A");
+  const poolTierB = pool.filter((id) => tiers?.[id] === "B");
+  const canGender = poolMales.length === 2 && poolFemales.length === 2;
+  const canTier = poolTierA.length === 2 && poolTierB.length === 2;
+  const [drawPairMode, setDrawPairMode] = useState<"random" | "gender" | "tier">(
+    canGender ? "gender" : canTier ? "tier" : "random",
+  );
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
@@ -349,14 +361,15 @@ function FinalDraw({
     const progId = setInterval(() => setProgress(Math.min(99, ((Date.now() - start) / DURATION) * 100)), 50);
     setTimeout(() => {
       clearInterval(tickId); clearInterval(progId);
-      // Đủ 2 nam + 2 nữ → luôn xoay thành cặp nam-nữ; thiếu thì random thuần
-      const males = pool.filter((id) => genders?.[id] === "M");
-      const females = pool.filter((id) => genders?.[id] === "F");
       let result: [[string, string], [string, string]];
-      if (males.length === 2 && females.length === 2) {
-        const m = [...males].sort(() => Math.random() - 0.5);
-        const f = [...females].sort(() => Math.random() - 0.5);
+      if (drawPairMode === "gender" && canGender) {
+        const m = [...poolMales].sort(() => Math.random() - 0.5);
+        const f = [...poolFemales].sort(() => Math.random() - 0.5);
         result = [[m[0]!, f[0]!], [m[1]!, f[1]!]];
+      } else if (drawPairMode === "tier" && canTier) {
+        const a = [...poolTierA].sort(() => Math.random() - 0.5);
+        const b = [...poolTierB].sort(() => Math.random() - 0.5);
+        result = [[a[0]!, b[0]!], [a[1]!, b[1]!]];
       } else {
         const s = [...pool].sort(() => Math.random() - 0.5);
         result = [[s[0]!, s[1]!], [s[2]!, s[3]!]];
@@ -390,16 +403,49 @@ function FinalDraw({
               <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium">
                 {pair.map((id, idx) => {
                   const g = genders?.[id];
+                  const t = tiers?.[id];
                   return (
                     <span key={id} className="inline-flex items-center gap-1">
                       {idx > 0 && <span className="opacity-50">&</span>}
                       {byId(id)?.name ?? "?"}
-                      {g && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${g === "M" ? "bg-blue-500/20 text-blue-600" : "bg-pink-500/20 text-pink-600"}`}>{g === "M" ? "Nam" : "Nữ"}</span>}
+                      {g ? (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${g === "M" ? "bg-blue-500/20 text-blue-600" : "bg-pink-500/20 text-pink-600"}`}>{g === "M" ? "Nam" : "Nữ"}</span>
+                      ) : t ? (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${t === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>{t}</span>
+                      ) : null}
                     </span>
                   );
                 })}
               </span>
             </div>
+          ))}
+        </div>
+      )}
+
+      {!isDone && !isDrawing && (
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              { v: "random", label: "🎲 Random", ok: true, hint: "" },
+              { v: "gender", label: "💑 Đôi nam nữ", ok: canGender, hint: "cần đúng 2 nam + 2 nữ (gán giới tính)" },
+              { v: "tier", label: "Ⓐ+Ⓑ Đôi A+B", ok: canTier, hint: "cần đúng 2 A + 2 B" },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.v}
+              onClick={() => m.ok && setDrawPairMode(m.v)}
+              disabled={!m.ok}
+              title={!m.ok ? m.hint : undefined}
+              className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                drawPairMode === m.v
+                  ? "border-primary bg-primary/10 text-primary"
+                  : m.ok
+                    ? "hover:border-primary/50"
+                    : "cursor-not-allowed opacity-40"
+              }`}
+            >
+              {m.label}
+            </button>
           ))}
         </div>
       )}
@@ -443,11 +489,16 @@ function FinalDraw({
               <span className="flex flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-semibold">
                 {pair.map((id, idx) => {
                   const g = genders?.[id];
+                  const t = tiers?.[id];
                   return (
                     <span key={id} className="inline-flex items-center gap-1">
                       {idx > 0 && <span className="opacity-50">&</span>}
                       {byId(id)?.name ?? "?"}
-                      {g && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${g === "M" ? "bg-blue-500/20 text-blue-600" : "bg-pink-500/20 text-pink-600"}`}>{g === "M" ? "Nam" : "Nữ"}</span>}
+                      {g ? (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${g === "M" ? "bg-blue-500/20 text-blue-600" : "bg-pink-500/20 text-pink-600"}`}>{g === "M" ? "Nam" : "Nữ"}</span>
+                      ) : t ? (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${t === "A" ? "bg-blue-500/20 text-blue-600" : "bg-orange-500/20 text-orange-600"}`}>{t}</span>
+                      ) : null}
                     </span>
                   );
                 })}
@@ -1549,6 +1600,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                 pool={semiWinners}
                 players={players}
                 genders={genders}
+                tiers={effTiers}
                 storageKey={`pic-final-draw-${eventId}`}
                 currentPairs={finalMatchKO?.a1 ? [[finalMatchKO.a1, finalMatchKO.a2], [finalMatchKO.b1, finalMatchKO.b2]] : undefined}
                 confirming={pending}
@@ -1566,6 +1618,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                   pool={semiLosers}
                   players={players}
                   genders={genders}
+                  tiers={effTiers}
                   storageKey={`pic-third-draw-${eventId}`}
                   currentPairs={thirdMatchKO.a1 ? [[thirdMatchKO.a1, thirdMatchKO.a2], [thirdMatchKO.b1, thirdMatchKO.b2]] : undefined}
                   confirming={pending}
