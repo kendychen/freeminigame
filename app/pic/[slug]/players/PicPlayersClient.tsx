@@ -124,6 +124,8 @@ export default function PicPlayersClient({
   const [genderQuota, setGenderQuota] = useState(false);
   // Trận cùng loại: đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ
   const [typedMode, setTypedMode] = useState(false);
+  // Trận cùng loại đầy đủ: mỗi VĐV bắt cặp mọi đồng đội có thể (mặc định) vs gọn 4 trận
+  const [typedFull, setTypedFull] = useState(true);
   // Bảng nam & bảng nữ riêng: bảng nam đánh đôi nam, bảng nữ đánh đôi nữ,
   // vòng trong bốc cặp đôi nam-nữ
   const [splitGender, setSplitGender] = useState(false);
@@ -283,6 +285,20 @@ export default function PicPlayersClient({
     return null;
   }, [crossTierMode, untaggedCount, aCount, bCount, validGroupCounts.length]);
 
+  // Ước lượng số trận lịch cùng loại đầy đủ (nam snake + nữ snake đảo — khớp server)
+  const typedFullCounts = useMemo<number[] | null>(() => {
+    if (!typedMode || !typedFull || !allGendered) return null;
+    const mS = snakePreview(maleCount, effG);
+    const fS = snakePreview(femaleCount, effG).reverse();
+    return mS.map((m, i) => {
+      const f = fS[i] ?? 0;
+      const md = m >= 4 ? Math.floor((m * (m - 1)) / 4) : 0;
+      const wd = f >= 4 ? Math.floor((f * (f - 1)) / 4) : 0;
+      const xd = m >= 2 && f >= 2 ? Math.floor((m * f) / 2) : 0;
+      return md + wd + xd;
+    });
+  }, [typedMode, typedFull, allGendered, maleCount, femaleCount, effG]);
+
   const splitError = useMemo(() => {
     if (!splitGender) return null;
     if (!allGendered) return `Còn ${ungenderedCount} VĐV chưa gán Nam/Nữ`;
@@ -388,9 +404,14 @@ export default function PicPlayersClient({
     if (typedMode) {
       // Trận cùng loại: chia bảng cân giới + sinh lịch MD/WD/XD trong 1 bước
       startTransition(async () => {
-        const res = await generateTypedGroupMatches(eventId, effG, advancePerGroup);
+        const res = await generateTypedGroupMatches(eventId, effG, advancePerGroup, typedFull);
         if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
-        toast({ title: "Đã tạo lịch trận cùng loại!", description: "Đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ" });
+        toast({
+          title: "Đã tạo lịch trận cùng loại!",
+          description: typedFull
+            ? "Lịch đầy đủ — mỗi VĐV bắt cặp mọi đồng đội có thể"
+            : "Đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ",
+        });
         router.refresh();
       });
       return;
@@ -805,7 +826,8 @@ export default function PicPlayersClient({
                     <p className="text-sm font-medium">Chế độ trận cùng loại 🔵🩷💑</p>
                     <p className="text-xs text-muted-foreground">
                       Đôi nam đấu đôi nam · đôi nữ đấu đôi nữ · đôi nam-nữ đấu đôi nam-nữ.
-                      Nam nữ lệch nhau vẫn chạy, hỗ trợ 1 bảng tới 16 người, mỗi VĐV đúng 4 trận.
+                      Nam nữ lệch nhau vẫn chạy, hỗ trợ 1 bảng tới 16 người.
+                      Chọn lịch <strong>đầy đủ</strong> (bắt cặp mọi người) hoặc <strong>gọn</strong> (4 trận/VĐV) bên dưới.
                     </p>
                   </div>
                   <div
@@ -815,6 +837,36 @@ export default function PicPlayersClient({
                     <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${typedMode ? "translate-x-5" : "translate-x-0.5"}`} />
                   </div>
                 </label>
+              )}
+
+              {/* Trận cùng loại: chọn lịch đầy đủ vs gọn */}
+              {!crossTierMode && typedMode && (
+                <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-xs font-semibold text-primary">Số trận mỗi VĐV</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setTypedFull(true)}
+                      className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${typedFull ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}
+                    >
+                      Đầy đủ — bắt cặp mọi người
+                    </button>
+                    <button
+                      onClick={() => setTypedFull(false)}
+                      className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${!typedFull ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/50"}`}
+                    >
+                      Gọn — 4 trận/VĐV
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {typedFull
+                      ? "Mỗi VĐV lần lượt bắt cặp TẤT CẢ đồng đội có thể: nam cặp từng nam khác (đôi nam) + từng nữ (đôi nam-nữ), nữ cặp từng nữ khác + từng nam. Số cặp một loại lẻ thì bỏ 1 cặp."
+                      : "Mỗi VĐV đánh đúng 4 trận, chia đều cả 3 loại trận."}
+                    {typedFull && typedFullCounts && typedFullCounts.length > 0 && (
+                      <> {" "}≈ <strong>{typedFullCounts.reduce((s, c) => s + c, 0)} trận</strong>
+                      {typedFullCounts.length > 1 && ` (${typedFullCounts.map((c, i) => `Bảng ${String.fromCharCode(65 + i)}: ${c}`).join(" · ")})`}.</>
+                    )}
+                  </p>
+                </div>
               )}
 
               {/* Bảng nam & bảng nữ riêng: bảng nam đôi nam · bảng nữ đôi nữ · vòng trong đôi nam-nữ */}

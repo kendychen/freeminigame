@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/auth";
 import { ensureSafeSlug, withRandomSuffix } from "@/lib/slug";
-import { generateGroupSchedule, generateCrossSchedule, generateGenderTypedSchedule, generateFullPairCross } from "@/lib/pic-schedule";
+import { generateGroupSchedule, generateCrossSchedule, generateGenderTypedSchedule, generateFullTypedSchedule, generateFullPairCross } from "@/lib/pic-schedule";
 import type { PicConfig, PicPlayer, PicGroup, PicMatch, PicState, PicStage } from "@/stores/pic-tournament";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -444,11 +444,13 @@ export async function generatePicGroups(
  * Chế độ "trận cùng loại": đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ.
  * Chia bảng cân giới (nam/nữ rải đều), lịch sinh theo số nam/nữ thực tế của từng bảng.
  * Hỗ trợ 1 bảng tới 16 người. Sinh bảng + lịch trong 1 bước (không qua State 2).
+ * full = true: lịch ĐẦY ĐỦ — mỗi VĐV bắt cặp mọi đồng đội có thể (thay vì đúng 4 trận).
  */
 export async function generateTypedGroupMatches(
   eventId: string,
   groupCount: number,
   advancePerGroup: number,
+  full = false,
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -503,10 +505,14 @@ export async function generateTypedGroupMatches(
     const genders = slotIds.map(
       (id) => (genderMap[id] === "M" ? "M" : "F") as "M" | "F",
     );
-    const schedule = generateGenderTypedSchedule(genders);
+    const schedule = full
+      ? generateFullTypedSchedule(genders)
+      : generateGenderTypedSchedule(genders);
     if (!schedule)
       return {
-        error: `Không xếp được lịch cùng loại cho bảng ${String.fromCharCode(65 + gi)} — thử đổi số bảng hoặc kiểm tra tỉ lệ nam/nữ`,
+        error: full
+          ? `Không xếp được lịch đầy đủ cho bảng ${String.fromCharCode(65 + gi)} (bảng chỉ có 1 nam hoặc 1 nữ thì không xếp được) — thử đổi số bảng`
+          : `Không xếp được lịch cùng loại cho bảng ${String.fromCharCode(65 + gi)} — thử đổi số bảng hoặc kiểm tra tỉ lệ nam/nữ`,
       };
 
     const label = String.fromCharCode(65 + gi);

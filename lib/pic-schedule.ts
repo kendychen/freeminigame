@@ -359,6 +359,121 @@ export function generateGenderTypedSchedule(
 }
 
 /**
+ * Lịch "trận cùng loại ĐẦY ĐỦ": mỗi VĐV bắt cặp MỌI đồng đội có thể —
+ * nam cặp từng nam khác (đôi nam, cần ≥4 nam) + từng nữ (đôi nam-nữ);
+ * nữ cặp từng nữ khác (đôi nữ, cần ≥4 nữ) + từng nam.
+ * Số cặp một loại lẻ → bỏ 1 cặp ngẫu nhiên (2 VĐV đó ít hơn 1 trận).
+ * Đối thủ rải đều (cap nới dần), thứ tự trận rải để nghỉ đều.
+ * Trả null nếu bất khả thi (1 nam hoặc 1 nữ đơn độc, hoặc n ngoài 4–16).
+ */
+export function generateFullTypedSchedule(genders: ("M" | "F")[]): MatchSlot[] | null {
+  const males: number[] = [];
+  const females: number[] = [];
+  genders.forEach((g, i) => (g === "M" ? males : females).push(i));
+  const M = males.length;
+  const F = females.length;
+  const n = M + F;
+  if (n < 4 || n > 16) return null;
+  // 1 người lẻ giới: không đánh được đôi nam/nữ (thiếu người) lẫn nam-nữ (cần 2 đội nam-nữ)
+  if (M === 1 || F === 1) return null;
+
+  const key = (a: number, b: number) => (a < b ? a * 100 + b : b * 100 + a);
+  const shuffle = <T,>(arr: T[]): T[] => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+  };
+
+  const samePairs = (pool: number[]): [number, number][] => {
+    const out: [number, number][] = [];
+    for (let i = 0; i < pool.length; i++)
+      for (let j = i + 1; j < pool.length; j++) out.push([pool[i]!, pool[j]!]);
+    return out;
+  };
+  // Mỗi loại chỉ khả thi khi đủ người cho 1 trận (đôi nam cần 4 nam, nam-nữ cần 2+2)
+  const mdPairs = M >= 4 ? samePairs(males) : [];
+  const wdPairs = F >= 4 ? samePairs(females) : [];
+  const xdPairs: [number, number][] =
+    M >= 2 && F >= 2
+      ? males.flatMap((m) => females.map((f) => [m, f] as [number, number]))
+      : [];
+  if (mdPairs.length + wdPairs.length + xdPairs.length < 2) return null;
+
+  const tryBuild = (cap: number): MatchSlot[] | null => {
+    const opp = new Map<number, number>();
+    const out: MatchSlot[] = [];
+    for (const pool of [mdPairs, wdPairs, xdPairs]) {
+      if (pool.length === 0) continue;
+      const rem = shuffle(pool);
+      if (rem.length % 2 === 1) rem.pop(); // lẻ → bỏ 1 cặp (ngẫu nhiên theo lần thử)
+      while (rem.length) {
+        const a = rem.shift()!;
+        let bestIdx = -1;
+        let bestCost = Infinity;
+        for (let i = 0; i < rem.length; i++) {
+          const b = rem[i]!;
+          if (b[0] === a[0] || b[0] === a[1] || b[1] === a[0] || b[1] === a[1]) continue;
+          const ks = [key(a[0], b[0]), key(a[0], b[1]), key(a[1], b[0]), key(a[1], b[1])];
+          let mx = 0;
+          let sum = 0;
+          for (const k of ks) {
+            const c = opp.get(k) ?? 0;
+            if (c > mx) mx = c;
+            sum += c;
+          }
+          if (mx >= cap) continue;
+          const cost = sum + Math.random();
+          if (cost < bestCost) {
+            bestCost = cost;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx < 0) return null;
+        const b = rem.splice(bestIdx, 1)[0]!;
+        for (const k of [key(a[0], b[0]), key(a[0], b[1]), key(a[1], b[0]), key(a[1], b[1])])
+          opp.set(k, (opp.get(k) ?? 0) + 1);
+        out.push({ a: [a[0], a[1]], b: [b[0], b[1]] });
+      }
+    }
+    return out.length > 0 ? out : null;
+  };
+
+  let built: MatchSlot[] | null = null;
+  outer: for (const cap of [2, 3, 4, 99]) {
+    for (let t = 0; t < 400; t++) {
+      built = tryBuild(cap);
+      if (built) break outer;
+    }
+  }
+  if (!built) return null;
+
+  // Rải thứ tự: hạn chế 1 người đánh liên tiếp
+  const order: MatchSlot[] = [];
+  const rem = [...built];
+  let prev: number[] = [];
+  while (rem.length) {
+    let bestIdx = 0;
+    let bestScore = Infinity;
+    for (let i = 0; i < rem.length; i++) {
+      const ps = [...rem[i]!.a, ...rem[i]!.b];
+      const overlap = ps.filter((p) => prev.includes(p)).length;
+      const score = overlap * 10 + Math.random();
+      if (score < bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+    const next = rem.splice(bestIdx, 1)[0]!;
+    order.push(next);
+    prev = [...next.a, ...next.b];
+  }
+  return order;
+}
+
+/**
  * Cross-tier schedule: teamA = (A-tier[aIdx], B-tier[bIdx]), same for teamB.
  * Guarantees each A-player partners exactly once with each B-player (Latin square).
  * n = number of players per tier (2 or 4).
