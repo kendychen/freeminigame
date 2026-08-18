@@ -10,7 +10,7 @@ import { toast } from "@/components/ui/toast";
 import {
   addPicPlayer, removePicPlayer, updatePicPlayer, bulkAddPicPlayers,
   generatePicGroups, generateCrossTierGroupMatches, generateNormalGroupMatches,
-  generateCrossTierGroupsFull, generateTypedGroupMatches, createPicDraw, applyPicDraw, resetPicGroups,
+  generateCrossTierGroupsFull, generateTypedGroupMatches, generateSplitGenderGroups, createPicDraw, applyPicDraw, resetPicGroups,
   createPicIndividualDrawSession, cancelPicIndividualDrawSession,
   setPicScheduleMode, updatePicConfig,
 } from "@/app/actions/pic";
@@ -124,6 +124,11 @@ export default function PicPlayersClient({
   const [genderQuota, setGenderQuota] = useState(false);
   // Trận cùng loại: đôi nam vs đôi nam · đôi nữ vs đôi nữ · nam-nữ vs nam-nữ
   const [typedMode, setTypedMode] = useState(false);
+  // Bảng nam & bảng nữ riêng: bảng nam đánh đôi nam, bảng nữ đánh đôi nữ,
+  // vòng trong bốc cặp đôi nam-nữ
+  const [splitGender, setSplitGender] = useState(false);
+  const [maleGroupCount, setMaleGroupCount] = useState(1);
+  const [femaleGroupCount, setFemaleGroupCount] = useState(1);
   // Vớt: lấy thêm N người hạng kế tiếp có thành tích tốt nhất liên bảng
   const [bestExtra, setBestExtra] = useState(initialBestExtra ?? 0);
 
@@ -194,15 +199,38 @@ export default function PicPlayersClient({
 
   const effG = validGroupCounts.includes(groupCount) ? groupCount : (validGroupCounts[0] ?? 1);
 
+  // Split mode: số bảng hợp lệ cho từng giới (mỗi bảng 4–16 người)
+  const genderGroupOptions = (n: number) => {
+    const result: number[] = [];
+    for (let g = 1; g <= Math.floor(n / 4); g++) {
+      const sizes = snakePreview(n, g);
+      if (sizes.length > 0 && Math.min(...sizes) >= 4 && Math.max(...sizes) <= 16)
+        result.push(g);
+    }
+    return result;
+  };
+  const validMaleGroupCounts = useMemo(
+    () => (splitGender ? genderGroupOptions(maleCount) : []),
+    [splitGender, maleCount],
+  );
+  const validFemaleGroupCounts = useMemo(
+    () => (splitGender ? genderGroupOptions(femaleCount) : []),
+    [splitGender, femaleCount],
+  );
+  const effMG = validMaleGroupCounts.includes(maleGroupCount) ? maleGroupCount : (validMaleGroupCounts[0] ?? 1);
+  const effFG = validFemaleGroupCounts.includes(femaleGroupCount) ? femaleGroupCount : (validFemaleGroupCounts[0] ?? 1);
+
   useEffect(() => { setPreview(null); }, [categories, effG]);
 
   const groupSizes = useMemo(() => {
+    if (splitGender)
+      return [...snakePreview(maleCount, effMG), ...snakePreview(femaleCount, effFG)];
     if (!crossTierMode) return snakePreview(pc, effG);
     if (aCount < 2 || bCount < 2 || validGroupCounts.length === 0) return [];
     const aS = snakePreview(aCount, effG);
     const bS = snakePreview(bCount, effG);
     return aS.map((a, i) => a + (bS[i] ?? 0));
-  }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length]);
+  }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length, splitGender, maleCount, femaleCount, effMG, effFG]);
 
   const tierSplits = useMemo(
     () =>
@@ -212,23 +240,26 @@ export default function PicPlayersClient({
     [crossTierMode, aCount, bCount, effG],
   );
 
+  // Tổng số bảng dùng để tính phương án vào vòng trong (split: bảng nam + bảng nữ)
+  const advanceG = splitGender ? effMG + effFG : effG;
+
   const validAdvanceOptions = useMemo<{ v: number; e: number }[]>(() => {
     if (crossTierMode || groupSizes.length === 0) return [{ v: 1, e: 0 }];
     const minSize = Math.min(...groupSizes);
     const opts: { v: number; e: number }[] = [];
     for (let v = 1; v < minSize; v++) {
-      if ((effG * v) % 2 === 0 && effG * v >= 2) opts.push({ v, e: 0 });
+      if ((advanceG * v) % 2 === 0 && advanceG * v >= 2) opts.push({ v, e: 0 });
       // Vớt: +e người hạng (v+1) có thành tích tốt nhất liên bảng, tròn nhánh 4/8/16 người
       if (v + 1 <= minSize) {
         for (const target of [4, 8, 16]) {
-          const e = target - effG * v;
-          if (e >= 1 && e < effG) opts.push({ v, e });
+          const e = target - advanceG * v;
+          if (e >= 1 && e < advanceG) opts.push({ v, e });
         }
       }
     }
-    opts.sort((a, b) => (effG * a.v + a.e) - (effG * b.v + b.e) || a.v - b.v);
+    opts.sort((a, b) => (advanceG * a.v + a.e) - (advanceG * b.v + b.e) || a.v - b.v);
     return opts.length > 0 ? opts : [{ v: 1, e: 0 }];
-  }, [groupSizes, effG, crossTierMode]);
+  }, [groupSizes, advanceG, crossTierMode]);
 
   useEffect(() => {
     if (crossTierMode || groupSizes.length === 0) return;
@@ -241,7 +272,7 @@ export default function PicPlayersClient({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effG, crossTierMode]);
+  }, [advanceG, crossTierMode, splitGender]);
 
   const crossTierError = useMemo(() => {
     if (!crossTierMode) return null;
@@ -252,8 +283,20 @@ export default function PicPlayersClient({
     return null;
   }, [crossTierMode, untaggedCount, aCount, bCount, validGroupCounts.length]);
 
+  const splitError = useMemo(() => {
+    if (!splitGender) return null;
+    if (!allGendered) return `Còn ${ungenderedCount} VĐV chưa gán Nam/Nữ`;
+    if (maleCount < 4 || femaleCount < 4)
+      return `Cần ít nhất 4 nam và 4 nữ (Nam: ${maleCount}, Nữ: ${femaleCount})`;
+    if (validMaleGroupCounts.length === 0 || validFemaleGroupCounts.length === 0)
+      return "Không chia được bảng 4–16 người mỗi giới";
+    return null;
+  }, [splitGender, allGendered, ungenderedCount, maleCount, femaleCount, validMaleGroupCounts.length, validFemaleGroupCounts.length]);
+
   const canGenerate = pc >= 4 && !hasGroups && (
-    crossTierMode ? crossTierError === null : validGroupCounts.length > 0
+    crossTierMode ? crossTierError === null
+    : splitGender ? splitError === null
+    : validGroupCounts.length > 0
   ) && (!typedMode || allGendered);
 
   // State 2: validate A/B per group
@@ -329,6 +372,15 @@ export default function PicPlayersClient({
   const onDrawOrPreview = () => {
     if (!canGenerate) return;
     if (crossTierMode) { setPreview(computePreview()); return; }
+    if (splitGender) {
+      startTransition(async () => {
+        const res = await generateSplitGenderGroups(eventId, effMG, effFG, advancePerGroup);
+        if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
+        toast({ title: "Đã chia bảng nam & bảng nữ!", description: "Bảng nam đôi nam · bảng nữ đôi nữ · vòng trong bốc đôi nam-nữ." });
+        router.refresh();
+      });
+      return;
+    }
     if ((genderQuota || typedMode) && !allGendered) {
       toast({ title: "Chưa gán đủ Nam/Nữ", description: `Còn ${ungenderedCount} VĐV chưa gán`, variant: "destructive" });
       return;
@@ -757,10 +809,30 @@ export default function PicPlayersClient({
                     </p>
                   </div>
                   <div
-                    onClick={() => setTypedMode(v => !v)}
+                    onClick={() => setTypedMode(v => { const nv = !v; if (nv) setSplitGender(false); return nv; })}
                     className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${typedMode ? "bg-primary" : "bg-muted"}`}
                   >
                     <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${typedMode ? "translate-x-5" : "translate-x-0.5"}`} />
+                  </div>
+                </label>
+              )}
+
+              {/* Bảng nam & bảng nữ riêng: bảng nam đôi nam · bảng nữ đôi nữ · vòng trong đôi nam-nữ */}
+              {!crossTierMode && (
+                <label className="flex cursor-pointer items-center justify-between rounded-lg border bg-card p-3">
+                  <div>
+                    <p className="text-sm font-medium">Bảng nam & bảng nữ riêng 🔵🩷</p>
+                    <p className="text-xs text-muted-foreground">
+                      Chia bảng toàn nam và bảng toàn nữ — bảng nam đánh đôi nam, bảng nữ đánh đôi nữ.
+                      Vòng trong lấy top mỗi bảng (+ vớt nếu chọn) rồi bốc cặp đôi nam-nữ.
+                      Chọn số bảng từng giới, hỗ trợ 1 bảng nam + 1 bảng nữ.
+                    </p>
+                  </div>
+                  <div
+                    onClick={() => setSplitGender(v => { const nv = !v; if (nv) { setTypedMode(false); setGenderQuota(false); } return nv; })}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${splitGender ? "bg-primary" : "bg-muted"}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${splitGender ? "translate-x-5" : "translate-x-0.5"}`} />
                   </div>
                 </label>
               )}
@@ -780,7 +852,7 @@ export default function PicPlayersClient({
                       <span className="rounded bg-pink-500/15 px-2 py-0.5 text-pink-600">Nữ: {femaleCount}</span>
                     </div>
                   </div>
-                  {!typedMode && (
+                  {!typedMode && !splitGender && (
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
@@ -791,10 +863,13 @@ export default function PicPlayersClient({
                       Giới hạn Nam/Nữ mỗi bảng khi quay (chia đều nam, đều nữ vào các bảng)
                     </label>
                   )}
-                  {(genderQuota || typedMode) && !allGendered && (
+                  {(genderQuota || typedMode || splitGender) && !allGendered && (
                     <p className="text-xs font-medium text-destructive">
                       Còn {ungenderedCount} VĐV chưa gán Nam/Nữ — gán đủ mới quay được
                     </p>
+                  )}
+                  {splitGender && allGendered && splitError && (
+                    <p className="text-xs font-medium text-destructive">{splitError}</p>
                   )}
                   {genderQuota && allGendered && (
                     <p className="text-xs text-muted-foreground">
@@ -868,6 +943,45 @@ export default function PicPlayersClient({
                       <p className="text-sm font-medium">Tổng VĐV</p>
                       <div className="flex h-10 items-center rounded-md border bg-secondary/30 px-3 text-sm">{pc} người</div>
                     </div>
+                    {splitGender ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Số bảng nam / nữ</p>
+                        {validMaleGroupCounts.length > 0 && validFemaleGroupCounts.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="w-8 shrink-0 text-xs font-bold text-blue-600">Nam</span>
+                              {validMaleGroupCounts.map(g => {
+                                const sizes = snakePreview(maleCount, g);
+                                const unique = [...new Set(sizes)].sort((a, b) => a - b);
+                                const tag = unique.length === 1 ? `${unique[0]}ng` : `${unique[0]}–${unique[unique.length - 1]}ng`;
+                                return (
+                                  <button key={g} onClick={() => setMaleGroupCount(g)}
+                                    className={`rounded-md border px-2.5 py-1.5 text-sm font-semibold transition-colors ${effMG === g ? "border-blue-500 bg-blue-500/10 text-blue-600" : "hover:border-blue-400"}`}>
+                                    {g} bảng <span className="text-xs font-normal opacity-60">{tag}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="w-8 shrink-0 text-xs font-bold text-pink-600">Nữ</span>
+                              {validFemaleGroupCounts.map(g => {
+                                const sizes = snakePreview(femaleCount, g);
+                                const unique = [...new Set(sizes)].sort((a, b) => a - b);
+                                const tag = unique.length === 1 ? `${unique[0]}ng` : `${unique[0]}–${unique[unique.length - 1]}ng`;
+                                return (
+                                  <button key={g} onClick={() => setFemaleGroupCount(g)}
+                                    className={`rounded-md border px-2.5 py-1.5 text-sm font-semibold transition-colors ${effFG === g ? "border-pink-500 bg-pink-500/10 text-pink-600" : "hover:border-pink-400"}`}>
+                                    {g} bảng <span className="text-xs font-normal opacity-60">{tag}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Cần ≥4 nam và ≥4 nữ (đã gán đủ giới tính)</p>
+                        )}
+                      </div>
+                    ) : (
                     <div className="space-y-2">
                       <p className="text-sm font-medium">Số bảng</p>
                       {validGroupCounts.length > 0 ? (
@@ -890,13 +1004,14 @@ export default function PicPlayersClient({
                         <p className="text-sm text-muted-foreground">{crossTierMode ? "Tag đủ A=B trước" : "Cần ít nhất 4 VĐV"}</p>
                       )}
                     </div>
+                    )}
                     {!crossTierMode && (
                       <div className="space-y-2">
                         <p className="text-sm font-medium">Vào vòng trong</p>
                         <div className="flex flex-wrap gap-1.5">
                           {validAdvanceOptions.map(o => {
                             const selected = advancePerGroup === o.v && bestExtra === o.e;
-                            const total = effG * o.v + o.e;
+                            const total = advanceG * o.v + o.e;
                             return (
                               <button
                                 key={`${o.v}-${o.e}`}
@@ -924,10 +1039,13 @@ export default function PicPlayersClient({
                   </div>
 
                   {groupSizes.length > 0 && (
-                    <div className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${effG <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
+                    <div className={`grid gap-2 rounded-xl border bg-muted/30 p-3 ${(splitGender ? effMG + effFG : effG) <= 4 ? "grid-cols-2" : "grid-cols-3"}`}>
                       {groupSizes.map((size, gi) => (
                         <div key={gi} className="space-y-0.5">
-                          <p className="text-xs font-bold text-primary">Bảng {String.fromCharCode(65 + gi)}</p>
+                          <p className={`text-xs font-bold ${splitGender ? (gi < effMG ? "text-blue-600" : "text-pink-600") : "text-primary"}`}>
+                            Bảng {String.fromCharCode(65 + gi)}
+                            {splitGender && (gi < effMG ? " · Nam" : " · Nữ")}
+                          </p>
                           <p className="text-[11px] text-muted-foreground">
                             {crossTierMode && tierSplits
                               ? `${tierSplits.a[gi] ?? 0}A + ${tierSplits.b[gi] ?? 0}B`
@@ -937,40 +1055,45 @@ export default function PicPlayersClient({
                       ))}
                     </div>
                   )}
+                  {splitGender && effMG !== effFG && (
+                    <p className="text-[11px] font-medium text-amber-600">
+                      ⚠️ Số bảng nam ({effMG}) ≠ số bảng nữ ({effFG}) → số nam/nữ vào vòng trong lệch nhau, sẽ khó bốc cặp đôi nam-nữ. Nên chọn bằng nhau.
+                    </p>
+                  )}
 
                   <div className={`grid gap-2 ${crossTierMode ? "" : "sm:grid-cols-2 lg:grid-cols-4"}`}>
                     <Button onClick={onDrawOrPreview} disabled={!canGenerate || pending || !!drawCode || !!liveDraw} variant="outline" size="lg">
                       <Shuffle className="size-4" />
-                      {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : typedMode ? "🎲 Tạo lịch cùng loại" : "🎲 Quay ngay"}
+                      {pending ? "Đang tạo…" : crossTierMode ? "🎲 Xem phân bảng" : splitGender ? "🎲 Quay bảng nam/nữ" : typedMode ? "🎲 Tạo lịch cùng loại" : "🎲 Quay ngay"}
                     </Button>
                     {!crossTierMode && (
                       <>
                         <Button
                           onClick={() => setIndividualDrawMode(true)}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode || splitGender}
                           variant="outline"
                           size="lg"
                           className="border-primary/40 text-primary hover:bg-primary/10"
-                          title={genderQuota || typedMode ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
+                          title={genderQuota || typedMode || splitGender ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
                         >
                           <Sparkles className="size-4" />
                           ✨ Cá nhân
                         </Button>
                         <Button
                           onClick={onCreateLiveIndividualDraw}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || typedMode}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || typedMode || splitGender}
                           size="lg"
                           className="bg-red-500 hover:bg-red-600 text-white"
-                          title={typedMode ? "Trận cùng loại chưa hỗ trợ bốc LIVE — dùng Tạo lịch cùng loại" : undefined}
+                          title={typedMode || splitGender ? "Chế độ này chưa hỗ trợ bốc LIVE — dùng nút Quay bên trái" : undefined}
                         >
                           <Sparkles className="size-4" />
                           🌐 Cá nhân LIVE
                         </Button>
                         <Button
                           onClick={onCreateLiveDraw}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode || splitGender}
                           size="lg"
-                          title={genderQuota || typedMode ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
+                          title={genderQuota || typedMode || splitGender ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
                         >
                           <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 LIVE bảng"}
                         </Button>

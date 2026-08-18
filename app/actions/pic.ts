@@ -547,6 +547,108 @@ export async function generateTypedGroupMatches(
   return { ok: true };
 }
 
+/**
+ * Chế độ bảng nam & bảng nữ riêng: chia riêng bảng toàn nam và bảng toàn nữ,
+ * mỗi bảng đánh xoay cặp bình thường (bảng nam = đôi nam, bảng nữ = đôi nữ).
+ * Vòng trong lấy top mỗi bảng rồi bốc cặp đôi nam-nữ. Hỗ trợ 1 bảng mỗi giới.
+ * Bảng nam đặt label trước (A, B, ...), bảng nữ nối tiếp.
+ */
+export async function generateSplitGenderGroups(
+  eventId: string,
+  maleGroupCount: number,
+  femaleGroupCount: number,
+  advancePerGroup: number,
+): Promise<{ ok: true } | { error: string }> {
+  const { user } = await requireUser();
+  const svc = createServiceClient();
+
+  const { data: ev } = await svc
+    .from("pic_events")
+    .select("owner_id, config")
+    .eq("id", eventId)
+    .single();
+  if (!ev || ev.owner_id !== user.id) return { error: "unauthorized" };
+
+  const { data: existingGroups } = await svc
+    .from("pic_groups")
+    .select("id")
+    .eq("event_id", eventId);
+  if (existingGroups && existingGroups.length > 0)
+    return { error: "schedule_already_generated" };
+
+  const { data: players } = await svc
+    .from("pic_players")
+    .select("id")
+    .eq("event_id", eventId);
+  if (!players || players.length < 8) return { error: "Cần ít nhất 8 VĐV (≥4 nam + ≥4 nữ)" };
+
+  const genderMap =
+    ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+      ?.playerGenders) ?? {};
+  const males = players.filter((p) => genderMap[p.id] === "M").map((p) => p.id);
+  const females = players.filter((p) => genderMap[p.id] === "F").map((p) => p.id);
+  if (males.length + females.length !== players.length)
+    return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi chia bảng" };
+
+  const shuffleIds = (arr: string[]) => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j]!, a[i]!];
+    }
+    return a;
+  };
+  const maleGroups = snakeDistribute(shuffleIds(males), maleGroupCount);
+  const femaleGroups = snakeDistribute(shuffleIds(females), femaleGroupCount);
+  const groupSlots = [...maleGroups, ...femaleGroups];
+  if (groupSlots.some((g) => g.length < 4 || g.length > 16))
+    return { error: "Mỗi bảng cần 4–16 VĐV — đổi số bảng nam/nữ" };
+
+  const scheduleMode =
+    ((ev.config as { scheduleMode?: "standard" | "hd" })?.scheduleMode) ??
+    "standard";
+  for (let gi = 0; gi < groupSlots.length; gi++) {
+    const label = String.fromCharCode(65 + gi);
+    const { data: grp, error: grpErr } = await svc
+      .from("pic_groups")
+      .insert({ event_id: eventId, label })
+      .select("id")
+      .single();
+    if (grpErr || !grp) return { error: grpErr?.message ?? "group_failed" };
+
+    const slotIds = groupSlots[gi]!;
+    await svc.from("pic_group_players").insert(
+      slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
+
+    const schedule = generateGroupSchedule(slotIds.length, scheduleMode);
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
+    );
+  }
+
+  const cfg = ev.config as Record<string, unknown>;
+  await svc
+    .from("pic_events")
+    .update({
+      config: { ...cfg, advancePerGroup },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId);
+
+  revalidatePath(`/pic`);
+  return { ok: true };
+}
+
 // ── Apply individual self-draw: groups already determined client-side ──────────
 export async function applyIndividualDraw(
   eventId: string,

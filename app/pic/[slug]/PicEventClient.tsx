@@ -717,6 +717,15 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
     return slots;
   }, [groups]);
 
+  // Bảng đơn giới (chế độ bảng nam/nữ riêng) → thêm hậu tố Nam/Nữ cho dễ nhận
+  const groupGenderSuffix = (g: { playerIds: string[] }) => {
+    const src = config.playerGenders ?? {};
+    if (g.playerIds.length === 0) return "";
+    if (g.playerIds.every((id) => src[id] === "M")) return " · Nam";
+    if (g.playerIds.every((id) => src[id] === "F")) return " · Nữ";
+    return "";
+  };
+
   // Fetch referee token on mount
   useEffect(() => {
     getPicRefereeToken(eventId).then((res) => {
@@ -841,10 +850,19 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
   const allGroupPlayersGendered = groups.every((g) =>
     g.playerIds.every((id) => !!genders[id]),
   );
+  // Chế độ bảng nam/nữ riêng: mọi bảng đơn giới → lấy top v thuần mỗi bảng
+  // (bảng nam ra nam, bảng nữ ra nữ — không cần chia giới trong bảng)
+  const allGroupsSingleGender =
+    groups.length > 0 &&
+    groups.every((g) => {
+      const gs = g.playerIds.map((id) => genders[id]);
+      return gs.every((x) => x === "M") || gs.every((x) => x === "F");
+    });
   const mixedAdvance =
     drawMode === "mixed_gender" &&
     config.advancePerGroup % 2 === 0 &&
-    allGroupPlayersGendered;
+    allGroupPlayersGendered &&
+    !allGroupsSingleGender;
 
   const advancingByGroup = groupStandingsAll.map(({ st }) => {
     if (mixedAdvance) {
@@ -1113,7 +1131,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
                   .filter((s): s is NonNullable<typeof s> => !!s);
                 return (
                   <div key={g.id} className="rounded-xl border bg-card px-3 py-2">
-                    <p className="mb-1 text-xs font-bold text-primary">Bảng {g.label}</p>
+                    <p className="mb-1 text-xs font-bold text-primary">Bảng {g.label}{groupGenderSuffix(g)}</p>
                     {top.map((s) => {
                       const g = genders[s.playerId];
                       return (
@@ -1444,6 +1462,24 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
               </div>
             );
           })()}
+          {/* Không tranh hạng 3 → 2 đội thua bán kết đồng hạng 3 */}
+          {!thirdMatch && (() => {
+            const losers = doneKoSemis
+              .filter((m) => m.status === "completed" && m.a1 !== "")
+              .map((m) => (m.scoreA > m.scoreB ? [m.b1, m.b2] : [m.a1, m.a2]));
+            if (losers.length !== 2) return null;
+            return (
+              <div className="rounded-2xl border bg-card p-4 text-center">
+                <p className="text-xl">🥉</p>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">Đồng hạng 3</p>
+                {losers.map((pair, i) => (
+                  <p key={i} className="mt-0.5 font-bold">
+                    {pair.map((id) => byId(id)?.name).join(" & ")}
+                  </p>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Knockout results */}
@@ -1524,7 +1560,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
   type TabId = number | "standings";
   const allTabs: { id: TabId; label: string }[] = multiGroup
-    ? [...groups.map((g, i) => ({ id: i as TabId, label: `Bảng ${g.label}` })), { id: "standings", label: "Xếp hạng" }]
+    ? [...groups.map((g, i) => ({ id: i as TabId, label: `Bảng ${g.label}${groupGenderSuffix(g)}` })), { id: "standings", label: "Xếp hạng" }]
     : [{ id: 0, label: "Trận đấu" }, { id: "standings", label: "Bảng điểm" }];
   const activeTabId: TabId = viewTab === "standings" ? "standings" : activeGroupIdx;
   const activeGroup = groups[activeGroupIdx];
