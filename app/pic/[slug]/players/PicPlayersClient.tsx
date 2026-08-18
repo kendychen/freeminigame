@@ -224,15 +224,28 @@ export default function PicPlayersClient({
 
   useEffect(() => { setPreview(null); }, [categories, effG]);
 
+  // Trận cùng loại: nam/nữ chia ĐỀU số lượng vào các bảng (khớp server —
+  // nam dư dồn bảng đầu, nữ dư dồn bảng cuối, mỗi giới lệch ≤1)
+  const typedSplits = useMemo<{ m: number; f: number }[] | null>(() => {
+    if (!typedMode || !allGendered || effG < 1) return null;
+    const mBase = Math.floor(maleCount / effG), mExtra = maleCount % effG;
+    const fBase = Math.floor(femaleCount / effG), fExtra = femaleCount % effG;
+    return Array.from({ length: effG }, (_, i) => ({
+      m: mBase + (i < mExtra ? 1 : 0),
+      f: fBase + (i >= effG - fExtra ? 1 : 0),
+    }));
+  }, [typedMode, allGendered, maleCount, femaleCount, effG]);
+
   const groupSizes = useMemo(() => {
     if (splitGender)
       return [...snakePreview(maleCount, effMG), ...snakePreview(femaleCount, effFG)];
+    if (!crossTierMode && typedSplits) return typedSplits.map(s => s.m + s.f);
     if (!crossTierMode) return snakePreview(pc, effG);
     if (aCount < 2 || bCount < 2 || validGroupCounts.length === 0) return [];
     const aS = snakePreview(aCount, effG);
     const bS = snakePreview(bCount, effG);
     return aS.map((a, i) => a + (bS[i] ?? 0));
-  }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length, splitGender, maleCount, femaleCount, effMG, effFG]);
+  }, [pc, crossTierMode, effG, aCount, bCount, validGroupCounts.length, splitGender, maleCount, femaleCount, effMG, effFG, typedSplits]);
 
   const tierSplits = useMemo(
     () =>
@@ -285,19 +298,16 @@ export default function PicPlayersClient({
     return null;
   }, [crossTierMode, untaggedCount, aCount, bCount, validGroupCounts.length]);
 
-  // Ước lượng số trận lịch cùng loại đầy đủ (nam snake + nữ snake đảo — khớp server)
+  // Ước lượng số trận lịch cùng loại đầy đủ (theo cách chia đều nam/nữ ở trên)
   const typedFullCounts = useMemo<number[] | null>(() => {
-    if (!typedMode || !typedFull || !allGendered) return null;
-    const mS = snakePreview(maleCount, effG);
-    const fS = snakePreview(femaleCount, effG).reverse();
-    return mS.map((m, i) => {
-      const f = fS[i] ?? 0;
+    if (!typedFull || !typedSplits) return null;
+    return typedSplits.map(({ m, f }) => {
       const md = m >= 4 ? Math.floor((m * (m - 1)) / 4) : 0;
       const wd = f >= 4 ? Math.floor((f * (f - 1)) / 4) : 0;
       const xd = m >= 2 && f >= 2 ? Math.floor((m * f) / 2) : 0;
       return md + wd + xd;
     });
-  }, [typedMode, typedFull, allGendered, maleCount, femaleCount, effG]);
+  }, [typedFull, typedSplits]);
 
   const splitError = useMemo(() => {
     if (!splitGender) return null;
@@ -826,7 +836,7 @@ export default function PicPlayersClient({
                     <p className="text-sm font-medium">Chế độ trận cùng loại 🔵🩷💑</p>
                     <p className="text-xs text-muted-foreground">
                       Đôi nam đấu đôi nam · đôi nữ đấu đôi nữ · đôi nam-nữ đấu đôi nam-nữ.
-                      Nam nữ lệch nhau vẫn chạy, hỗ trợ 1 bảng tới 16 người.
+                      Nam/nữ <strong>chia đều số lượng</strong> vào các bảng, lệch nhau vẫn chạy, hỗ trợ 1 bảng tới 16 người.
                       Chọn lịch <strong>đầy đủ</strong> (bắt cặp mọi người) hoặc <strong>gọn</strong> (4 trận/VĐV) bên dưới.
                     </p>
                   </div>
@@ -1101,7 +1111,9 @@ export default function PicPlayersClient({
                           <p className="text-[11px] text-muted-foreground">
                             {crossTierMode && tierSplits
                               ? `${tierSplits.a[gi] ?? 0}A + ${tierSplits.b[gi] ?? 0}B`
-                              : `${size} người`}
+                              : typedSplits
+                                ? `${typedSplits[gi]?.m ?? 0} nam + ${typedSplits[gi]?.f ?? 0} nữ`
+                                : `${size} người`}
                           </p>
                         </div>
                       ))}

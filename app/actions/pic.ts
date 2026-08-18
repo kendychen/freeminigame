@@ -33,6 +33,35 @@ function newToken(): string {
   return randomBytes(18).toString("base64url");
 }
 
+/**
+ * Chia đều nam/nữ vào g bảng: mỗi giới lệch ≤1 giữa các bảng.
+ * Nam dư dồn bảng đầu, nữ dư dồn bảng cuối → tổng sĩ số các bảng cũng lệch ≤1.
+ */
+function genderBalancedCounts(
+  maleCount: number,
+  femaleCount: number,
+  g: number,
+): { m: number[]; f: number[] } {
+  const mBase = Math.floor(maleCount / g);
+  const mExtra = maleCount % g;
+  const fBase = Math.floor(femaleCount / g);
+  const fExtra = femaleCount % g;
+  return {
+    m: Array.from({ length: g }, (_, i) => mBase + (i < mExtra ? 1 : 0)),
+    f: Array.from({ length: g }, (_, i) => fBase + (i >= g - fExtra ? 1 : 0)),
+  };
+}
+
+function chunkByCounts(ids: string[], counts: number[]): string[][] {
+  const out: string[][] = [];
+  let i = 0;
+  for (const c of counts) {
+    out.push(ids.slice(i, i + c));
+    i += c;
+  }
+  return out;
+}
+
 // ── Load full event state ──────────────────────────────────────────────────────
 
 export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull | null> {
@@ -376,8 +405,7 @@ export async function generatePicGroups(
 
   let groupSlots: string[][];
   if (genderQuota) {
-    // Giới hạn Nam/Nữ mỗi bảng: chia riêng 2 danh sách rồi ghép (nam trước, nữ sau).
-    // Nữ snake đảo chiều để bảng dư nam không dư luôn cả nữ → sĩ số đều nhất có thể.
+    // Giới hạn Nam/Nữ mỗi bảng: chia đều từng giới (lệch ≤1) rồi ghép nam trước, nữ sau
     const genders =
       ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
         ?.playerGenders) ?? {};
@@ -385,8 +413,9 @@ export async function generatePicGroups(
     const females = players.filter((p) => genders[p.id] === "F").map((p) => p.id);
     if (males.length + females.length !== players.length)
       return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi chia bảng" };
-    const maleGroups = snakeDistribute(shuffleIds(males), groupCount);
-    const femaleGroups = snakeDistribute(shuffleIds(females), groupCount).reverse();
+    const counts = genderBalancedCounts(males.length, females.length, groupCount);
+    const maleGroups = chunkByCounts(shuffleIds(males), counts.m);
+    const femaleGroups = chunkByCounts(shuffleIds(females), counts.f);
     groupSlots = maleGroups.map((mg, i) => [...mg, ...(femaleGroups[i] ?? [])]);
   } else {
     groupSlots = snakeDistribute(shuffleIds(players.map((p) => p.id)), groupCount);
@@ -491,8 +520,10 @@ export async function generateTypedGroupMatches(
     }
     return a;
   };
-  const maleGroups = snakeDistribute(shuffleIds(males), groupCount);
-  const femaleGroups = snakeDistribute(shuffleIds(females), groupCount).reverse();
+  // Nam/nữ chia ĐỀU số lượng vào các bảng (mỗi giới lệch ≤1, sĩ số lệch ≤1)
+  const counts = genderBalancedCounts(males.length, females.length, groupCount);
+  const maleGroups = chunkByCounts(shuffleIds(males), counts.m);
+  const femaleGroups = chunkByCounts(shuffleIds(females), counts.f);
   const groupSlots = Array.from({ length: groupCount }, (_, i) => [
     ...(maleGroups[i] ?? []),
     ...(femaleGroups[i] ?? []),
@@ -1651,8 +1682,9 @@ export async function createPicIndividualDrawSession(
     const femaleCount = players.filter((p) => genders[p.id] === "F").length;
     if (maleCount + femaleCount !== pc)
       return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi tạo phiên" };
-    const maleSizes = snakeSizes(maleCount, groupCount);
-    const femaleSizes = snakeSizes(femaleCount, groupCount).reverse();
+    const counts = genderBalancedCounts(maleCount, femaleCount, groupCount);
+    const maleSizes = counts.m;
+    const femaleSizes = counts.f;
     groupSizes = maleSizes.map((m, i) => m + (femaleSizes[i] ?? 0));
     slotTags = {};
     for (let g = 0; g < groupCount; g++) {
