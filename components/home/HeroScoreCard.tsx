@@ -25,7 +25,7 @@ function Row({ name, score, hot }: { name: string; score: number; hot: boolean }
   );
 }
 
-/** V2 hero card: final of the latest tournament > static mock. */
+/** V2 hero card: latest completed final (tournament or PIC) > static mock. */
 export function HeroScoreCard({ match }: { match: HeroMatch | null }) {
   if (!match) {
     return (
@@ -54,7 +54,7 @@ export function HeroScoreCard({ match }: { match: HeroMatch | null }) {
   const hotB = byScore ? match.scoreB >= match.scoreA : match.winner === "b";
   return (
     <Link
-      href={`/t/${match.tournamentSlug}`}
+      href={match.href}
       className="block transition-transform hover:-translate-y-0.5"
       aria-label={`Xem giải ${match.tournamentName}`}
     >
