@@ -25,7 +25,7 @@ function Row({ name, score, hot }: { name: string; score: number; hot: boolean }
   );
 }
 
-/** V2 hero card: live match > final of the latest tournament > static mock. */
+/** V2 hero card: final of the latest tournament > static mock. */
 export function HeroScoreCard({ match }: { match: HeroMatch | null }) {
   if (!match) {
     return (

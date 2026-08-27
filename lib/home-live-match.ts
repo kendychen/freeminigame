@@ -38,9 +38,6 @@ type TournamentRef = { name: string; slug: string };
 const MATCH_COLS =
   "id, round, match_number, bracket, group_label, team_a_id, team_b_id, score_a, score_b, winner_team_id, status, series_format, updated_at, team_a:teams!matches_team_a_id_fkey(name), team_b:teams!matches_team_b_id_fkey(name)";
 
-/** A "live" match nobody touched for this long is a forgotten one, not a current one. */
-const LIVE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-
 function roundLabel(m: MatchRow, all: MatchRow[]): string {
   if (m.bracket === "grand_final") return "Chung kết";
   if (m.bracket === "group") return m.group_label ? `Bảng ${m.group_label}` : "Vòng bảng";
@@ -70,23 +67,9 @@ function toHero(m: MatchRow, all: MatchRow[], t: TournamentRef): HeroMatch {
   };
 }
 
-/** Live match first; else the completed final of the most recent public tournament that has one. Finals only — no group/semi fallback. */
+/** The completed final of the most recent public tournament that has one. Finals only — no live/group/semi fallback. */
 export async function fetchHeroMatch(): Promise<HeroMatch | null> {
   const sb = createServiceClient();
-
-  const { data: live } = await sb
-    .from("matches")
-    .select(`${MATCH_COLS}, tournament:tournaments!inner(name, slug, is_public, deleted_at)`)
-    .eq("status", "live")
-    .gte("updated_at", new Date(Date.now() - LIVE_MAX_AGE_MS).toISOString())
-    .eq("tournament.is_public", true)
-    .is("tournament.deleted_at", null)
-    .not("team_a_id", "is", null)
-    .not("team_b_id", "is", null)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-  const liveRow = live?.[0] as unknown as (MatchRow & { tournament: TournamentRef }) | undefined;
-  if (liveRow) return toHero(liveRow, [liveRow], liveRow.tournament);
 
   const { data: tournaments } = await sb
     .from("tournaments")
