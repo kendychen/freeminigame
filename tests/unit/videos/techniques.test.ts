@@ -21,8 +21,7 @@ describe("TECHNIQUES", () => {
   it("migrations seed exactly the taxonomy slugs", () => {
     const sql = ["0036_technique_videos.sql", "0040_technique_flick.sql"]
       .map((f) => readFileSync(path.resolve(__dirname, "../../../supabase/migrations", f), "utf8"))
-      .join("
-");
+      .join("\n");
     const seeded = [...sql.matchAll(/\('([a-z-]+)'\)/g)].map((m) => m[1]);
     expect(new Set(seeded)).toEqual(new Set(TECHNIQUES.map((t) => t.slug)));
   });
