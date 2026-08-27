@@ -1,7 +1,8 @@
 import { TECHNIQUES, type Technique } from "./techniques";
 import type { Market } from "./market";
 
-const MODEL = "gemini-2.5-flash";
+// gemini-2.5-* were retired for new keys (http_404); Gemini 3 rejects thinkingBudget, uses thinkingLevel.
+const MODEL = "gemini-3.6-flash";
 const TIMEOUT_MS = 25_000;
 // Gemini free tier is rate-limited per minute; back off briefly on 429/503
 // instead of failing the whole refresh pass.
@@ -105,7 +106,7 @@ export async function classifyCandidates(
     contents: [{ role: "user", parts: [{ text: buildPrompt(technique, candidates, market) }] }],
     generationConfig: {
       temperature: 0.2,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingLevel: "low" },
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
     },

@@ -50,7 +50,9 @@ export function SettingsPanel({ settings, states }: { settings: SettingStatus[];
       if (r.error) fail(r.error);
       else {
         toast({
-          title: r.done?.length ? `Xong: ${r.done.join(", ")}` : "Không có động tác nào tới hạn",
+          title: r.done?.length
+            ? `Xong: ${r.done.join(", ")}`
+            : r.failed?.length ? "Đợt cron lỗi, chưa động tác nào xong" : "Không có động tác nào tới hạn",
           description: r.failed?.length ? `Lỗi: ${r.failed.join("; ")}` : undefined,
         });
       }
