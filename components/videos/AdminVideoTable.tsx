@@ -83,7 +83,7 @@ export function AdminVideoTable({
                   {c.avgStars ?? "–"} ({c.ratingCount})
                 </td>
                 <td>
-                  {c.status ?? "hiện"}
+                  {c.status === "hidden" ? "ẩn" : c.status === "gone" ? "đã gỡ" : "hiện"}
                   {c.pinned ? " · ghim" : ""}
                 </td>
                 <td className="space-x-2 whitespace-nowrap">
@@ -111,13 +111,13 @@ export function AdminVideoTable({
                       run(
                         () =>
                           setVideoOverride(technique, c.videoId, {
-                            status: c.status === "hidden" ? null : "hidden",
+                            status: c.status !== null ? null : "hidden",
                           }),
-                        c.status === "hidden" ? "Đã hiện lại" : "Đã ẩn",
+                        c.status !== null ? "Đã hiện lại" : "Đã ẩn",
                       )
                     }
                   >
-                    {c.status === "hidden" ? "Hiện lại" : "Ẩn"}
+                    {c.status !== null ? "Hiện" : "Ẩn"}
                   </button>
                 </td>
               </tr>
