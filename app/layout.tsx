@@ -7,6 +7,10 @@ import { InAppBrowserBanner } from "@/components/pwa/InAppBrowserBanner";
 import { SitePresenceTracker } from "@/components/admin/site-presence-tracker";
 import { PageProgress } from "@/components/ui/page-progress";
 import { PageNav } from "@/components/layout/PageNav";
+import { ChromeGate, NO_CHROME, NO_TABBAR } from "@/components/layout/ChromeGate";
+import { SiteHeader } from "@/components/layout/SiteHeader";
+import { SiteFooter } from "@/components/layout/SiteFooter";
+import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { getUiTheme } from "@/lib/ui-theme";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -130,8 +134,17 @@ export default async function RootLayout({
           <PageProgress />
           <InAppBrowserBanner />
           <SitePresenceTracker />
+          {uiTheme === "v2" && (
+            <ChromeGate hide={NO_CHROME}><SiteHeader /></ChromeGate>
+          )}
           <PageNav />
           {children}
+          {uiTheme === "v2" && (
+            <>
+              <ChromeGate hide={NO_CHROME}><SiteFooter /></ChromeGate>
+              <ChromeGate hide={NO_TABBAR}><MobileTabBar /></ChromeGate>
+            </>
+          )}
           <Toaster />
         </ThemeProvider>
       </body>
