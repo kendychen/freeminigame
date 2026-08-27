@@ -1,0 +1,16 @@
+name: Daily Technique Videos Refresh
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 02:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger videos refresh endpoint
+        run: |
+          curl -fsS -X POST "${SITE_URL}/api/cron/videos-refresh"             -H "Authorization: Bearer ${CRON_SECRET}"
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
