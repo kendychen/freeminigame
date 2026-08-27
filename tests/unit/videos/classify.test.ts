@@ -66,6 +66,8 @@ describe("buildPrompt", () => {
     expect(p).toContain('"comments":9');
     expect(p).toContain('"ageDays":30');
     expect(p).toContain("views, likes, comments so với ageDays");
+    expect(p).toContain("'basic' nếu video dạy cách thực hiện động tác từ đầu");
+    expect(p).toContain("'advanced' nếu video giả định người xem đã làm được động tác");
   });
 
   it("omits stats keys when the candidate has none", () => {
