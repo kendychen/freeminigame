@@ -16,7 +16,7 @@ export function TechniqueShowcase({ containerClass = "max-w-7xl" }: { containerC
           </span>
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-primary">Miễn phí · có tóm tắt tiếng Việt</p>
-            <h2 className="mt-0.5 text-xl font-bold tracking-tight sm:text-2xl">Hướng dẫn Kỹ thuật Pickleball</h2>
+            <h2 className="mt-0.5 text-xl font-bold tracking-tight sm:text-2xl">Hướng dẫn kỹ thuật Pickleball theo video YouTube AI đánh giá cao</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Video chọn lọc theo {TECHNIQUES.length} động tác — giao bóng, dink, third shot, volley… Việt Nam / thế giới, cơ bản / nâng cao.
             </p>

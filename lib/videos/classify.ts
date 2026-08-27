@@ -2,7 +2,7 @@ import { TECHNIQUES, type Technique } from "./techniques";
 import type { Market } from "./market";
 
 // gemini-2.5-* were retired for new keys (http_404); Gemini 3 rejects thinkingBudget, uses thinkingLevel.
-const MODEL = "gemini-3.6-flash";
+const MODEL = "gemini-3.5-flash-lite";
 const TIMEOUT_MS = 25_000;
 // Gemini free tier is rate-limited per minute; back off briefly on 429/503
 // instead of failing the whole refresh pass.
