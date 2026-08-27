@@ -56,8 +56,9 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     const [{ value: ytKey }, { value: geminiKey }] = await Promise.all([
       getSetting("youtube_api_key"), getSetting("gemini_api_key"),
     ]);
-    // One search + classify pass per market, in parallel so the cron budget
-    // stays roughly what a single pass cost.
+    // One search + classify pass per market. Markets run sequentially: the
+    // cron already refreshes 3 slugs in parallel, and 6 concurrent Gemini
+    // calls tripped the free-tier rate limit (http_429).
     const runMarket = async (market: Market) => {
       const ranked = await searchVideos(
         market === "vn" ? technique.queryVi : technique.query, fetch, ytKey, market === "vn" ? "vi" : "en",
@@ -74,7 +75,8 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
       const selected = selectVideos(slug, candidates, cls);
       return { market, submittedIds, details, candidates, selected };
     };
-    const passes = await Promise.all(MARKETS.map(runMarket));
+    const passes: Awaited<ReturnType<typeof runMarket>>[] = [];
+    for (const market of MARKETS) passes.push(await runMarket(market));
     const submittedIds = new Set(passes.flatMap((p) => [...p.submittedIds]));
     const foundIds = new Set(passes.flatMap((p) => p.details.map((d) => d.id)));
 

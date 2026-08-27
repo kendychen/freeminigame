@@ -3,6 +3,18 @@ import type { Market } from "./market";
 
 const MODEL = "gemini-2.5-flash";
 const TIMEOUT_MS = 25_000;
+// Gemini free tier is rate-limited per minute; back off briefly on 429/503
+// instead of failing the whole refresh pass.
+const RETRY_DELAYS_MS = [2_000, 6_000];
+const MAX_RETRY_AFTER_MS = 10_000;
+const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+function retryDelay(res: Response, attempt: number): number {
+  const fallback = RETRY_DELAYS_MS[attempt] ?? 0;
+  const header = Number(res.headers?.get?.("retry-after"));
+  if (Number.isFinite(header) && header > 0) return Math.min(header * 1000, MAX_RETRY_AFTER_MS);
+  return fallback;
+}
 
 export type Candidate = { id: string; title: string; channelTitle: string; durationSec: number; description: string };
 export type Classification = {
@@ -82,30 +94,33 @@ export function parseClassifications(raw: unknown, validIds: Set<string>): Class
 export async function classifyCandidates(
   technique: Technique, candidates: Candidate[], fetchImpl: typeof fetch = fetch, keyOverride?: string,
   market: Market = "global",
+  sleepImpl: (ms: number) => Promise<void> = defaultSleep,
 ): Promise<Classification[]> {
   if (candidates.length === 0) return [];
   const key = keyOverride || process.env.GEMINI_API_KEY;
   if (!key) throw new ClassifyError("missing_api_key");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const payload = JSON.stringify({
+    contents: [{ role: "user", parts: [{ text: buildPrompt(technique, candidates, market) }] }],
+    generationConfig: {
+      temperature: 0.2,
+      thinkingConfig: { thinkingBudget: 0 },
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
+    },
+  });
   try {
-    const res = await fetchImpl(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        signal: ctrl.signal,
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: buildPrompt(technique, candidates, market) }] }],
-          generationConfig: {
-            temperature: 0.2,
-            thinkingConfig: { thinkingBudget: 0 },
-            responseMimeType: "application/json",
-            responseSchema: RESPONSE_SCHEMA,
-          },
-        }),
-      },
-    );
+    let res: Response;
+    for (let attempt = 0; ; attempt++) {
+      res = await fetchImpl(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
+        { method: "POST", headers: { "content-type": "application/json" }, signal: ctrl.signal, body: payload },
+      );
+      const retryable = res.status === 429 || res.status === 503;
+      if (!retryable || attempt >= RETRY_DELAYS_MS.length) break;
+      await sleepImpl(retryDelay(res, attempt));
+    }
     if (!res.ok) throw new ClassifyError(`http_${res.status}`);
     const body = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = body.candidates?.[0]?.content?.parts?.[0]?.text;

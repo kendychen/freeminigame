@@ -80,4 +80,31 @@ describe("classifyCandidates", () => {
       { id: "a", title: "T", channelTitle: "C", durationSec: 100, description: "d" },
     ], f)).rejects.toBeInstanceOf(ClassifyError);
   });
+  it("retries on 429 honouring retry-after, then succeeds", async () => {
+    const text = JSON.stringify([
+      { id: "a", isTutorial: true, score: 70, technique: "dink", level: "basic", summaryVi: "Ok" },
+    ]);
+    const calls: number[] = [];
+    const f = vi.fn(async () => {
+      calls.push(1);
+      if (calls.length < 3) return { ok: false, status: 429, headers: new Headers({ "retry-after": "3" }), json: async () => ({}) };
+      return { ok: true, status: 200, headers: new Headers(), json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }) };
+    }) as unknown as typeof fetch;
+    const sleeps: number[] = [];
+    const out = await classifyCandidates(getTechnique("dink"), [
+      { id: "a", title: "T", channelTitle: "C", durationSec: 100, description: "d" },
+    ], f, undefined, "global", async (ms) => { sleeps.push(ms); });
+    expect(out[0]?.score).toBe(70);
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(sleeps).toEqual([3000, 3000]);
+  });
+  it("gives up after retries with http_429", async () => {
+    const f = vi.fn(async () => ({ ok: false, status: 429, headers: new Headers(), json: async () => ({}) })) as unknown as typeof fetch;
+    const sleeps: number[] = [];
+    await expect(classifyCandidates(getTechnique("dink"), [
+      { id: "a", title: "T", channelTitle: "C", durationSec: 100, description: "d" },
+    ], f, undefined, "global", async (ms) => { sleeps.push(ms); })).rejects.toMatchObject({ code: "http_429" });
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(sleeps).toEqual([2000, 6000]);
+  });
 });
