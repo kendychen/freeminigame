@@ -147,3 +147,65 @@ body {
     display: none;
   }
 }
+
+/* ---------- Theme V2 · Sunset Court (site-wide switch in /admin/settings) ---------- */
+html[data-theme="v2"] {
+  --background: 30 40% 98%;
+  --foreground: 230 30% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 230 30% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 230 30% 12%;
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 30 60% 94%;
+  --secondary-foreground: 230 30% 18%;
+  --muted: 30 30% 95%;
+  --muted-foreground: 230 10% 45%;
+  --accent: 200 80% 92%;
+  --accent-foreground: 210 60% 25%;
+  --destructive: 0 80% 55%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 30 25% 88%;
+  --input: 30 25% 88%;
+  --ring: 24 95% 53%;
+  --radius: 1rem;
+  --court: 210 60% 30%;
+  --ball: 28 95% 58%;
+}
+
+html[data-theme="v2"].dark {
+  --background: 230 30% 8%;
+  --foreground: 30 30% 95%;
+  --card: 230 26% 12%;
+  --card-foreground: 30 30% 95%;
+  --popover: 230 26% 12%;
+  --popover-foreground: 30 30% 95%;
+  --primary: 28 95% 58%;
+  --primary-foreground: 230 40% 8%;
+  --secondary: 230 22% 16%;
+  --secondary-foreground: 30 30% 95%;
+  --muted: 230 22% 14%;
+  --muted-foreground: 30 12% 65%;
+  --accent: 200 50% 22%;
+  --accent-foreground: 200 80% 85%;
+  --border: 230 18% 20%;
+  --input: 230 18% 20%;
+  --ring: 28 95% 58%;
+  --court: 200 50% 30%;
+  --ball: 28 95% 58%;
+}
+
+html[data-theme="v2"] body {
+  font-family: var(--font-jakarta), var(--font-geist-sans), system-ui, sans-serif;
+}
+
+html[data-theme="v2"] h1,
+html[data-theme="v2"] h2,
+html[data-theme="v2"] h3 {
+  letter-spacing: -0.01em;
+}
+
+html[data-theme="v2"]:not(.dark) .bg-card.shadow-sm {
+  box-shadow: 0 2px 10px rgba(20, 10, 0, 0.06);
+}

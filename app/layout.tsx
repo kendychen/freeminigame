@@ -1,14 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { InAppBrowserBanner } from "@/components/pwa/InAppBrowserBanner";
 import { SitePresenceTracker } from "@/components/admin/site-presence-tracker";
 import { PageProgress } from "@/components/ui/page-progress";
+import { PageNav } from "@/components/layout/PageNav";
+import { getUiTheme } from "@/lib/ui-theme";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600", "700", "800"],
+});
 
 const SITE_URL = "https://hoinhompick.team";
 const SITE_NAME = "Hội Nhóm Pickleball";
@@ -107,20 +114,23 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const uiTheme = await getUiTheme();
   return (
     <html
       lang="vi"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      data-theme={uiTheme}
+      className={`${geistSans.variable} ${geistMono.variable} ${jakarta.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col overflow-x-hidden">
         <ThemeProvider>
           <PageProgress />
           <InAppBrowserBanner />
           <SitePresenceTracker />
+          <PageNav />
           {children}
           <Toaster />
         </ThemeProvider>
