@@ -5,7 +5,7 @@ const item = {
   id: "abc",
   snippet: { title: "T", description: "D", channelTitle: "C", publishedAt: "2024-01-01T00:00:00Z" },
   contentDetails: { duration: "PT2M", regionRestriction: { blocked: ["VN"] } },
-  statistics: { viewCount: "123" },
+  statistics: { viewCount: "123", likeCount: "7", commentCount: "2" },
   status: { embeddable: true },
 };
 
@@ -13,7 +13,7 @@ describe("mapVideoItem", () => {
   it("maps fields", () => {
     expect(mapVideoItem(item)).toEqual({
       id: "abc", title: "T", description: "D", channelTitle: "C",
-      publishedAt: "2024-01-01T00:00:00Z", durationSec: 120, viewCount: 123,
+      publishedAt: "2024-01-01T00:00:00Z", durationSec: 120, viewCount: 123, likeCount: 7, commentCount: 2,
       embeddable: true, blockedRegions: ["VN"],
     });
   });

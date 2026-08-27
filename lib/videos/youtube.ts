@@ -4,7 +4,7 @@ const BASE = "https://www.googleapis.com/youtube/v3";
 
 export type YtVideo = {
   id: string; title: string; description: string; channelTitle: string;
-  publishedAt: string; durationSec: number; viewCount: number;
+  publishedAt: string; durationSec: number; viewCount: number; likeCount: number; commentCount: number;
   embeddable: boolean; blockedRegions: string[];
 };
 
@@ -53,7 +53,7 @@ export function mapVideoItem(raw: unknown): YtVideo | null {
     id?: string;
     snippet?: { title?: string; description?: string; channelTitle?: string; publishedAt?: string };
     contentDetails?: { duration?: string; regionRestriction?: { blocked?: string[] } };
-    statistics?: { viewCount?: string };
+    statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
     status?: { embeddable?: boolean };
   };
   if (!it.id || !it.snippet?.title) return null;
@@ -65,6 +65,8 @@ export function mapVideoItem(raw: unknown): YtVideo | null {
     publishedAt: it.snippet.publishedAt ?? "1970-01-01T00:00:00Z",
     durationSec: parseIsoDuration(it.contentDetails?.duration ?? ""),
     viewCount: Number(it.statistics?.viewCount ?? 0),
+    likeCount: Number(it.statistics?.likeCount ?? 0),
+    commentCount: Number(it.statistics?.commentCount ?? 0),
     embeddable: it.status?.embeddable !== false,
     blockedRegions: it.contentDetails?.regionRestriction?.blocked ?? [],
   };

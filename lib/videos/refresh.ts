@@ -89,6 +89,7 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
       const candidates = filterCandidates(details, ranked);
       const cls = await classifyCandidates(technique, candidates.map((c) => ({
         id: c.id, title: c.title, channelTitle: c.channelTitle, durationSec: c.durationSec, description: c.description,
+        viewCount: c.viewCount, likeCount: c.likeCount, commentCount: c.commentCount, publishedAt: c.publishedAt,
       })), fetch, geminiKey, market);
       const selected = selectVideos(slug, candidates, cls);
       return { market, submittedIds, details, candidates, selected };

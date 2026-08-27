@@ -1,5 +1,5 @@
 export type TechniqueSlug = "serve" | "return" | "third-shot-drop" | "third-shot-drive"
-  | "dink" | "volley" | "reset" | "lob" | "overhead" | "erne" | "atp" | "footwork";
+  | "dink" | "volley" | "reset" | "lob" | "overhead" | "erne" | "atp" | "footwork" | "flick";
 export type Technique = { slug: TechniqueSlug; nameVi: string; nameEn: string; query: string; queryVi: string };
 export const TECHNIQUES: readonly Technique[] = [
   { slug: "serve", nameVi: "Giao bóng", nameEn: "Serve", query: "pickleball serve tutorial", queryVi: "hướng dẫn giao bóng pickleball" },
@@ -14,6 +14,7 @@ export const TECHNIQUES: readonly Technique[] = [
   { slug: "erne", nameVi: "Erne", nameEn: "Erne", query: "pickleball erne tutorial", queryVi: "hướng dẫn erne pickleball" },
   { slug: "atp", nameVi: "ATP (đánh vòng cột)", nameEn: "Around the post", query: "pickleball around the post ATP tutorial", queryVi: "hướng dẫn ATP đánh vòng cột pickleball" },
   { slug: "footwork", nameVi: "Di chuyển & lên lưới", nameEn: "Footwork / Transition", query: "pickleball footwork transition zone tutorial", queryVi: "hướng dẫn di chuyển footwork pickleball" },
+  { slug: "flick", nameVi: "Flick (hất cổ tay)", nameEn: "Flick / Speed-up", query: "pickleball flick speed up tutorial", queryVi: "hướng dẫn flick hất cổ tay pickleball" },
 ];
 
 const SLUGS = new Set<string>(TECHNIQUES.map((t) => t.slug));

@@ -52,6 +52,29 @@ describe("buildPrompt", () => {
     expect(p).toContain("third-shot-drop");
     expect(p).toContain('"a"');
   });
+
+  it("passes engagement stats and video age so Gemini can weigh them", () => {
+    const now = Date.parse("2026-01-31T00:00:00Z");
+    const p = buildPrompt(getTechnique("dink"), [
+      {
+        id: "a", title: "T", channelTitle: "C", durationSec: 100, description: "d",
+        viewCount: 5000, likeCount: 120, commentCount: 9, publishedAt: "2026-01-01T00:00:00Z",
+      },
+    ], "global", now);
+    expect(p).toContain('"views":5000');
+    expect(p).toContain('"likes":120');
+    expect(p).toContain('"comments":9');
+    expect(p).toContain('"ageDays":30');
+    expect(p).toContain("views, likes, comments so với ageDays");
+  });
+
+  it("omits stats keys when the candidate has none", () => {
+    const p = buildPrompt(getTechnique("dink"), [
+      { id: "a", title: "T", channelTitle: "C", durationSec: 100, description: "d" },
+    ]);
+    expect(p).not.toContain('"views"');
+    expect(p).not.toContain('"ageDays"');
+  });
 });
 
 describe("classifyCandidates", () => {

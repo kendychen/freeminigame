@@ -17,7 +17,16 @@ function retryDelay(res: Response, attempt: number): number {
   return fallback;
 }
 
-export type Candidate = { id: string; title: string; channelTitle: string; durationSec: number; description: string };
+export type Candidate = {
+  id: string; title: string; channelTitle: string; durationSec: number; description: string;
+  viewCount?: number; likeCount?: number; commentCount?: number; publishedAt?: string;
+};
+
+function ageDays(publishedAt: string | undefined, now: number): number | undefined {
+  if (!publishedAt) return undefined;
+  const ms = now - new Date(publishedAt).getTime();
+  return Number.isFinite(ms) ? Math.max(0, Math.round(ms / 86_400_000)) : undefined;
+}
 export type Classification = {
   id: string; isTutorial: boolean; score: number; technique: string | null;
   level: "basic" | "advanced"; summaryVi: string;
@@ -46,12 +55,15 @@ const RESPONSE_SCHEMA = {
   },
 };
 
-export function buildPrompt(technique: Technique, candidates: Candidate[], market: Market = "global"): string {
+export function buildPrompt(
+  technique: Technique, candidates: Candidate[], market: Market = "global", now: number = Date.now(),
+): string {
   const slugs = TECHNIQUES.map((t) => `${t.slug} (${t.nameEn})`).join(", ");
   const list = candidates
     .map((c) => JSON.stringify({
       id: c.id, title: c.title, channel: c.channelTitle,
       durationSec: c.durationSec, description: c.description.slice(0, 500),
+      views: c.viewCount, likes: c.likeCount, comments: c.commentCount, ageDays: ageDays(c.publishedAt, now),
     }))
     .join("\n");
   return [
@@ -66,6 +78,9 @@ export function buildPrompt(technique: Technique, candidates: Candidate[], marke
       : []),
     `- technique: slug đúng nhất trong [${slugs}] hoặc null nếu không thuộc động tác nào.`,
     "- score: 0-100, mức hữu ích để người chơi HỌC động tác đã cho (0 nếu không phải tutorial hoặc sai động tác).",
+    "  Cân nhắc cả mức độ được cộng đồng đánh giá: views, likes, comments so với ageDays (tuổi video tính bằng ngày).",
+    "  Video tương tác cao so với tuổi (nhiều view/like/comment mỗi ngày, tỉ lệ like/view tốt) → cộng điểm.",
+    "  Video rất ít tương tác dù đã đăng lâu → trừ điểm. Nhưng không loại tutorial rõ ràng tốt chỉ vì ít view; likes=0 có thể do kênh ẩn số like.",
     "- level: 'basic' cho người mới, 'advanced' cho kỹ thuật nâng cao.",
     "- summaryVi: tóm tắt tiếng Việt tối đa 120 ký tự, không dùng dấu ngoặc kép.",
     "",

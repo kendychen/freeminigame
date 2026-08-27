@@ -75,7 +75,7 @@ import { searchVideos } from "@/lib/videos/youtube";
 
 const vid = (over: Partial<YtVideo>): YtVideo => ({
   id: "x", title: "t", description: "", channelTitle: "c", publishedAt: "2024-01-01T00:00:00Z",
-  durationSec: 300, viewCount: 10, embeddable: true, blockedRegions: [], ...over,
+  durationSec: 300, viewCount: 10, likeCount: 1, commentCount: 0, embeddable: true, blockedRegions: [], ...over,
 });
 
 const cl = (id: string): Classification => ({
