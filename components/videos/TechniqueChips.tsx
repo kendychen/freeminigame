@@ -4,7 +4,7 @@ import { TECHNIQUES } from "@/lib/videos/techniques";
 
 export function TechniqueChips({ active }: { active?: string }) {
   return (
-    <nav className="sticky top-[calc(3.5rem+var(--safe-top))] z-10 -mx-4 overflow-x-auto bg-background/95 px-4 py-2 backdrop-blur sm:top-[calc(4rem+var(--safe-top))]">
+    <nav className="sticky top-[calc(3.5rem+var(--safe-top))] z-10 -mx-4 min-w-0 overflow-x-auto [contain:inline-size] bg-background/95 px-4 py-2 backdrop-blur sm:top-[calc(4rem+var(--safe-top))]">
       <div className="flex gap-2 w-max">
         {TECHNIQUES.map((t) => (
           <Link key={t.slug} href={`/videos/${t.slug}`}
