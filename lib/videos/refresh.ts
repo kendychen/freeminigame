@@ -18,6 +18,19 @@ export type RefreshResult = {
 const LOCK_STALE_MS = 10 * 60 * 1000;
 const COOLDOWN_MS = 60 * 60 * 1000;
 const DUE_MS = 6 * 24 * 60 * 60 * 1000;
+// YouTube search.list costs 100 quota units (10k/day budget). Search results
+// barely move week to week, so a failed Gemini pass must never re-spend them.
+const SEARCH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// A slug that just failed is not retried by the next batch; it waits its turn.
+const ATTEMPT_BACKOFF_MS = 2 * 60 * 60 * 1000;
+
+type SearchCache = Partial<Record<Market, { ids: string[]; at: string }>>;
+
+function cachedRanked(cache: SearchCache, market: Market, now: number) {
+  const entry = cache[market];
+  if (!entry || now - new Date(entry.at).getTime() > SEARCH_TTL_MS) return null;
+  return entry.ids.map((id, rank) => ({ id, rank }));
+}
 
 export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: boolean } = {}): Promise<RefreshResult> {
   const svc = createServiceClient();
@@ -25,11 +38,12 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
   const now = Date.now();
 
   const { data: state, error: stateError } = await svc
-    .from("technique_refresh_state").select("last_refreshed_at, locked_at").eq("slug", slug).maybeSingle();
+    .from("technique_refresh_state").select("last_refreshed_at, locked_at, search_cache").eq("slug", slug).maybeSingle();
   if (stateError) throw new Error(`refresh_state_read_failed:${stateError.message}`);
   if (!state) throw new Error(`refresh_state_missing:${slug}`);
   const lockedAt = state.locked_at as string | null;
   const lastRefreshedAt = state.last_refreshed_at as string | null;
+  const searchCache: SearchCache = { ...((state.search_cache as SearchCache | null) ?? {}) };
   if (lockedAt && now - new Date(lockedAt).getTime() < LOCK_STALE_MS) return { slug, skipped: "locked" };
   if (!opts.force && lastRefreshedAt && now - new Date(lastRefreshedAt).getTime() < COOLDOWN_MS) {
     return { slug, skipped: "cooldown" };
@@ -41,7 +55,7 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
   // matches that exact value. Either way a race loses the claim, not the data.
   let claimQuery = svc
     .from("technique_refresh_state")
-    .update({ locked_at: new Date(now).toISOString() })
+    .update({ locked_at: new Date(now).toISOString(), last_attempted_at: new Date(now).toISOString() })
     .eq("slug", slug);
   claimQuery = lockedAt === null ? claimQuery.is("locked_at", null) : claimQuery.eq("locked_at", lockedAt);
   const claim = await claimQuery.select("slug");
@@ -60,9 +74,13 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     // cron already refreshes 3 slugs in parallel, and 6 concurrent Gemini
     // calls tripped the free-tier rate limit (http_429).
     const runMarket = async (market: Market) => {
-      const ranked = await searchVideos(
-        market === "vn" ? technique.queryVi : technique.query, fetch, ytKey, market === "vn" ? "vi" : "en",
-      );
+      let ranked = cachedRanked(searchCache, market, now);
+      if (!ranked) {
+        ranked = await searchVideos(
+          market === "vn" ? technique.queryVi : technique.query, fetch, ytKey, market === "vn" ? "vi" : "en",
+        );
+        searchCache[market] = { ids: ranked.map((r) => r.id), at: new Date().toISOString() };
+      }
       // Pinned ids go first so getVideoDetails' 50-id cap truncates ranked
       // search results, never pinned videos.
       const ids = Array.from(new Set([...pinnedIds, ...ranked.map((r) => r.id)]));
@@ -101,7 +119,7 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     if (kept.length === 0) {
       const reason = passes.every((p) => p.candidates.length === 0) ? "no_candidates" : "no_videos_selected";
       const { error: markError } = await svc.from("technique_refresh_state")
-        .update({ locked_at: null, last_error: reason }).eq("slug", slug);
+        .update({ locked_at: null, last_error: reason, search_cache: searchCache }).eq("slug", slug);
       if (markError) throw new Error(`empty_refresh_mark_failed:${markError.message}`);
       return { slug, error: reason, kept: 0, gone: gone.length };
     }
@@ -146,27 +164,35 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     const emptyMarkets = passes.filter((p) => p.selected.length === 0).map((p) => p.market);
     await svc.from("technique_refresh_state")
       .update({
-        last_refreshed_at: new Date().toISOString(), locked_at: null,
+        last_refreshed_at: new Date().toISOString(), locked_at: null, search_cache: searchCache,
         last_error: emptyMarkets.length ? `no_videos_selected:${emptyMarkets.join(",")}` : null,
       }).eq("slug", slug);
     return { slug, kept: kept.reduce((n, p) => n + p.selected.length, 0), gone: gone.length };
   } catch (e) {
     const message = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-    await svc.from("technique_refresh_state").update({ locked_at: null, last_error: message.slice(0, 500) }).eq("slug", slug);
+    await svc.from("technique_refresh_state")
+      .update({ locked_at: null, last_error: message.slice(0, 500), search_cache: searchCache }).eq("slug", slug);
     throw e;
   }
 }
 
-export async function refreshDue(limit = 3): Promise<(RefreshResult | { slug: string; error: string })[]> {
+export async function refreshDue(limit = 2): Promise<(RefreshResult | { slug: string; error: string })[]> {
   const svc = createServiceClient();
-  const cutoff = new Date(Date.now() - DUE_MS).toISOString();
+  const now = Date.now();
+  const cutoff = new Date(now - DUE_MS).toISOString();
   const { data, error } = await svc
-    .from("technique_refresh_state").select("slug, last_refreshed_at")
+    .from("technique_refresh_state").select("slug, last_refreshed_at, last_attempted_at")
     .or(`last_refreshed_at.is.null,last_refreshed_at.lt.${cutoff}`)
-    .order("last_refreshed_at", { ascending: true, nullsFirst: true })
-    .limit(limit);
+    .order("last_refreshed_at", { ascending: true, nullsFirst: true });
   if (error) throw new Error(`refresh_due_query_failed:${error.message}`);
-  const slugs = (data ?? []).map((r) => r.slug as string).filter(isTechniqueSlug);
+  const slugs = (data ?? [])
+    .filter((r) => {
+      const attempted = r.last_attempted_at as string | null;
+      return !attempted || now - new Date(attempted).getTime() > ATTEMPT_BACKOFF_MS;
+    })
+    .map((r) => r.slug as string)
+    .filter(isTechniqueSlug)
+    .slice(0, limit);
   const settled = await Promise.allSettled(slugs.map((s) => refreshTechnique(s)));
   const results = settled.map((r, i) => {
     if (r.status === "fulfilled") return r.value;

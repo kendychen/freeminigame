@@ -10,6 +10,6 @@ export async function POST(req: Request) {
   if (!secret || auth !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const results = await refreshDue(3);
+  const results = await refreshDue(2);
   return NextResponse.json({ results });
 }

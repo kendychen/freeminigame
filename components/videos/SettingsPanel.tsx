@@ -144,7 +144,7 @@ export function SettingsPanel({ settings, states }: { settings: SettingStatus[];
       <div className="rounded-lg border p-4 text-sm">
         <p className="font-semibold">Cron hàng ngày (GitHub Actions, 02:00 UTC = 09:00 VN)</p>
         <p className="mt-1 text-muted-foreground">
-          Workflow <code>videos-refresh.yml</code> gọi <code>POST {siteUrl}/api/cron/videos-refresh</code>, mỗi lần 3 động tác
+          Workflow <code>videos-refresh.yml</code> gọi <code>POST {siteUrl}/api/cron/videos-refresh</code>, mỗi lần 2 động tác
           tới hạn (&gt; 6 ngày). GitHub không cho app đặt secret từ xa — vào <em>Settings → Secrets and variables → Actions</em>{" "}
           của repo và tạo:
         </p>
@@ -153,7 +153,7 @@ export function SettingsPanel({ settings, states }: { settings: SettingStatus[];
           <li><code>CRON_SECRET</code> = giá trị ở ô CRON_SECRET bên trên (bấm “Hiện để copy”)</li>
         </ul>
         <button type="button" disabled={pending} onClick={runBatch} className={`${btnPrimary} mt-3`}>
-          Chạy đợt cron ngay (3 động tác tới hạn)
+          Chạy đợt cron ngay (2 động tác tới hạn)
         </button>
         <p className="mt-1 text-xs text-muted-foreground">Lần đầu bấm 4 lần để phủ đủ 12 động tác.</p>
       </div>

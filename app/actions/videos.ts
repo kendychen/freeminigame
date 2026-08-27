@@ -214,11 +214,11 @@ export async function testApiKey(key: string): Promise<{ error?: string }> {
   }
 }
 
-// Same work as the cron endpoint: refresh up to 3 due techniques.
+// Same work as the cron endpoint: refresh up to 2 due techniques.
 export async function runCronBatchNow(): Promise<{ error?: string; done?: string[]; failed?: string[] }> {
   await requireSiteAdmin();
   try {
-    const results = await refreshDue(3);
+    const results = await refreshDue(2);
     const done: string[] = [];
     const failed: string[] = [];
     for (const r of results) {

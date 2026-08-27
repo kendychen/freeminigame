@@ -6,7 +6,11 @@ type Op = { table: string; calls: { fn: string; args: unknown[] }[] };
 
 const h = vi.hoisted(() => ({
   ops: [] as Op[],
-  state: { last_refreshed_at: null as string | null, locked_at: null as string | null },
+  state: {
+    last_refreshed_at: null as string | null,
+    locked_at: null as string | null,
+    search_cache: null as Record<string, { ids: string[]; at: string }> | null,
+  },
   pinned: [] as { video_id: string }[],
   ranked: [] as { id: string; rank: number }[],
   rankedVi: null as { id: string; rank: number }[] | null,
@@ -67,6 +71,7 @@ vi.mock("@/lib/videos/classify", () => ({
 }));
 
 import { refreshTechnique } from "@/lib/videos/refresh";
+import { searchVideos } from "@/lib/videos/youtube";
 
 const vid = (over: Partial<YtVideo>): YtVideo => ({
   id: "x", title: "t", description: "", channelTitle: "c", publishedAt: "2024-01-01T00:00:00Z",
@@ -89,7 +94,7 @@ const finalStateUpdate = () => {
 
 beforeEach(() => {
   h.ops.length = 0;
-  h.state = { last_refreshed_at: null, locked_at: null };
+  h.state = { last_refreshed_at: null, locked_at: null, search_cache: null };
   h.pinned = [];
   h.ranked = [];
   h.rankedVi = null;
@@ -210,5 +215,54 @@ describe("refreshTechnique — happy path", () => {
     expect(upd?.last_error).toBeNull();
     expect(upd?.locked_at).toBeNull();
     expect(r).toMatchObject({ slug: "dink", kept: 2 });
+  });
+});
+
+describe("refreshTechnique — YouTube search cache", () => {
+  it("reuses cached ids younger than 7 days and never calls searchVideos", async () => {
+    vi.mocked(searchVideos).mockClear();
+    const at = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    h.state.search_cache = { vn: { ids: ["a"], at }, global: { ids: ["a"], at } };
+    h.details = [vid({ id: "a" })];
+    h.cls = [cl("a")];
+
+    await refreshTechnique("dink");
+
+    expect(searchVideos).not.toHaveBeenCalled();
+    const upd = finalStateUpdate();
+    expect(upd?.last_refreshed_at).toEqual(expect.any(String));
+    expect(upd?.search_cache).toEqual(h.state.search_cache);
+  });
+
+  it("re-searches when the cache is older than 7 days and stores fresh ids", async () => {
+    vi.mocked(searchVideos).mockClear();
+    const at = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    h.state.search_cache = { vn: { ids: ["old"], at }, global: { ids: ["old"], at } };
+    h.ranked = [{ id: "a", rank: 0 }];
+    h.details = [vid({ id: "a" })];
+    h.cls = [cl("a")];
+
+    await refreshTechnique("dink");
+
+    expect(searchVideos).toHaveBeenCalledTimes(2);
+    const cache = finalStateUpdate()?.search_cache as Record<string, { ids: string[] }>;
+    expect(cache.vn?.ids).toEqual(["a"]);
+    expect(cache.global?.ids).toEqual(["a"]);
+  });
+
+  it("keeps freshly searched ids even when classification throws", async () => {
+    vi.mocked(searchVideos).mockClear();
+    h.ranked = [{ id: "a", rank: 0 }];
+    h.details = [vid({ id: "a" })];
+    const { classifyCandidates } = await import("@/lib/videos/classify");
+    vi.mocked(classifyCandidates).mockRejectedValueOnce(new Error("gemini_http_429"));
+
+    await expect(refreshTechnique("dink")).rejects.toThrow("gemini_http_429");
+
+    const upd = finalStateUpdate();
+    expect(upd?.locked_at).toBeNull();
+    expect(upd?.last_refreshed_at).toBeUndefined();
+    const cache = upd?.search_cache as Record<string, { ids: string[] }>;
+    expect(cache.vn?.ids).toEqual(["a"]);
   });
 });
