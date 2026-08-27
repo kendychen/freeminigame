@@ -94,7 +94,7 @@ export default function PicTvClient({ initial }: { initial: PicTvState }) {
     const standings = computeStandings(gPlayers, g.matches, W, L, TB);
     const done = g.matches.filter((m) => m.status === "completed");
     const pending = g.matches.filter((m) => m.status === "pending");
-    const rows = [...done.slice(-8), ...pending.slice(0, Math.max(0, 12 - Math.min(done.length, 8)))];
+    const rows = [...done.slice(-6), ...pending.slice(0, Math.max(0, 9 - Math.min(done.length, 6)))];
     screens.push({
       key: `group:${g.id}`,
       label: `Bảng ${g.label}`,

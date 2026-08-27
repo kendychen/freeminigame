@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { TvConn } from "./useTvFeed";
 
 export interface TvScreen {
@@ -64,12 +64,19 @@ function useZoom() {
   return zoom;
 }
 
+// Local time differs between the server (UTC) and the TV, so time strings
+// render only after hydration to avoid a mismatch.
+const noop = () => () => {};
+const useMounted = () => useSyncExternalStore(noop, () => true, () => false);
+
 function Clock() {
+  const mounted = useMounted();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const h = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(h);
   }, []);
+  if (!mounted) return <span className="tabular-nums">--:--</span>;
   return <span className="tabular-nums">{now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>;
 }
 
@@ -100,6 +107,7 @@ export function TvShell({
   useWakeLock();
   const zoom = useZoom();
   const [tickIdx, setTickIdx] = useState(0);
+  const mounted = useMounted();
   const [showCtl, setShowCtl] = useState(true);
   const [isFs, setIsFs] = useState(false);
 
@@ -200,7 +208,7 @@ export function TvShell({
               </span>
             ))}
           </div>
-          <span>Cập nhật {fmtTime(updatedAt)} · hoinhompick.team</span>
+          <span>Cập nhật {mounted ? fmtTime(updatedAt) : "--:--:--"} · hoinhompick.team</span>
         </footer>
 
         <button
@@ -263,8 +271,8 @@ export function TvMatchRow({
         fresh ? "bg-emerald-500/15" : live ? "bg-red-500/10" : ""
       }`}
     >
-      {meta && <span className={`w-24 shrink-0 text-zinc-500 ${lg ? "text-lg" : "text-base"}`}>{meta}</span>}
-      <span className={`min-w-0 flex-1 truncate ${lg ? "text-2xl" : "text-xl"} ${aWon ? "font-bold text-white" : done ? "text-zinc-400" : "text-zinc-100"}`}>
+      {meta && <span className={`w-20 shrink-0 text-zinc-500 ${lg ? "text-lg" : "text-base"}`}>{meta}</span>}
+      <span className={`line-clamp-2 min-w-0 flex-1 leading-tight ${lg ? "text-2xl" : "text-xl"} ${aWon ? "font-bold text-white" : done ? "text-zinc-400" : "text-zinc-100"}`}>
         {a}
       </span>
       <span
@@ -274,7 +282,7 @@ export function TvMatchRow({
       >
         {done || live || scoreA + scoreB > 0 ? `${scoreA} – ${scoreB}` : "vs"}
       </span>
-      <span className={`min-w-0 flex-1 truncate text-right ${lg ? "text-2xl" : "text-xl"} ${bWon ? "font-bold text-white" : done ? "text-zinc-400" : "text-zinc-100"}`}>
+      <span className={`line-clamp-2 min-w-0 flex-1 text-right leading-tight ${lg ? "text-2xl" : "text-xl"} ${bWon ? "font-bold text-white" : done ? "text-zinc-400" : "text-zinc-100"}`}>
         {b}
       </span>
       {fresh && <span className="shrink-0 rounded bg-emerald-400 px-2 py-0.5 text-sm font-black text-zinc-950">MỚI</span>}
@@ -334,12 +342,23 @@ export function TvStandings({
   rows: { id: string; cells: (string | number)[]; strong?: boolean }[];
   advance?: number;
 }) {
+  // Long player names must not push numeric columns out of the card, and a
+  // 12-player group has to fit one 720px screen.
+  const dense = rows.length > 8;
+  const numW = `${Math.floor(46 / Math.max(head.length - 2, 1))}%`;
   return (
-    <table className="w-full text-xl">
+    <table className={`w-full table-fixed ${dense ? "text-lg" : "text-xl"}`}>
+      <colgroup>
+        <col style={{ width: 56 }} />
+        <col />
+        {head.slice(2).map((h) => (
+          <col key={h} style={{ width: numW }} />
+        ))}
+      </colgroup>
       <thead>
         <tr className="border-b border-white/10 text-base uppercase tracking-wide text-zinc-500">
           {head.map((h, i) => (
-            <th key={h} className={`px-4 py-2 ${i <= 1 ? "text-left" : "text-center"}`}>{h}</th>
+            <th key={h} className={`truncate px-3 py-2 ${i <= 1 ? "text-left" : "text-center"}`}>{h}</th>
           ))}
         </tr>
       </thead>
@@ -354,7 +373,7 @@ export function TvStandings({
             {r.cells.map((c, j) => (
               <td
                 key={j}
-                className={`px-4 py-2 ${j === 0 ? "w-14 font-black" : j === 1 ? "truncate font-semibold" : "text-center font-mono tabular-nums"} ${
+                className={`px-3 ${dense ? "py-1" : "py-2"} ${j === 0 ? "font-black" : j === 1 ? "truncate font-semibold" : "text-center font-mono tabular-nums"} ${
                   j === 0 && i === 0 ? "text-yellow-400" : ""
                 }`}
               >

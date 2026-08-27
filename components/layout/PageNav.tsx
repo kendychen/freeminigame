@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Home, BookOpen } from "lucide-react";
 
 // Fullscreen / embedded surfaces get no chrome.
-const HIDDEN_PREFIXES = ["/embed/", "/display/"];
+const HIDDEN_PREFIXES = ["/embed/", "/display/", "/pic/tv/", "/team/tv/"];
 
 export function PageNav() {
   const pathname = usePathname();
