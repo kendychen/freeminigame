@@ -50,6 +50,9 @@ function makeBuilder(table: string) {
 }
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/settings", () => ({
+  getSetting: vi.fn(async () => ({ value: "k", source: "env" })),
+}));
 vi.mock("@/lib/supabase/service", () => ({
   createServiceClient: () => ({ from: (table: string) => makeBuilder(table) }),
 }));

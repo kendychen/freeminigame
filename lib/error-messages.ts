@@ -92,6 +92,12 @@ const ERROR_VI: Record<string, string> = {
   refresh_failed: "Cập nhật thất bại, xem chi tiết lỗi ở bảng",
   no_candidates: "YouTube không trả về video nào — giữ nguyên danh sách cũ",
   no_videos_selected: "Không chọn được video nào — giữ nguyên danh sách cũ",
+  setting_invalid_key: "Tên cấu hình không hợp lệ",
+  setting_empty: "Giá trị không được để trống",
+  setting_too_long: "Giá trị quá dài (tối đa 200 ký tự)",
+  api_key_missing: "Chưa có key — nhập key hoặc đặt biến môi trường",
+  api_key_test_failed: "Key không hợp lệ hoặc API từ chối",
+  cron_batch_failed: "Chạy đợt cập nhật thất bại",
 };
 
 export function translateError(code: string | undefined | null): string {

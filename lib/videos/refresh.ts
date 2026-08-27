@@ -4,6 +4,7 @@ import { getTechnique, isTechniqueSlug, type TechniqueSlug } from "./techniques"
 import { searchVideos, getVideoDetails } from "./youtube";
 import { classifyCandidates } from "./classify";
 import { filterCandidates, selectVideos } from "./select";
+import { getSetting } from "@/lib/settings";
 
 export type RefreshResult = {
   slug: string;
@@ -51,12 +52,15 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     if (pinnedError) throw new Error(`pinned_read_failed:${pinnedError.message}`);
     const pinnedIds = (pinnedRows ?? []).map((r) => r.video_id as string);
 
-    const ranked = await searchVideos(technique.query);
+    const [{ value: ytKey }, { value: geminiKey }] = await Promise.all([
+      getSetting("youtube_api_key"), getSetting("gemini_api_key"),
+    ]);
+    const ranked = await searchVideos(technique.query, fetch, ytKey);
     // Pinned ids go first so getVideoDetails' 50-id cap truncates ranked
     // search results, never pinned videos.
     const ids = Array.from(new Set([...pinnedIds, ...ranked.map((r) => r.id)]));
     const submittedIds = new Set(ids.slice(0, 50));
-    const details = await getVideoDetails(ids);
+    const details = await getVideoDetails(ids, fetch, ytKey);
     const foundIds = new Set(details.map((d) => d.id));
 
     // Only mark a pinned id "gone" if it was actually submitted to the API
@@ -73,7 +77,7 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     const candidates = filterCandidates(details, ranked);
     const cls = await classifyCandidates(technique, candidates.map((c) => ({
       id: c.id, title: c.title, channelTitle: c.channelTitle, durationSec: c.durationSec, description: c.description,
-    })));
+    })), fetch, geminiKey);
     const selected = selectVideos(slug, candidates, cls);
 
     // An empty selection is never "success": writing nothing while still

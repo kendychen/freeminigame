@@ -4,6 +4,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { TECHNIQUES, isTechniqueSlug } from "@/lib/videos/techniques";
 import { listTechniqueVideosAdmin } from "@/lib/videos/queries";
 import { AdminVideoTable } from "@/components/videos/AdminVideoTable";
+import { SettingsPanel } from "@/components/videos/SettingsPanel";
+import { getSettingStatuses } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 // Server actions in this segment (refreshTechniqueNow) inherit this budget.
@@ -17,13 +19,19 @@ export default async function VideosAdminPage({
   await requireSiteAdmin();
   const { t } = await searchParams;
   const slug = t && isTechniqueSlug(t) ? t : "serve";
-  const [cards, { data: states }] = await Promise.all([
+  const [cards, { data: states }, settings] = await Promise.all([
     listTechniqueVideosAdmin(slug),
     createServiceClient()
       .from("technique_refresh_state")
       .select("slug, last_refreshed_at, last_error")
       .order("slug"),
+    getSettingStatuses(),
   ]);
+  const stateRows = (states ?? []).map((s) => ({
+    slug: s.slug as string,
+    lastRefreshedAt: s.last_refreshed_at as string | null,
+    lastError: s.last_error as string | null,
+  }));
   const state = (states ?? []).find((s) => s.slug === slug);
   return (
     <main className="mx-auto max-w-6xl px-4 pb-16">
@@ -49,6 +57,7 @@ export default async function VideosAdminPage({
         )}
       </p>
       <AdminVideoTable technique={slug} cards={cards} />
+      <SettingsPanel settings={settings} states={stateRows} />
     </main>
   );
 }

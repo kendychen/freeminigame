@@ -15,14 +15,14 @@ export class YoutubeError extends Error {
   }
 }
 
-function apiKey(): string {
-  const k = process.env.YOUTUBE_API_KEY;
+function apiKey(override?: string): string {
+  const k = override || process.env.YOUTUBE_API_KEY;
   if (!k) throw new YoutubeError("missing_api_key");
   return k;
 }
 
-async function ytGet(path: string, params: Record<string, string>, fetchImpl: typeof fetch) {
-  const qs = new URLSearchParams({ ...params, key: apiKey() });
+async function ytGet(path: string, params: Record<string, string>, fetchImpl: typeof fetch, key?: string) {
+  const qs = new URLSearchParams({ ...params, key: apiKey(key) });
   const res = await fetchImpl(`${BASE}/${path}?${qs}`);
   const body = (await res.json().catch(() => ({}))) as {
     items?: unknown[]; error?: { errors?: { reason?: string }[]; message?: string };
@@ -34,12 +34,12 @@ async function ytGet(path: string, params: Record<string, string>, fetchImpl: ty
   return body.items ?? [];
 }
 
-export async function searchVideos(query: string, fetchImpl: typeof fetch = fetch) {
+export async function searchVideos(query: string, fetchImpl: typeof fetch = fetch, key?: string) {
   const items = (await ytGet("search", {
     part: "id", type: "video", q: query, regionCode: "VN", relevanceLanguage: "en",
     publishedAfter: "2021-01-01T00:00:00Z", videoEmbeddable: "true",
     maxResults: "30", order: "relevance",
-  }, fetchImpl)) as { id?: { videoId?: string } }[];
+  }, fetchImpl, key)) as { id?: { videoId?: string } }[];
   return items
     .map((it) => it.id?.videoId)
     .filter((id): id is string => Boolean(id))
@@ -68,11 +68,16 @@ export function mapVideoItem(raw: unknown): YtVideo | null {
   };
 }
 
-export async function getVideoDetails(ids: string[], fetchImpl: typeof fetch = fetch) {
+export async function getVideoDetails(ids: string[], fetchImpl: typeof fetch = fetch, key?: string) {
   if (ids.length === 0) return [];
   const items = await ytGet("videos", {
     part: "snippet,contentDetails,statistics,status",
     id: ids.slice(0, 50).join(","),
-  }, fetchImpl);
+  }, fetchImpl, key);
   return items.map(mapVideoItem).filter((v): v is YtVideo => v !== null);
+}
+
+/** Cheapest authenticated call (1 quota unit). Throws YoutubeError on bad key. */
+export async function pingYoutube(key: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  await ytGet("videos", { part: "id", id: "dQw4w9WgXcQ" }, fetchImpl, key);
 }

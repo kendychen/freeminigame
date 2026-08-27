@@ -76,10 +76,10 @@ export function parseClassifications(raw: unknown, validIds: Set<string>): Class
 }
 
 export async function classifyCandidates(
-  technique: Technique, candidates: Candidate[], fetchImpl: typeof fetch = fetch,
+  technique: Technique, candidates: Candidate[], fetchImpl: typeof fetch = fetch, keyOverride?: string,
 ): Promise<Classification[]> {
   if (candidates.length === 0) return [];
-  const key = process.env.GEMINI_API_KEY;
+  const key = keyOverride || process.env.GEMINI_API_KEY;
   if (!key) throw new ClassifyError("missing_api_key");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -114,4 +114,10 @@ export async function classifyCandidates(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Free key check: list models. Throws ClassifyError on bad key. */
+export async function pingGemini(key: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const res = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${key}`);
+  if (!res.ok) throw new ClassifyError(`http_${res.status}`);
 }
