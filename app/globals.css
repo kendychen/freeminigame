@@ -132,6 +132,11 @@ body {
     -150% 250% hsla(142, 60%, 25%, 0.4);
 }
 
+/* Standalone PWA: content runs under the phone status bar (viewport-fit=cover). */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
 /* Mobile bottom tab bar */
 .mobile-tabbar {
   position: fixed;

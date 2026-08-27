@@ -25,7 +25,7 @@ function Row({ name, score, hot }: { name: string; score: number; hot: boolean }
   );
 }
 
-/** V2 hero card: live match > final of the latest tournament > static mock. */
+/** V2 hero card: live match > latest completed match of the latest tournament > static mock. */
 export function HeroScoreCard({ match }: { match: HeroMatch | null }) {
   if (!match) {
     return (
@@ -49,8 +49,9 @@ export function HeroScoreCard({ match }: { match: HeroMatch | null }) {
     );
   }
 
-  const hotA = match.live ? match.scoreA >= match.scoreB : match.winner === "a";
-  const hotB = match.live ? match.scoreB >= match.scoreA : match.winner === "b";
+  const byScore = match.live || !match.winner;
+  const hotA = byScore ? match.scoreA >= match.scoreB : match.winner === "a";
+  const hotB = byScore ? match.scoreB >= match.scoreA : match.winner === "b";
   return (
     <Link
       href={`/t/${match.tournamentSlug}`}

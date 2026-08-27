@@ -40,7 +40,7 @@ export function applyFilters(byMarket: MarketCards, market: Market, level: Level
 }
 
 const pill = (active: boolean) =>
-  `rounded-full border px-3 py-1 text-sm transition-colors ${active ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"}`;
+  `rounded-full border px-3 py-1.5 text-sm transition-colors ${active ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"}`;
 
 export function VideoFilterBar({
   market, level, onChange,
@@ -48,8 +48,8 @@ export function VideoFilterBar({
   market: Market; level: LevelFilter; onChange: (next: { market?: Market; level?: LevelFilter }) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border bg-card px-4 py-3">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Video</span>
         {MARKETS.map((m) => (
           <button key={m} type="button" aria-pressed={market === m} className={pill(market === m)} onClick={() => onChange({ market: m })}>
@@ -57,7 +57,7 @@ export function VideoFilterBar({
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Trình độ</span>
         {LEVELS.map((lv) => (
           <button key={lv} type="button" aria-pressed={level === lv} className={pill(level === lv)} onClick={() => onChange({ level: lv })}>

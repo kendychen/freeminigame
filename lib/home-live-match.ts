@@ -70,7 +70,7 @@ function toHero(m: MatchRow, all: MatchRow[], t: TournamentRef): HeroMatch {
   };
 }
 
-/** Live match first; else the completed final of the most recent public tournament that has one. */
+/** Live match first; else the best completed match (final > semi > latest) of the most recent public tournament. */
 export async function fetchHeroMatch(): Promise<HeroMatch | null> {
   const sb = createServiceClient();
 
@@ -100,10 +100,13 @@ export async function fetchHeroMatch(): Promise<HeroMatch | null> {
   for (const t of tournaments ?? []) {
     const { data } = await sb.from("matches").select(MATCH_COLS).eq("tournament_id", t.id);
     const all = (data ?? []) as unknown as MatchRow[];
-    const final = all.find(
-      (m) => m.status === "completed" && m.team_a_id && m.team_b_id && roundLabel(m, all) === "Chung kết",
-    );
-    if (final) return toHero(final, all, t);
+    const done = all.filter((m) => m.status === "completed" && m.team_a_id && m.team_b_id);
+    if (!done.length) continue;
+    const pick =
+      done.find((m) => roundLabel(m, all) === "Chung kết") ??
+      done.find((m) => roundLabel(m, all) === "Bán kết") ??
+      done.reduce((latest, m) => (m.updated_at > latest.updated_at ? m : latest));
+    return toHero(pick, all, t);
   }
   return null;
 }

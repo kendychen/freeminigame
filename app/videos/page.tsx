@@ -20,9 +20,9 @@ export default async function VideosPage() {
   }));
   return (
     <main className="mx-auto max-w-6xl px-4 pb-16">
-      <header className="py-8">
-        <h1 className="text-3xl font-extrabold">Học kỹ thuật Pickleball</h1>
-        <p className="mt-2 text-muted-foreground">Video hướng dẫn chọn lọc theo từng động tác, có tóm tắt tiếng Việt. Chọn video Việt Nam hoặc toàn thế giới, lọc theo trình độ. Cập nhật hàng tuần.</p>
+      <header className="py-5 sm:py-8">
+        <h1 className="text-2xl font-extrabold sm:text-3xl">Học kỹ thuật Pickleball</h1>
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">Video hướng dẫn chọn lọc theo từng động tác, có tóm tắt tiếng Việt. Chọn video Việt Nam hoặc toàn thế giới, lọc theo trình độ. Cập nhật hàng tuần.</p>
       </header>
       <TechniqueChips />
       <div className="mt-6">

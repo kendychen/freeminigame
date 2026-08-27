@@ -116,7 +116,7 @@ export async function HomeV1() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
       />
     <div className="flex flex-col flex-1">
-      <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b bg-background/80 pt-[var(--safe-top)] backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:h-16">
           <Link href="/" className="flex items-center gap-2 font-bold">
             <PickleballLogo size={28} />

@@ -8,7 +8,7 @@ import { NavLinks } from "./NavLinks";
 /** Shared V2 header: logo · nav · theme/facebook · auth link. Server component. */
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b bg-background/85 pt-[var(--safe-top)] backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-5 px-4 sm:h-16">
         <Link href="/" className="flex shrink-0 items-center gap-2 text-[15px] font-extrabold">
           <PickleballLogo size={28} />

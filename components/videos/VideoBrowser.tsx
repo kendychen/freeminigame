@@ -31,11 +31,11 @@ export function OverviewBrowser({ sections, perTechnique }: { sections: Overview
         const cards = applyFilters(s.byMarket, market, level, perTechnique);
         return (
           <section key={s.slug} className="mt-8">
-            <div className="mb-3 flex items-baseline justify-between">
-              <h2 className="text-xl font-bold">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h2 className="text-lg font-bold sm:text-xl">
                 {s.nameVi} <span className="text-sm font-normal text-muted-foreground">{s.nameEn}</span>
               </h2>
-              <Link href={`/videos/${s.slug}${suffix}`} className="text-sm text-primary">Xem tất cả →</Link>
+              <Link href={`/videos/${s.slug}${suffix}`} className="shrink-0 text-sm text-primary">Xem tất cả →</Link>
             </div>
             {cards.length ? <VideoGrid cards={cards} /> : <Empty />}
           </section>

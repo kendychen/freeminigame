@@ -23,8 +23,8 @@ export default async function TechniquePage({ params }: { params: Promise<{ tech
   const byMarket = await listTechniqueVideos(technique, 20);
   return (
     <main className="mx-auto max-w-6xl px-4 pb-16">
-      <header className="py-6">
-        <h1 className="text-2xl font-extrabold">{t.nameVi} <span className="text-base font-normal text-muted-foreground">{t.nameEn}</span></h1>
+      <header className="py-4 sm:py-6">
+        <h1 className="text-2xl font-extrabold">{t.nameVi} <span className="block text-base font-normal text-muted-foreground sm:inline">{t.nameEn}</span></h1>
       </header>
       <TechniqueChips active={technique} />
       <div className="mt-6">
