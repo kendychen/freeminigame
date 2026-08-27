@@ -153,6 +153,7 @@ export async function refreshTechniqueNow(
     const r = await refreshTechnique(technique);
     if (r.skipped === "locked") return { error: "refresh_locked" };
     if (r.skipped === "cooldown") return { error: "refresh_cooldown" };
+    if (r.error) return { error: r.error };
     revalidatePath("/videos");
     revalidatePath(`/videos/${technique}`);
     return { kept: r.kept };

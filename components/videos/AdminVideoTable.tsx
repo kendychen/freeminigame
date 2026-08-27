@@ -29,6 +29,8 @@ export function AdminVideoTable({
           description: translateError(r.error),
           variant: "destructive",
         });
+        // Surface the freshly written last_error on the page too.
+        router.refresh();
       } else {
         toast({
           title: okMsg + (r.kept !== undefined ? ` (${r.kept} video)` : ""),

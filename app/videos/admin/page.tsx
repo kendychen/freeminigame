@@ -6,6 +6,8 @@ import { listTechniqueVideosAdmin } from "@/lib/videos/queries";
 import { AdminVideoTable } from "@/components/videos/AdminVideoTable";
 
 export const dynamic = "force-dynamic";
+// Server actions in this segment (refreshTechniqueNow) inherit this budget.
+export const maxDuration = 60;
 
 export default async function VideosAdminPage({
   searchParams,

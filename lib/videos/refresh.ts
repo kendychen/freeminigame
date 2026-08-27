@@ -5,7 +5,13 @@ import { searchVideos, getVideoDetails } from "./youtube";
 import { classifyCandidates } from "./classify";
 import { filterCandidates, selectVideos } from "./select";
 
-export type RefreshResult = { slug: string; skipped?: "locked" | "cooldown"; kept?: number; gone?: number };
+export type RefreshResult = {
+  slug: string;
+  skipped?: "locked" | "cooldown";
+  kept?: number;
+  gone?: number;
+  error?: "no_candidates" | "no_videos_selected";
+};
 
 const LOCK_STALE_MS = 10 * 60 * 1000;
 const COOLDOWN_MS = 60 * 60 * 1000;
@@ -40,8 +46,9 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
   if (!claim.data?.length) return { slug, skipped: "locked" };
 
   try {
-    const { data: pinnedRows } = await svc
+    const { data: pinnedRows, error: pinnedError } = await svc
       .from("technique_video_overrides").select("video_id").eq("technique", slug).eq("pinned", true);
+    if (pinnedError) throw new Error(`pinned_read_failed:${pinnedError.message}`);
     const pinnedIds = (pinnedRows ?? []).map((r) => r.video_id as string);
 
     const ranked = await searchVideos(technique.query);
@@ -69,21 +76,47 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     })));
     const selected = selectVideos(slug, candidates, cls);
 
-    if (selected.length) {
-      const nowIso = new Date().toISOString();
-      const { error } = await svc.from("technique_videos").upsert(
-        selected.map((v) => ({
-          technique: slug, video_id: v.videoId, title: v.title, channel_title: v.channelTitle,
-          duration_sec: v.durationSec, view_count: v.viewCount, published_at: v.publishedAt, rank: v.rank,
-          ai_score: v.aiScore, ai_level: v.aiLevel, ai_summary_vi: v.aiSummaryVi, last_seen_at: nowIso,
-        })),
-        { onConflict: "technique,video_id" },
-      );
-      if (error) throw new Error(`upsert_failed:${error.message}`);
+    // An empty selection is never "success": writing nothing while still
+    // advancing last_refreshed_at and running the TTL delete would silently
+    // empty a technique (e.g. Gemini schema drift drops every classification).
+    // Release the lock, record why, and leave the existing rows untouched.
+    if (selected.length === 0) {
+      const reason = candidates.length === 0 ? "no_candidates" : "no_videos_selected";
+      const { error: markError } = await svc.from("technique_refresh_state")
+        .update({ locked_at: null, last_error: reason }).eq("slug", slug);
+      if (markError) throw new Error(`empty_refresh_mark_failed:${markError.message}`);
+      return { slug, error: reason, kept: 0, gone: gone.length };
     }
 
-    const { error: deleteError } = await svc.from("technique_videos").delete().eq("technique", slug)
+    const nowIso = new Date().toISOString();
+    const { error } = await svc.from("technique_videos").upsert(
+      selected.map((v) => ({
+        technique: slug, video_id: v.videoId, title: v.title, channel_title: v.channelTitle,
+        duration_sec: v.durationSec, view_count: v.viewCount, published_at: v.publishedAt, rank: v.rank,
+        ai_score: v.aiScore, ai_level: v.aiLevel, ai_summary_vi: v.aiSummaryVi, last_seen_at: nowIso,
+      })),
+      { onConflict: "technique,video_id" },
+    );
+    if (error) throw new Error(`upsert_failed:${error.message}`);
+
+    // A pinned video that still exists on YouTube but fell out of the search
+    // top-N is not stale: keep its row fresh even though it never reached
+    // `selected` (filterCandidates drops ids without a search rank).
+    const pinnedFound = pinnedIds.filter((id) => foundIds.has(id));
+    if (pinnedFound.length) {
+      const { error: bumpError } = await svc.from("technique_videos")
+        .update({ last_seen_at: nowIso }).eq("technique", slug).in("video_id", pinnedFound);
+      if (bumpError) throw new Error(`pinned_bump_failed:${bumpError.message}`);
+    }
+
+    // Belt and braces: even a pinned id that YouTube no longer returns keeps
+    // its row, so the override never points at a deleted card.
+    let deleteQuery = svc.from("technique_videos").delete().eq("technique", slug)
       .lt("last_seen_at", new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString());
+    if (pinnedIds.length) {
+      deleteQuery = deleteQuery.not("video_id", "in", `(${pinnedIds.map((id) => `"${id}"`).join(",")})`);
+    }
+    const { error: deleteError } = await deleteQuery;
     if (deleteError) throw new Error(`stale_delete_failed:${deleteError.message}`);
 
     await svc.from("technique_refresh_state")

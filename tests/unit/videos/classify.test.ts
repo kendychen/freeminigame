@@ -23,6 +23,13 @@ describe("parseClassifications", () => {
     expect(out[0]?.level).toBe("basic");
     expect(out[0]?.summaryVi.length).toBe(120);
   });
+  it("returns [] when every score comes back as a string (schema drift)", () => {
+    const rows = [
+      { id: "a", isTutorial: true, score: "90", technique: "dink", level: "basic", summaryVi: "x" },
+      { id: "b", isTutorial: true, score: "70", technique: "dink", level: "advanced", summaryVi: "y" },
+    ];
+    expect(parseClassifications(rows, valid)).toEqual([]);
+  });
   it("throws when not an array", () => {
     expect(() => parseClassifications({}, valid)).toThrow(ClassifyError);
   });

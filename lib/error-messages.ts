@@ -90,6 +90,8 @@ const ERROR_VI: Record<string, string> = {
   refresh_locked: "Đang có tiến trình cập nhật, thử lại sau",
   refresh_cooldown: "Động tác này vừa được cập nhật trong 1 giờ qua",
   refresh_failed: "Cập nhật thất bại, xem chi tiết lỗi ở bảng",
+  no_candidates: "YouTube không trả về video nào — giữ nguyên danh sách cũ",
+  no_videos_selected: "Không chọn được video nào — giữ nguyên danh sách cũ",
 };
 
 export function translateError(code: string | undefined | null): string {

@@ -94,6 +94,7 @@ export async function classifyCandidates(
           contents: [{ role: "user", parts: [{ text: buildPrompt(technique, candidates) }] }],
           generationConfig: {
             temperature: 0.2,
+            thinkingConfig: { thinkingBudget: 0 },
             responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
           },
