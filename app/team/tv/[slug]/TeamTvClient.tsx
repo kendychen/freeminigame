@@ -168,7 +168,7 @@ export default function TeamTvClient({ initial }: { initial: TeamEventFull }) {
     const standings = computeTeamStandings(gSquads, gTies, rubbers);
     const done = gTies.filter((t) => t.status === "completed");
     const pending = gTies.filter((t) => t.status === "pending");
-    const rows = [...done.slice(-8), ...pending.slice(0, Math.max(0, 12 - Math.min(done.length, 8)))];
+    const rows = [...done.slice(-5), ...pending.slice(0, Math.max(0, 8 - Math.min(done.length, 5)))];
     screens.push({
       key: `group:${g ?? "all"}`,
       label: g ? `Bảng ${g}` : "Xếp hạng",

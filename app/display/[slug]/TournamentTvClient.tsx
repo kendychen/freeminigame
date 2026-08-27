@@ -132,7 +132,7 @@ export default function TournamentTvClient({
       });
       const done = gMatches.filter((m) => m.status === "completed");
       const pending = gMatches.filter((m) => m.status !== "completed" && m.status !== "bye");
-      const rows = [...done.slice(-8), ...pending.slice(0, Math.max(0, 12 - Math.min(done.length, 8)))];
+      const rows = [...done.slice(-5), ...pending.slice(0, Math.max(0, 8 - Math.min(done.length, 5)))];
       screens.push({
         key: `group:${g ?? "all"}`,
         label: g ? `Bảng ${g}` : "Xếp hạng",
@@ -198,7 +198,7 @@ export default function TournamentTvClient({
   const recentDone = matches
     .filter((m) => m.status === "completed" && m.team_a_id && m.team_b_id)
     .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
-    .slice(0, 10);
+    .slice(0, 8);
   if (recentDone.length > 0) {
     screens.push({
       key: "results",
