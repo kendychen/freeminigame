@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { requireSiteAdmin } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
 import { TECHNIQUES, isTechniqueSlug } from "@/lib/videos/techniques";
 import { listTechniqueVideosAdmin } from "@/lib/videos/queries";
@@ -16,7 +15,6 @@ export default async function VideosAdminPage({
 }: {
   searchParams: Promise<{ t?: string }>;
 }) {
-  await requireSiteAdmin();
   const { t } = await searchParams;
   const slug = t && isTechniqueSlug(t) ? t : "serve";
   const [cards, { data: states }, settings] = await Promise.all([
@@ -34,13 +32,13 @@ export default async function VideosAdminPage({
   }));
   const state = (states ?? []).find((s) => s.slug === slug);
   return (
-    <main className="mx-auto max-w-6xl px-4 pb-16">
-      <h1 className="py-6 text-2xl font-extrabold">Quản lý video kỹ thuật</h1>
+    <div className="pb-8">
+      <h1 className="mb-4 text-2xl font-extrabold">Quản lý video kỹ thuật</h1>
       <div className="flex flex-wrap gap-2">
         {TECHNIQUES.map((x) => (
           <Link
             key={x.slug}
-            href={`/videos/admin?t=${x.slug}`}
+            href={`/admin/videos?t=${x.slug}`}
             className={`rounded-full border px-3 py-1 text-sm ${x.slug === slug ? "bg-primary text-primary-foreground" : ""}`}
           >
             {x.nameVi}
@@ -58,6 +56,6 @@ export default async function VideosAdminPage({
       </p>
       <AdminVideoTable technique={slug} cards={cards} />
       <SettingsPanel settings={settings} states={stateRows} />
-    </main>
+    </div>
   );
 }
