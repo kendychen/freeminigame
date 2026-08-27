@@ -21,7 +21,7 @@ export default async function VideosPage() {
   return (
     <main className="mx-auto max-w-6xl px-4 pb-16">
       <header className="py-5 sm:py-8">
-        <h1 className="text-2xl font-extrabold sm:text-3xl">Học Pickleball cùng Giáo sư AI</h1>
+        <h1 className="text-2xl font-extrabold sm:text-3xl">Học Pickleball cùng Giáo sư AI — Phân tích video YouTube</h1>
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">AI phân tích video YouTube, chọn lọc theo từng động tác, có tóm tắt tiếng Việt. Chọn video Việt Nam hoặc toàn thế giới, lọc theo trình độ. Cập nhật hàng tuần.</p>
       </header>
       <TechniqueChips />
