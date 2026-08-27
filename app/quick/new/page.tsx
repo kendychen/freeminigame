@@ -19,6 +19,7 @@ import { useQuickStore } from "@/stores/quick-tournament";
 import type { Team, TournamentFormat, SeedingOptions } from "@/lib/pairing/types";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { AuthNavLinkClient } from "@/components/nav/AuthNavLinkClient";
+import { FormatHint } from "@/components/tournaments/FormatHint";
 
 const FORMATS: Array<{ value: TournamentFormat; label: string }> = [
   { value: "random_pairs", label: "Chia cặp ngẫu nhiên — 2 người 1 cặp" },
@@ -151,6 +152,7 @@ export default function QuickNewPage() {
                     </option>
                   ))}
                 </Select>
+                <FormatHint format={format} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="series">Thể thức trận</Label>

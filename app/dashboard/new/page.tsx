@@ -20,6 +20,7 @@ import { createTournament } from "@/app/actions/tournaments";
 import type { TournamentFormat } from "@/lib/pairing/types";
 import { toast } from "@/components/ui/toast";
 import { translateError } from "@/lib/error-messages";
+import { FormatHint } from "@/components/tournaments/FormatHint";
 
 type FormatOption = TournamentFormat | "pic";
 
@@ -123,6 +124,7 @@ export default function NewTournamentPage() {
                   <option value="group_knockout">Group + Knockout</option>
                   <option value="pic">PIC xoay cặp</option>
                 </Select>
+                {format !== "pic" && <FormatHint format={format} />}
               </div>
               {format === "pic" && (
                 <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm text-muted-foreground">

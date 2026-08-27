@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Dices, Activity, PlayCircle, UserRound } from "lucide-react";
+import { Home, Dices, Activity, PlayCircle, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -9,10 +9,10 @@ const TABS = [
   { href: "/pair/new", label: "Bốc thăm", icon: Dices, match: (p: string) => p.startsWith("/pair") },
   { href: "/score/new", label: "Tỷ số", icon: Activity, match: (p: string) => p.startsWith("/score") },
   { href: "/videos", label: "Video", icon: PlayCircle, match: (p: string) => p.startsWith("/videos") },
-  { href: "/dashboard", label: "Tài khoản", icon: UserRound, match: (p: string) => p.startsWith("/dashboard") || p.startsWith("/login") },
+  { href: "/huong-dan", label: "Hướng dẫn", icon: BookOpen, match: (p: string) => p.startsWith("/huong-dan") },
 ];
 
-/** V2 mobile bottom tab bar; /dashboard redirects to /login when signed out. */
+/** V2 mobile bottom tab bar. Account lives in the header AuthNavLink. */
 export function MobileTabBar() {
   const pathname = usePathname();
   return (

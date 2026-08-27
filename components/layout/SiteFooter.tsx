@@ -26,6 +26,7 @@ const COLUMNS = [
       { href: "/videos", label: "Video kỹ thuật" },
       { href: "/videos?lv=basic", label: "Cơ bản · mới tập" },
       { href: "/videos?lv=advanced", label: "Nâng cao" },
+      { href: "/huong-dan", label: "Hướng dẫn sử dụng" },
     ],
   },
 ];

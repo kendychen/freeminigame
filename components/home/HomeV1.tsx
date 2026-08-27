@@ -132,6 +132,9 @@ export async function HomeV1() {
             >
               <FacebookIcon className="size-5" />
             </a>
+            <Link href="/huong-dan" className="hidden text-sm font-medium text-muted-foreground hover:text-foreground sm:inline">
+              Hướng dẫn
+            </Link>
             <AuthNavLink />
             <ThemeToggle />
           </div>
@@ -238,6 +241,13 @@ export async function HomeV1() {
                   </Button>
                 </Link>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {user ? "" : "Không cần đăng nhập: Bốc thăm, Tỷ số, Chia cặp nhanh, PIC, Video. Cần tài khoản (miễn phí): Giải đồng đội, Giải đấu Live. "}
+                Mới dùng lần đầu?{" "}
+                <Link href="/huong-dan" className="font-semibold text-foreground underline underline-offset-2">
+                  Xem hướng dẫn
+                </Link>
+              </p>
               <p className="mt-3 px-2 text-center text-xs text-muted-foreground">
                 Realtime: link mọi người vào xem · Quick: chia cặp local ngay ·
                 Live: giải đấu đa admin
@@ -534,9 +544,14 @@ export async function HomeV1() {
               <FacebookIcon className="size-3.5" />
             </a>
           </span>
-          <Link href="/quick/new" className="hover:text-foreground">
-            Tạo cặp nhanh
-          </Link>
+          <span className="flex gap-3">
+            <Link href="/huong-dan" className="hover:text-foreground">
+              Hướng dẫn
+            </Link>
+            <Link href="/quick/new" className="hover:text-foreground">
+              Tạo cặp nhanh
+            </Link>
+          </span>
         </div>
       </footer>
     </div>

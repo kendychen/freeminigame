@@ -25,6 +25,7 @@ export default function NewPairLobbyPage() {
   const [title, setTitle] = useState("Bốc thăm chia cặp");
   const [groupSize, setGroupSize] = useState(2);
   const [mode, setMode] = useState<Mode>("preset");
+  const [confirming, setConfirming] = useState(false);
   const [namesText, setNamesText] = useState(
     Array.from({ length: 8 }, (_, i) => `Đội ${i + 1}`).join("\n"),
   );
@@ -44,6 +45,10 @@ export default function NewPairLobbyPage() {
         description: "Mỗi dòng 1 tên đội",
         variant: "destructive",
       });
+      return;
+    }
+    if (!confirming) {
+      setConfirming(true);
       return;
     }
     setSubmitting(true);
@@ -222,14 +227,32 @@ export default function NewPairLobbyPage() {
                 </ul>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full"
-                size="lg"
-                disabled={submitting || (mode === "preset" && dedupedCount < 2)}
-              >
-                {submitting ? "Đang tạo phòng…" : "🎲 Tạo phòng"}
-              </Button>
+              {confirming && (
+                <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm space-y-1">
+                  <p className="font-semibold">Kiểm tra lại trước khi tạo</p>
+                  <p className="text-muted-foreground">
+                    Chế độ <strong>{mode === "preset" ? "Preset" : "Lobby"}</strong> ·{" "}
+                    {groupSize === 2 ? "chia cặp 2 người" : `chia nhóm ${groupSize} người`}
+                    {mode === "preset" ? ` · ${dedupedCount} đội` : ""}. Sau khi tạo không đổi được chế độ,
+                    và mỗi phòng chỉ bốc thăm 1 lần.
+                  </p>
+                </div>
+              )}
+              <div className={confirming ? "grid gap-2 sm:grid-cols-[1fr_2fr]" : ""}>
+                {confirming && (
+                  <Button type="button" variant="outline" size="lg" onClick={() => setConfirming(false)}>
+                    Sửa lại
+                  </Button>
+                )}
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  disabled={submitting || (mode === "preset" && dedupedCount < 2)}
+                >
+                  {submitting ? "Đang tạo phòng…" : confirming ? "✅ Đúng rồi, tạo phòng" : "🎲 Tạo phòng"}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>

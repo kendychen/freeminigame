@@ -10,9 +10,12 @@ import {
   Smartphone,
   Link2,
   MonitorPlay,
+  Lock,
+  BookOpen,
 } from "lucide-react";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { getOptionalUser } from "@/lib/auth";
+import { getSiteStats, formatCount } from "@/lib/site-stats";
 import { FORMATS, STRUCTURED_DATA } from "./HomeV1";
 
 const STEPS = [
@@ -24,13 +27,13 @@ const STEPS = [
 
 /** Home page for theme V2 — header/footer come from the root layout. */
 export async function HomeV2() {
-  const { user } = await getOptionalUser();
+  const [{ user }, stats] = await Promise.all([getOptionalUser(), getSiteStats()]);
   const TOOLS = [
     { href: "/pair/new", icon: Dices, title: "Bốc thăm realtime", desc: "Chia bảng, hiện đồng thời trên mọi máy" },
     { href: "/score/new", icon: Activity, title: "Tỷ số nhanh", desc: "Chấm điểm 1 trận, share link cho khán giả" },
     { href: "/quick/new", icon: Zap, title: "Chia cặp nhanh", desc: "Không cần tài khoản, chạy offline" },
     { href: user ? "/pic/new" : "/quick/pic/new", icon: RefreshCw, title: "PIC xoay cặp", desc: "Đổi cặp mỗi vòng, tính điểm cá nhân" },
-    { href: user ? "/team/new" : "/login", icon: Users, title: "Giải đồng đội", desc: "Đội gặp đội, nhiều trận mỗi tie" },
+    { href: user ? "/team/new" : "/login", icon: Users, title: "Giải đồng đội", desc: "Đội gặp đội, nhiều trận mỗi tie", auth: true },
     { href: "/videos", icon: PlayCircle, title: "Video kỹ thuật", desc: "Cơ bản → nâng cao, Việt Nam & thế giới" },
   ];
 
@@ -67,9 +70,17 @@ export async function HomeV2() {
                 {user ? "Bảng điều khiển" : "Tạo giải đấu Live"} <ArrowRight className="size-4" />
               </Link>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {user ? "" : "Bốc thăm, tỷ số, chia cặp nhanh, PIC, video: không cần đăng nhập. "}
+              Mới dùng lần đầu?{" "}
+              <Link href="/huong-dan" className="inline-flex items-center gap-1 font-semibold text-foreground underline underline-offset-2">
+                <BookOpen className="size-3.5" /> Xem hướng dẫn
+              </Link>
+            </p>
             <dl className="mt-7 flex flex-wrap gap-6 text-xs text-muted-foreground">
+              <div><dt className="text-xl font-extrabold text-foreground">{formatCount(stats.users)}</dt><dd>người dùng</dd></div>
+              <div><dt className="text-xl font-extrabold text-foreground">{formatCount(stats.tournaments)}</dt><dd>giải đã tổ chức</dd></div>
               <div><dt className="text-xl font-extrabold text-foreground">5</dt><dd>thể thức đấu</dd></div>
-              <div><dt className="text-xl font-extrabold text-foreground">Realtime</dt><dd>đồng bộ mọi máy</dd></div>
               <div><dt className="text-xl font-extrabold text-foreground">0đ</dt><dd>mãi mãi</dd></div>
             </dl>
           </div>
@@ -83,7 +94,7 @@ export async function HomeV2() {
               <span className="flex items-center gap-1.5">
                 <span className="size-2 animate-pulse rounded-full bg-red-500" /> Sân 2 · Chung kết
               </span>
-              <span>Giải Mùa Thu 2026</span>
+              <span>Giải Mùa Thu 2026 <span className="opacity-60">· minh hoạ</span></span>
             </div>
             <div className="mt-2 divide-y divide-white/10">
               <div className="flex items-center justify-between py-3">
@@ -104,7 +115,7 @@ export async function HomeV2() {
         {/* Tools */}
         <section className="mx-auto w-full max-w-7xl px-4 py-6">
           <h2 className="text-2xl font-bold tracking-tight">Bắt đầu ngay</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Chọn công cụ, không cần cài đặt.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Chọn công cụ, không cần cài đặt. Nhãn <Lock className="inline size-3" /> = cần tài khoản miễn phí.</p>
           <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
             {TOOLS.map((t) => (
               <Link
@@ -116,7 +127,14 @@ export async function HomeV2() {
                   <t.icon className="size-5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-bold">{t.title}</span>
+                  <span className="flex items-center gap-1.5 text-sm font-bold">
+                    {t.title}
+                    {"auth" in t && t.auth && !user && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" title="Cần tài khoản miễn phí">
+                        <Lock className="size-2.5" /> Tài khoản
+                      </span>
+                    )}
+                  </span>
                   <span className="block text-xs leading-snug text-muted-foreground">{t.desc}</span>
                 </span>
                 <ArrowRight className="ml-auto hidden size-4 shrink-0 text-primary opacity-0 transition-opacity group-hover:opacity-100 md:block" />

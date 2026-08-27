@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Home } from "lucide-react";
+import { ArrowLeft, Home, BookOpen } from "lucide-react";
 
 // Fullscreen / embedded surfaces get no chrome.
 const HIDDEN_PREFIXES = ["/embed/", "/display/"];
@@ -29,6 +29,12 @@ export function PageNav() {
         <Home className="size-3.5" />
         Trang chủ
       </Link>
+      {pathname !== "/huong-dan" && (
+        <Link href="/huong-dan" className={`${cls} ml-auto`} aria-label="Xem hướng dẫn sử dụng">
+          <BookOpen className="size-3.5" />
+          Hướng dẫn
+        </Link>
+      )}
     </div>
   );
 }

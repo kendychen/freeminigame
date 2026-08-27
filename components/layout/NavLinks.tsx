@@ -10,6 +10,7 @@ export const NAV_LINKS = [
   { href: "/quick/new", label: "Chia cặp nhanh", match: (p: string) => p.startsWith("/quick") },
   { href: "/videos", label: "Video kỹ thuật", match: (p: string) => p.startsWith("/videos") },
   { href: "/team/new", label: "Giải đồng đội", match: (p: string) => p.startsWith("/team") },
+  { href: "/huong-dan", label: "Hướng dẫn", match: (p: string) => p.startsWith("/huong-dan") },
 ];
 
 export function NavLinks() {
