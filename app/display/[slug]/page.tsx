@@ -1,8 +1,8 @@
-import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { LiveTournamentView } from "../../t/[slug]/LiveTournamentView";
+import type { DbMatch, DbTeam, DbTournament } from "@/types/database";
+import TournamentTvClient from "./TournamentTvClient";
 
-export const revalidate = 10;
+export const dynamic = "force-dynamic";
 
 export default async function DisplayPage({
   params,
@@ -17,31 +17,33 @@ export default async function DisplayPage({
     .eq("slug", slug)
     .is("deleted_at", null)
     .maybeSingle();
-  if (!t) notFound();
-  const { data: teams } = await supabase
-    .from("teams")
-    .select("*")
-    .eq("tournament_id", t.id);
-  const { data: matches } = await supabase
-    .from("matches")
-    .select("*")
-    .eq("tournament_id", t.id);
+
+  // RLS hides private tournaments from anonymous viewers (a TV browser is
+  // never logged in), so explain instead of a bare 404.
+  if (!t) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-zinc-950 p-10 text-center text-white">
+        <div>
+          <p className="text-6xl">📺</p>
+          <h1 className="mt-6 text-4xl font-black">Không mở được màn hình hiển thị</h1>
+          <p className="mx-auto mt-4 max-w-2xl text-2xl text-zinc-400">
+            Giải không tồn tại hoặc đang ở chế độ riêng tư. Vào cài đặt giải, bật <strong className="text-white">Công khai</strong> rồi mở lại link này trên TV.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const [{ data: teams }, { data: matches }] = await Promise.all([
+    supabase.from("teams").select("*").eq("tournament_id", t.id),
+    supabase.from("matches").select("*").eq("tournament_id", t.id).order("round").order("match_number"),
+  ]);
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-background p-8 text-foreground">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-4xl font-bold">{t.name}</h1>
-        <span className="rounded-full border bg-secondary px-4 py-2 text-lg">
-          {String(t.format).replace("_", " ")} · {t.status}
-        </span>
-      </div>
-      <div className="flex-1 overflow-auto text-2xl">
-        <LiveTournamentView
-          tournament={t}
-          teams={teams ?? []}
-          initialMatches={matches ?? []}
-        />
-      </div>
-    </div>
+    <TournamentTvClient
+      tournament={t as DbTournament}
+      teams={(teams ?? []) as DbTeam[]}
+      initialMatches={(matches ?? []) as DbMatch[]}
+    />
   );
 }

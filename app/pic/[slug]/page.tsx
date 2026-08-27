@@ -5,6 +5,7 @@ import { loadPicEventState } from "@/app/actions/pic";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ShareViewerButton from "./ShareViewerButton";
+import { TvModeButton } from "@/components/tv/TvModeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,7 @@ export default async function PicOverviewPage({
             <Button>Quản lý trận đấu</Button>
           </Link>
           <ShareViewerButton slug={slug} />
+          <TvModeButton href={`/pic/tv/${slug}`} />
         </CardContent>
       </Card>
     </div>

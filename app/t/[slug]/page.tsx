@@ -113,9 +113,9 @@ export default async function PublicTournamentPage({
             Hội Nhóm Pickleball
           </Link>
           <div className="flex items-center gap-2">
-            <Link href={`/display/${t.slug}`}>
+            <Link href={`/display/${t.slug}`} target="_blank" rel="noopener">
               <Button size="sm" variant="outline">
-                Display Mode
+                📺 Màn hình hiển thị
               </Button>
             </Link>
             <AuthNavLink />

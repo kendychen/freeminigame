@@ -114,6 +114,7 @@ export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull 
         scoreA: m.score_a,
         scoreB: m.score_b,
         status: m.status as "pending" | "completed",
+        quickCode: m.quick_code ?? null,
       }));
 
     return { id: g.id, label: g.label, playerIds, matches };
@@ -132,6 +133,7 @@ export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull 
       scoreA: m.score_a,
       scoreB: m.score_b,
       status: m.status as "pending" | "completed",
+      quickCode: m.quick_code ?? null,
     }));
 
   const cfg = ev.config as PicConfig;
@@ -147,6 +149,74 @@ export async function loadPicEventState(idOrSlug: string): Promise<PicEventFull 
     referee_token: ev.referee_token ?? null,
     ownerId: ev.owner_id ?? null,
   };
+}
+
+// ── TV / public read model ─────────────────────────────────────────────────────
+
+export type PicLiveScore = {
+  scoreA: number;
+  scoreB: number;
+  status: "pending" | "live";
+  target: number | null;
+  updatedAt: string;
+};
+
+export type PicTvState = {
+  state: PicState;
+  /** In-progress referee scores keyed by match id (pending matches only). */
+  live: Record<string, PicLiveScore>;
+};
+
+const LIVE_STALE_MS = 20 * 60 * 1000;
+
+/**
+ * Safe to call from anonymous clients: strips referee_token / owner and the
+ * quick_scores codes (anon can UPDATE quick_scores by code), and resolves the
+ * in-progress scores server-side instead.
+ */
+export async function loadPicTvState(idOrSlug: string): Promise<PicTvState | null> {
+  const full = await loadPicEventState(idOrSlug);
+  if (!full) return null;
+
+  const codeByMatch = new Map<string, string>();
+  const strip = (m: PicMatch): PicMatch => {
+    if (m.quickCode && m.status === "pending") codeByMatch.set(m.id, m.quickCode);
+    const { quickCode: _drop, ...rest } = m;
+    void _drop;
+    return rest;
+  };
+  const { referee_token: _t, ownerId: _o, ...state } = full;
+  void _t;
+  void _o;
+  const clean: PicState = {
+    ...state,
+    groups: state.groups.map((g) => ({ ...g, matches: g.matches.map(strip) })),
+    knockoutMatches: state.knockoutMatches.map(strip),
+  };
+
+  const live: Record<string, PicLiveScore> = {};
+  if (codeByMatch.size > 0) {
+    const svc = createServiceClient();
+    const { data: rows } = await svc
+      .from("quick_scores")
+      .select("code, score_a, score_b, status, target_points, updated_at")
+      .in("code", [...codeByMatch.values()])
+      .neq("status", "completed")
+      .gt("updated_at", new Date(Date.now() - LIVE_STALE_MS).toISOString());
+    const byCode = new Map((rows ?? []).map((r) => [r.code as string, r]));
+    for (const [matchId, code] of codeByMatch) {
+      const r = byCode.get(code);
+      if (!r) continue;
+      live[matchId] = {
+        scoreA: r.score_a,
+        scoreB: r.score_b,
+        status: r.status as "pending" | "live",
+        target: r.target_points ?? null,
+        updatedAt: r.updated_at,
+      };
+    }
+  }
+  return { state: clean, live };
 }
 
 // ── Create event (empty — players added separately) ───────────────────────────
@@ -1533,29 +1603,97 @@ export async function resetPicGroups(
 
 // ── Create quick_scores entry for a PIC match ─────────────────────────────────
 
+export type PicQuickRow = {
+  code: string;
+  team_a_name: string;
+  team_b_name: string;
+  score_a: number;
+  score_b: number;
+  status: "pending" | "live" | "completed";
+  winner: "a" | "b" | null;
+  target_points: number | null;
+  title: string | null;
+  updated_at: string;
+};
+
+const QUICK_ROW_COLS =
+  "code, team_a_name, team_b_name, score_a, score_b, status, winner, target_points, title, updated_at";
+
+/**
+ * Returns the quick_scores row a referee should score this PIC match on.
+ * Reuses the row already linked via pic_matches.quick_code while it is still
+ * open (not completed, not expired) so re-opening a match never forks the
+ * score; otherwise creates a new row and links it.
+ */
 export async function createPicMatchScore({
+  eventId,
+  matchId,
   teamAName,
   teamBName,
   targetPoints,
   title,
 }: {
+  eventId: string;
+  matchId: string;
   teamAName: string;
   teamBName: string;
   targetPoints: number;
   title: string;
-}): Promise<{ code: string } | { error: string }> {
+}): Promise<{ code: string; row: PicQuickRow } | { error: string }> {
   const svc = createServiceClient();
+
+  const { data: m } = await svc
+    .from("pic_matches")
+    .select("quick_code, status")
+    .eq("id", matchId)
+    .eq("event_id", eventId)
+    .maybeSingle();
+  if (!m) return { error: "Không tìm thấy trận" };
+
+  if (m.quick_code && m.status === "pending") {
+    const { data: existing } = await svc
+      .from("quick_scores")
+      .select(QUICK_ROW_COLS)
+      .eq("code", m.quick_code)
+      .neq("status", "completed")
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    if (existing) return { code: existing.code, row: existing as PicQuickRow };
+  }
+
   for (let i = 0; i < 5; i++) {
     const code = randomBytes(6).toString("base64url");
-    const { error } = await svc.from("quick_scores").insert({
-      code,
-      team_a_name: teamAName.slice(0, 80),
-      team_b_name: teamBName.slice(0, 80),
-      target_points: targetPoints,
-      title: title.slice(0, 120),
-    });
-    if (!error) return { code };
-    if (!error.message.toLowerCase().includes("duplicate")) return { error: error.message };
+    const { data: row, error } = await svc
+      .from("quick_scores")
+      .insert({
+        code,
+        team_a_name: teamAName.slice(0, 80),
+        team_b_name: teamBName.slice(0, 80),
+        target_points: targetPoints,
+        title: title.slice(0, 120),
+      })
+      .select(QUICK_ROW_COLS)
+      .single();
+    if (!error && row) {
+      // Link only if nobody linked a newer code meanwhile (two referee devices
+      // opening the same match). If we lost, hand back the winner's row.
+      let link = svc.from("pic_matches").update({ quick_code: code }).eq("id", matchId);
+      link = m.quick_code ? link.eq("quick_code", m.quick_code) : link.is("quick_code", null);
+      const { data: linked } = await link.select("id");
+      if (linked && linked.length > 0) return { code, row: row as PicQuickRow };
+
+      const { data: cur } = await svc.from("pic_matches").select("quick_code").eq("id", matchId).maybeSingle();
+      if (cur?.quick_code) {
+        const { data: winner } = await svc
+          .from("quick_scores")
+          .select(QUICK_ROW_COLS)
+          .eq("code", cur.quick_code)
+          .maybeSingle();
+        if (winner) return { code: winner.code, row: winner as PicQuickRow };
+      }
+      return { code, row: row as PicQuickRow };
+    }
+    if (error && !error.message.toLowerCase().includes("duplicate")) return { error: error.message };
   }
   return { error: "Trùng mã liên tiếp" };
 }

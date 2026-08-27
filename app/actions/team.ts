@@ -179,9 +179,7 @@ async function recountTie(
 
 // ── Load full event state ──────────────────────────────────────────────────────
 
-export async function loadTeamEventState(idOrSlug: string): Promise<TeamEventFull | null> {
-  const svc = createServiceClient();
-
+async function loadTeamEventRows(svc: ReturnType<typeof createServiceClient>, idOrSlug: string) {
   const isUuid = /^[0-9a-f-]{36}$/.test(idOrSlug);
   const { data: ev } = await svc
     .from("team_events")
@@ -196,9 +194,38 @@ export async function loadTeamEventState(idOrSlug: string): Promise<TeamEventFul
     svc.from("team_ties").select("*").eq("event_id", ev.id).order("tie_no"),
     svc.from("team_rubbers").select("*").eq("event_id", ev.id).order("rubber_no"),
   ]);
+  return {
+    ev: ev as DbTeamEvent,
+    squads: (squadsRes.data ?? []) as DbTeamSquad[],
+    players: (playersRes.data ?? []) as DbTeamPlayer[],
+    ties: (tiesRes.data ?? []) as DbTeamTie[],
+    rubbers: (rubbersRes.data ?? []) as DbTeamRubber[],
+  };
+}
 
-  const ties = (tiesRes.data ?? []) as DbTeamTie[];
-  let rubbers = (rubbersRes.data ?? []) as DbTeamRubber[];
+/** Read-only variant for anonymous pollers (TV): never writes, never returns the referee token. */
+export async function loadTeamTvState(idOrSlug: string): Promise<TeamEventFull | null> {
+  const rows = await loadTeamEventRows(createServiceClient(), idOrSlug);
+  if (!rows) return null;
+  const { ev, squads, players, ties, rubbers } = rows;
+  return {
+    event: { ...ev, config: eventConfig(ev), referee_token: null },
+    squads,
+    players,
+    ties,
+    rubbers,
+    refereeToken: null,
+  };
+}
+
+export async function loadTeamEventState(idOrSlug: string): Promise<TeamEventFull | null> {
+  const svc = createServiceClient();
+  const rows = await loadTeamEventRows(svc, idOrSlug);
+  if (!rows) return null;
+  const { ev, ties } = rows;
+  const squadsRes = { data: rows.squads };
+  const playersRes = { data: rows.players };
+  let rubbers = rows.rubbers;
 
   const config = eventConfig(ev as DbTeamEvent);
   const withRubbers = new Set(rubbers.map((r) => r.tie_id));

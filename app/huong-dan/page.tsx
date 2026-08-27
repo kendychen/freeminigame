@@ -249,7 +249,7 @@ export default function GuidePage() {
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
             <h3 className="flex items-center gap-2 font-bold"><MonitorPlay className="size-4 text-primary" /> Màn hình lớn</h3>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Nút <strong>Màn hình hiển thị</strong> mở trang toàn màn hình cho TV/máy chiếu: tỷ số đang đấu, bảng xếp hạng, tự đổi khi có kết quả.
+              Nút <strong>Màn hình hiển thị</strong> (có ở giải đấu, PIC xoay cặp và giải đồng đội) mở trang cho TV/máy chiếu: tỷ số đang đấu, bảng xếp hạng, nhánh đấu tự xoay và tự cập nhật khi có kết quả. Mở link trên trình duyệt TV hoặc cast từ điện thoại/laptop rồi bấm "Toàn màn hình"; nếu TV tự tắt màn thì tắt screensaver trong cài đặt TV.
             </p>
           </div>
         </div>

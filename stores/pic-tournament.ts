@@ -18,6 +18,8 @@ export interface PicMatch {
   scoreA: number;
   scoreB: number;
   status: "pending" | "completed";
+  /** quick_scores.code the referee is scoring on (DB-backed events only). */
+  quickCode?: string | null;
 }
 
 export interface PicGroup {

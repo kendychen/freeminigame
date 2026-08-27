@@ -7,6 +7,7 @@ import { validateSquadRoster } from "@/lib/team/validate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import ShareViewerButton, { RefereeLinkButton } from "./ShareViewerButton";
+import { TvModeButton } from "@/components/tv/TvModeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,7 @@ export default async function TeamOverviewPage({
             </Link>
             <ShareViewerButton slug={slug} />
             <RefereeLinkButton eventId={event.id} />
+            <TvModeButton href={`/team/tv/${slug}`} />
           </div>
         </CardContent>
       </Card>

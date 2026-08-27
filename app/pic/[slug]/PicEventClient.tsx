@@ -44,21 +44,10 @@ function AdminMatchScore({
     match.stage === "third" ? "Tranh 3–4" : "Chung kết";
 
   useEffect(() => {
-    createPicMatchScore({ teamAName: aName, teamBName: bName, targetPoints: target, title: stageLabel })
+    createPicMatchScore({ eventId, matchId: match.id, teamAName: aName, teamBName: bName, targetPoints: target, title: stageLabel })
       .then((res) => {
         if ("error" in res) { setCreateError(res.error); return; }
-        setQuickScore({
-          code: res.code,
-          team_a_name: aName,
-          team_b_name: bName,
-          score_a: 0,
-          score_b: 0,
-          status: "pending",
-          winner: null,
-          target_points: target,
-          title: stageLabel,
-          updated_at: new Date().toISOString(),
-        });
+        setQuickScore(res.row);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
