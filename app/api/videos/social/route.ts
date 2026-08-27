@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { isTechniqueSlug } from "@/lib/videos/techniques";
 
-type ProfileEmbed = { display_name: string | null; avatar_url: string | null } | null;
-type CommentRow = {
-  id: string;
-  body: string;
-  created_at: string;
-  user_id: string;
-  profiles: ProfileEmbed | ProfileEmbed[];
-};
+type CommentRow = { id: string; body: string; created_at: string; user_id: string };
+type ProfileRow = { id: string; display_name: string | null; avatar_url: string | null };
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -41,7 +36,7 @@ export async function GET(req: Request) {
       : Promise.resolve({ data: null, error: null }),
     sb
       .from("technique_video_comments")
-      .select("id, body, created_at, user_id, profiles(display_name, avatar_url)")
+      .select("id, body, created_at, user_id")
       .eq("technique", t)
       .eq("video_id", v)
       .is("deleted_at", null)
@@ -52,18 +47,36 @@ export async function GET(req: Request) {
       : Promise.resolve({ data: null, error: null }),
   ]);
 
-  const dbError =
+  const readError =
     stats.error?.message ??
     mine.error?.message ??
     comments.error?.message ??
     profile.error?.message;
-  if (dbError) {
-    return NextResponse.json({ error: dbError }, { status: 500 });
+  if (readError) {
+    console.error(`[videos] social.read: ${readError}`);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
+  }
+
+  const rows = (comments.data ?? []) as unknown as CommentRow[];
+
+  // profiles RLS only exposes the viewer's own row (or every row to site admins), so comment
+  // authors are resolved with the service client — route handler only, never the client bundle.
+  const authors = new Map<string, ProfileRow>();
+  const authorIds = [...new Set(rows.map((c) => c.user_id))];
+  if (authorIds.length > 0) {
+    const { data: profiles, error: authorError } = await createServiceClient()
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", authorIds);
+    if (authorError) {
+      console.error(`[videos] social.authors: ${authorError.message}`);
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
+    }
+    for (const p of (profiles ?? []) as ProfileRow[]) authors.set(p.id, p);
   }
 
   const siteRole = (profile.data as { site_role: string } | null)?.site_role ?? "";
   const isAdmin = ["moderator", "super_admin"].includes(siteRole);
-  const rows = (comments.data ?? []) as unknown as CommentRow[];
 
   return NextResponse.json(
     {
@@ -73,7 +86,7 @@ export async function GET(req: Request) {
         mine: (mine.data as { stars: number } | null)?.stars ?? null,
       },
       comments: rows.map((c) => {
-        const p = Array.isArray(c.profiles) ? (c.profiles[0] ?? null) : c.profiles;
+        const p = authors.get(c.user_id);
         return {
           id: c.id,
           body: c.body,

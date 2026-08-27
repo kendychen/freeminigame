@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { VideoCardData } from "@/lib/videos/queries";
 import { RatingStars } from "./RatingStars";
@@ -29,15 +29,18 @@ export function VideoDialog({
 }) {
   const cardKey = card ? `${card.technique}|${card.videoId}` : "";
   const [loaded, setLoaded] = useState<{ key: string; data: Social } | null>(null);
+  // Key of the card currently open, so a late response for a previous card can be dropped.
+  const openKey = useRef(cardKey);
   const load = useCallback(async () => {
     const data = await fetchSocial(card);
-    if (data) setLoaded(data);
+    if (data && data.key === openKey.current) setLoaded(data);
   }, [card]);
   useEffect(() => {
+    openKey.current = card ? `${card.technique}|${card.videoId}` : "";
     let cancelled = false;
     void (async () => {
       const data = await fetchSocial(card);
-      if (!cancelled && data) setLoaded(data);
+      if (!cancelled && data && data.key === openKey.current) setLoaded(data);
     })();
     return () => {
       cancelled = true;

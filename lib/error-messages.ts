@@ -17,7 +17,7 @@ const ERROR_VI: Record<string, string> = {
   too_large: "Dữ liệu quá lớn",
   collision: "Trùng mã, hãy thử lại",
   backend_unconfigured: "Backend chưa cấu hình",
-  db_error: "Lỗi cơ sở dữ liệu",
+  db_error: "Lỗi cơ sở dữ liệu, thử lại sau",
   build_failed: "Tạo sơ đồ thất bại",
   // Tournament
   already_generated: "Sơ đồ thi đấu đã được tạo",
