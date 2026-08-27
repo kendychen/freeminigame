@@ -16,8 +16,9 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
   const technique = getTechnique(slug);
   const now = Date.now();
 
-  const { data: state } = await svc
+  const { data: state, error: stateError } = await svc
     .from("technique_refresh_state").select("last_refreshed_at, locked_at").eq("slug", slug).maybeSingle();
+  if (stateError) throw new Error(`refresh_state_read_failed:${stateError.message}`);
   if (!state) throw new Error(`refresh_state_missing:${slug}`);
   const lockedAt = state.locked_at as string | null;
   const lastRefreshedAt = state.last_refreshed_at as string | null;
@@ -44,16 +45,22 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     const pinnedIds = (pinnedRows ?? []).map((r) => r.video_id as string);
 
     const ranked = await searchVideos(technique.query);
-    const ids = Array.from(new Set([...ranked.map((r) => r.id), ...pinnedIds]));
+    // Pinned ids go first so getVideoDetails' 50-id cap truncates ranked
+    // search results, never pinned videos.
+    const ids = Array.from(new Set([...pinnedIds, ...ranked.map((r) => r.id)]));
+    const submittedIds = new Set(ids.slice(0, 50));
     const details = await getVideoDetails(ids);
     const foundIds = new Set(details.map((d) => d.id));
 
-    const gone = pinnedIds.filter((id) => !foundIds.has(id));
+    // Only mark a pinned id "gone" if it was actually submitted to the API
+    // and still missing from the results — not merely truncated by the cap.
+    const gone = pinnedIds.filter((id) => submittedIds.has(id) && !foundIds.has(id));
     if (gone.length) {
-      await svc.from("technique_video_overrides").upsert(
+      const { error: goneError } = await svc.from("technique_video_overrides").upsert(
         gone.map((video_id) => ({ technique: slug, video_id, status: "gone", updated_at: new Date().toISOString() })),
         { onConflict: "technique,video_id" },
       );
+      if (goneError) throw new Error(`gone_upsert_failed:${goneError.message}`);
     }
 
     const candidates = filterCandidates(details, ranked);
@@ -75,8 +82,9 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
       if (error) throw new Error(`upsert_failed:${error.message}`);
     }
 
-    await svc.from("technique_videos").delete().eq("technique", slug)
+    const { error: deleteError } = await svc.from("technique_videos").delete().eq("technique", slug)
       .lt("last_seen_at", new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString());
+    if (deleteError) throw new Error(`stale_delete_failed:${deleteError.message}`);
 
     await svc.from("technique_refresh_state")
       .update({ last_refreshed_at: new Date().toISOString(), locked_at: null, last_error: null }).eq("slug", slug);
@@ -91,11 +99,12 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
 export async function refreshDue(limit = 3): Promise<(RefreshResult | { slug: string; error: string })[]> {
   const svc = createServiceClient();
   const cutoff = new Date(Date.now() - DUE_MS).toISOString();
-  const { data } = await svc
+  const { data, error } = await svc
     .from("technique_refresh_state").select("slug, last_refreshed_at")
     .or(`last_refreshed_at.is.null,last_refreshed_at.lt.${cutoff}`)
     .order("last_refreshed_at", { ascending: true, nullsFirst: true })
     .limit(limit);
+  if (error) throw new Error(`refresh_due_query_failed:${error.message}`);
   const slugs = (data ?? []).map((r) => r.slug as string).filter(isTechniqueSlug);
   const settled = await Promise.allSettled(slugs.map((s) => refreshTechnique(s)));
   const results = settled.map((r, i) => {
