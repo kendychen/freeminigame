@@ -395,9 +395,10 @@ export function TvStandings({
   // long name can't push them out of the card. A 12-player group has to fit
   // one 720px screen, hence the dense mode.
   const dense = rows.length > 8;
+  const tight = rows.length > 10;
   const numW = `${Math.floor(50 / Math.max(head.length - 2, 1))}%`;
   return (
-    <table className={`w-full table-fixed ${dense ? "text-lg" : "text-xl"}`}>
+    <table className={`w-full table-fixed ${tight ? "text-base" : dense ? "text-lg" : "text-xl"}`}>
       <colgroup>
         <col style={{ width: 56 }} />
         <col />
@@ -425,7 +426,7 @@ export function TvStandings({
               {r.cells.map((c, j) => (
                 <td
                   key={j}
-                  className={`px-3 ${dense ? "py-1" : "py-2"} ${
+                  className={`px-3 ${tight ? "py-0.5" : dense ? "py-1" : "py-2"} ${
                     j === 0
                       ? `font-black ${i === 0 ? "text-orange-400" : adv ? "text-emerald-300" : "text-slate-500"}`
                       : j === 1
