@@ -81,6 +81,15 @@ const ERROR_VI: Record<string, string> = {
   missing_tag: "VĐV chưa được gán nhóm Nam/Nữ — gán tag ở tab Thành viên",
   invalid_group_count: "Số bảng không hợp lệ (mỗi bảng cần ít nhất 2 đội)",
   invalid_team_count: "Số đội không hợp lệ (mỗi đội cần ít nhất 2 VĐV)",
+  // Technique videos
+  video_not_found: "Không tìm thấy video",
+  invalid_rating: "Điểm đánh giá phải từ 1 đến 5",
+  comment_empty: "Bình luận không được để trống",
+  comment_too_long: "Bình luận tối đa 500 ký tự",
+  comment_rate_limited: "Bạn bình luận quá nhanh, thử lại sau 1 phút",
+  refresh_locked: "Đang có tiến trình cập nhật, thử lại sau",
+  refresh_cooldown: "Động tác này vừa được cập nhật trong 1 giờ qua",
+  refresh_failed: "Cập nhật thất bại, xem chi tiết lỗi ở bảng",
 };
 
 export function translateError(code: string | undefined | null): string {
