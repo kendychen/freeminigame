@@ -17,6 +17,7 @@ import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { getOptionalUser } from "@/lib/auth";
 import { getSiteStats, formatCount } from "@/lib/site-stats";
 import { FORMATS, STRUCTURED_DATA } from "./HomeV1";
+import { TechniqueShowcase } from "./TechniqueShowcase";
 
 const STEPS = [
   { n: "Bước 1", t: "Tạo giải, nhập đội" },
@@ -111,6 +112,8 @@ export async function HomeV2() {
             </div>
           </div>
         </section>
+
+        <TechniqueShowcase />
 
         {/* Tools */}
         <section className="mx-auto w-full max-w-7xl px-4 py-6">

@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { PickleballLogo } from "@/components/brand/PickleballLogo";
 import { AuthNavLink } from "@/components/nav/AuthNavLink";
+import { TechniqueShowcase } from "./TechniqueShowcase";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { getOptionalUser } from "@/lib/auth";
 
@@ -255,6 +256,10 @@ export async function HomeV1() {
             </div>
           </div>
         </section>
+
+        <div className="border-t">
+          <TechniqueShowcase containerClass="max-w-6xl" />
+        </div>
 
         {/* Formats — mobile-first horizontal scroll */}
         <section className="border-t bg-secondary/30">
