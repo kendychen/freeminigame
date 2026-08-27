@@ -9,7 +9,7 @@ import { getOptionalUser } from "@/lib/auth";
 export async function AuthNavLink({ className }: { className?: string }) {
   const { user } = await getOptionalUser();
   const base =
-    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors";
+    "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors";
   if (user) {
     return (
       <Link
