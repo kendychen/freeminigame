@@ -41,8 +41,6 @@ const MATCH_COLS =
 /** A "live" match nobody touched for this long is a forgotten one, not a current one. */
 const LIVE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
-const BRACKET_RANK: Record<string, number> = { grand_final: 4, main: 3, winners: 3, plate: 2, losers: 1, group: 0 };
-
 function roundLabel(m: MatchRow, all: MatchRow[]): string {
   if (m.bracket === "grand_final") return "Chung kết";
   if (m.bracket === "group") return m.group_label ? `Bảng ${m.group_label}` : "Vòng bảng";
@@ -72,7 +70,7 @@ function toHero(m: MatchRow, all: MatchRow[], t: TournamentRef): HeroMatch {
   };
 }
 
-/** Live match first; else the "final" (highest-ranked completed match) of the most recently active public tournament. */
+/** Live match first; else the completed final of the most recent public tournament that has one. */
 export async function fetchHeroMatch(): Promise<HeroMatch | null> {
   const sb = createServiceClient();
 
@@ -97,20 +95,15 @@ export async function fetchHeroMatch(): Promise<HeroMatch | null> {
     .is("deleted_at", null)
     .in("status", ["running", "completed"])
     .order("updated_at", { ascending: false })
-    .limit(10);
+    .limit(20);
 
   for (const t of tournaments ?? []) {
     const { data } = await sb.from("matches").select(MATCH_COLS).eq("tournament_id", t.id);
     const all = (data ?? []) as unknown as MatchRow[];
-    const done = all.filter((m) => m.status === "completed" && m.team_a_id && m.team_b_id);
-    if (done.length === 0) continue;
-    done.sort(
-      (a, b) =>
-        (BRACKET_RANK[b.bracket] ?? 0) - (BRACKET_RANK[a.bracket] ?? 0) ||
-        b.round - a.round ||
-        b.updated_at.localeCompare(a.updated_at),
+    const final = all.find(
+      (m) => m.status === "completed" && m.team_a_id && m.team_b_id && roundLabel(m, all) === "Chung kết",
     );
-    return toHero(done[0]!, all, t);
+    if (final) return toHero(final, all, t);
   }
   return null;
 }
