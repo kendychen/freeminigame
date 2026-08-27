@@ -14,6 +14,7 @@ import {
   Wifi,
   Plus,
   ShieldCheck,
+  PlayCircle,
 } from "lucide-react";
 
 function FacebookIcon({ className }: { className?: string }) {
@@ -165,7 +166,7 @@ export default async function HomePage() {
                 động trên điện thoại — kết quả tự cập nhật cho viewer.
               </p>
 
-              {/* Mobile: 2 cột gọn để thấy đủ 6 lựa chọn không cần cuộn */}
+              {/* Mobile: 2 cột gọn để thấy đủ 7 lựa chọn không cần cuộn */}
               <div className="mt-8 grid w-full grid-cols-2 gap-2.5 sm:w-auto sm:gap-3 lg:grid-cols-3">
                 <Link href="/pair/new" className="col-span-2 w-full sm:col-span-1 sm:w-auto">
                   <Button size="lg" className="w-full sm:min-w-[180px]">
@@ -191,6 +192,16 @@ export default async function HomePage() {
                   >
                     <Zap className="size-4" />
                     Chia cặp nhanh
+                  </Button>
+                </Link>
+                <Link href="/videos" className="w-full sm:w-auto">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full px-2 text-[13px] sm:min-w-[180px] sm:px-8 sm:text-sm"
+                  >
+                    <PlayCircle className="size-4" />
+                    Học kỹ thuật
                   </Button>
                 </Link>
                 <Link href={user ? "/pic/new" : "/quick/pic/new"} className="w-full sm:w-auto">

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { createServiceClient } from "@/lib/supabase/service";
+import { TECHNIQUES } from "@/lib/videos/techniques";
 
 const SITE = "https://hoinhompick.team";
 
@@ -13,6 +14,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE}/team/new`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE}/login`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE}/signup`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${SITE}/videos`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+    ...TECHNIQUES.map((t) => ({
+      url: `${SITE}/videos/${t.slug}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
+    })),
   ];
 
   // Public tournaments (is_public + not deleted) — discoverable

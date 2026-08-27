@@ -12,6 +12,7 @@ const RESERVED = new Set([
   "s",
   "team",
   "draw",
+  "videos",
 ]);
 
 export function slugify(input: string): string {
