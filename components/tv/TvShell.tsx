@@ -345,7 +345,7 @@ export function TvStandings({
   // Long player names must not push numeric columns out of the card, and a
   // 12-player group has to fit one 720px screen.
   const dense = rows.length > 8;
-  const numW = `${Math.floor(46 / Math.max(head.length - 2, 1))}%`;
+  const numW = `${Math.floor(56 / Math.max(head.length - 2, 1))}%`;
   return (
     <table className={`w-full table-fixed ${dense ? "text-lg" : "text-xl"}`}>
       <colgroup>
@@ -356,7 +356,7 @@ export function TvStandings({
         ))}
       </colgroup>
       <thead>
-        <tr className="border-b border-white/10 text-base uppercase tracking-wide text-zinc-500">
+        <tr className="border-b border-white/10 text-[15px] uppercase text-zinc-500">
           {head.map((h, i) => (
             <th key={h} className={`truncate px-3 py-2 ${i <= 1 ? "text-left" : "text-center"}`}>{h}</th>
           ))}
