@@ -5,6 +5,7 @@ import { searchVideos, getVideoDetails } from "./youtube";
 import { classifyCandidates } from "./classify";
 import { filterCandidates, selectVideos } from "./select";
 import { getSetting } from "@/lib/settings";
+import { MARKETS, type Market } from "./market";
 
 export type RefreshResult = {
   slug: string;
@@ -55,13 +56,27 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     const [{ value: ytKey }, { value: geminiKey }] = await Promise.all([
       getSetting("youtube_api_key"), getSetting("gemini_api_key"),
     ]);
-    const ranked = await searchVideos(technique.query, fetch, ytKey);
-    // Pinned ids go first so getVideoDetails' 50-id cap truncates ranked
-    // search results, never pinned videos.
-    const ids = Array.from(new Set([...pinnedIds, ...ranked.map((r) => r.id)]));
-    const submittedIds = new Set(ids.slice(0, 50));
-    const details = await getVideoDetails(ids, fetch, ytKey);
-    const foundIds = new Set(details.map((d) => d.id));
+    // One search + classify pass per market, in parallel so the cron budget
+    // stays roughly what a single pass cost.
+    const runMarket = async (market: Market) => {
+      const ranked = await searchVideos(
+        market === "vn" ? technique.queryVi : technique.query, fetch, ytKey, market === "vn" ? "vi" : "en",
+      );
+      // Pinned ids go first so getVideoDetails' 50-id cap truncates ranked
+      // search results, never pinned videos.
+      const ids = Array.from(new Set([...pinnedIds, ...ranked.map((r) => r.id)]));
+      const submittedIds = new Set(ids.slice(0, 50));
+      const details = await getVideoDetails(ids, fetch, ytKey);
+      const candidates = filterCandidates(details, ranked);
+      const cls = await classifyCandidates(technique, candidates.map((c) => ({
+        id: c.id, title: c.title, channelTitle: c.channelTitle, durationSec: c.durationSec, description: c.description,
+      })), fetch, geminiKey, market);
+      const selected = selectVideos(slug, candidates, cls);
+      return { market, submittedIds, details, candidates, selected };
+    };
+    const passes = await Promise.all(MARKETS.map(runMarket));
+    const submittedIds = new Set(passes.flatMap((p) => [...p.submittedIds]));
+    const foundIds = new Set(passes.flatMap((p) => p.details.map((d) => d.id)));
 
     // Only mark a pinned id "gone" if it was actually submitted to the API
     // and still missing from the results — not merely truncated by the cap.
@@ -74,18 +89,15 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
       if (goneError) throw new Error(`gone_upsert_failed:${goneError.message}`);
     }
 
-    const candidates = filterCandidates(details, ranked);
-    const cls = await classifyCandidates(technique, candidates.map((c) => ({
-      id: c.id, title: c.title, channelTitle: c.channelTitle, durationSec: c.durationSec, description: c.description,
-    })), fetch, geminiKey);
-    const selected = selectVideos(slug, candidates, cls);
-
     // An empty selection is never "success": writing nothing while still
     // advancing last_refreshed_at and running the TTL delete would silently
     // empty a technique (e.g. Gemini schema drift drops every classification).
     // Release the lock, record why, and leave the existing rows untouched.
-    if (selected.length === 0) {
-      const reason = candidates.length === 0 ? "no_candidates" : "no_videos_selected";
+    // Per market: a market that selected nothing keeps its old rows; the
+    // whole refresh only fails when every market came back empty.
+    const kept = passes.filter((p) => p.selected.length > 0);
+    if (kept.length === 0) {
+      const reason = passes.every((p) => p.candidates.length === 0) ? "no_candidates" : "no_videos_selected";
       const { error: markError } = await svc.from("technique_refresh_state")
         .update({ locked_at: null, last_error: reason }).eq("slug", slug);
       if (markError) throw new Error(`empty_refresh_mark_failed:${markError.message}`);
@@ -93,15 +105,17 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     }
 
     const nowIso = new Date().toISOString();
-    const { error } = await svc.from("technique_videos").upsert(
-      selected.map((v) => ({
-        technique: slug, video_id: v.videoId, title: v.title, channel_title: v.channelTitle,
-        duration_sec: v.durationSec, view_count: v.viewCount, published_at: v.publishedAt, rank: v.rank,
-        ai_score: v.aiScore, ai_level: v.aiLevel, ai_summary_vi: v.aiSummaryVi, last_seen_at: nowIso,
-      })),
-      { onConflict: "technique,video_id" },
-    );
-    if (error) throw new Error(`upsert_failed:${error.message}`);
+    for (const pass of kept) {
+      const { error } = await svc.from("technique_videos").upsert(
+        pass.selected.map((v) => ({
+          technique: slug, market: pass.market, video_id: v.videoId, title: v.title, channel_title: v.channelTitle,
+          duration_sec: v.durationSec, view_count: v.viewCount, published_at: v.publishedAt, rank: v.rank,
+          ai_score: v.aiScore, ai_level: v.aiLevel, ai_summary_vi: v.aiSummaryVi, last_seen_at: nowIso,
+        })),
+        { onConflict: "technique,market,video_id" },
+      );
+      if (error) throw new Error(`upsert_failed:${pass.market}:${error.message}`);
+    }
 
     // A pinned video that still exists on YouTube but fell out of the search
     // top-N is not stale: keep its row fresh even though it never reached
@@ -114,18 +128,26 @@ export async function refreshTechnique(slug: TechniqueSlug, opts: { force?: bool
     }
 
     // Belt and braces: even a pinned id that YouTube no longer returns keeps
-    // its row, so the override never points at a deleted card.
-    let deleteQuery = svc.from("technique_videos").delete().eq("technique", slug)
-      .lt("last_seen_at", new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString());
-    if (pinnedIds.length) {
-      deleteQuery = deleteQuery.not("video_id", "in", `(${pinnedIds.map((id) => `"${id}"`).join(",")})`);
+    // its row, so the override never points at a deleted card. Scoped to the
+    // markets that actually refreshed so an empty pass never prunes its list.
+    const staleBefore = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+    for (const pass of kept) {
+      let deleteQuery = svc.from("technique_videos").delete().eq("technique", slug).eq("market", pass.market)
+        .lt("last_seen_at", staleBefore);
+      if (pinnedIds.length) {
+        deleteQuery = deleteQuery.not("video_id", "in", `(${pinnedIds.map((id) => `"${id}"`).join(",")})`);
+      }
+      const { error: deleteError } = await deleteQuery;
+      if (deleteError) throw new Error(`stale_delete_failed:${pass.market}:${deleteError.message}`);
     }
-    const { error: deleteError } = await deleteQuery;
-    if (deleteError) throw new Error(`stale_delete_failed:${deleteError.message}`);
 
+    const emptyMarkets = passes.filter((p) => p.selected.length === 0).map((p) => p.market);
     await svc.from("technique_refresh_state")
-      .update({ last_refreshed_at: new Date().toISOString(), locked_at: null, last_error: null }).eq("slug", slug);
-    return { slug, kept: selected.length, gone: gone.length };
+      .update({
+        last_refreshed_at: new Date().toISOString(), locked_at: null,
+        last_error: emptyMarkets.length ? `no_videos_selected:${emptyMarkets.join(",")}` : null,
+      }).eq("slug", slug);
+    return { slug, kept: kept.reduce((n, p) => n + p.selected.length, 0), gone: gone.length };
   } catch (e) {
     const message = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     await svc.from("technique_refresh_state").update({ locked_at: null, last_error: message.slice(0, 500) }).eq("slug", slug);

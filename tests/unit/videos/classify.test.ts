@@ -35,6 +35,14 @@ describe("parseClassifications", () => {
   });
 });
 
+describe("buildPrompt — vn market", () => {
+  it("adds the Vietnamese-only rule", () => {
+    const c = { id: "x", title: "t", channelTitle: "ch", durationSec: 100, description: "d" };
+    expect(buildPrompt(getTechnique("dink"), [c], "vn")).toContain("chỉ chấp nhận video nói/viết tiếng Việt");
+    expect(buildPrompt(getTechnique("dink"), [c])).not.toContain("chỉ chấp nhận video nói/viết tiếng Việt");
+  });
+});
+
 describe("buildPrompt", () => {
   it("includes technique names, all slugs and candidate ids", () => {
     const p = buildPrompt(getTechnique("dink"), [

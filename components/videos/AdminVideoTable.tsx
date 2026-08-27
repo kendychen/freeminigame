@@ -6,6 +6,7 @@ import { setVideoOverride, refreshTechniqueNow } from "@/app/actions/videos";
 import { toast } from "@/components/ui/toast";
 import { translateError } from "@/lib/error-messages";
 import { thumbnailUrl, type VideoCardData } from "@/lib/videos/queries";
+import { MARKET_LABEL } from "@/lib/videos/market";
 
 export function AdminVideoTable({
   technique,
@@ -54,6 +55,7 @@ export function AdminVideoTable({
           <thead>
             <tr className="text-left text-muted-foreground">
               <th>Video</th>
+              <th>Thị trường</th>
               <th>AI</th>
               <th>★</th>
               <th>Trạng thái</th>
@@ -62,7 +64,7 @@ export function AdminVideoTable({
           </thead>
           <tbody>
             {cards.map((c) => (
-              <tr key={c.videoId} className={c.status ? "opacity-60" : ""}>
+              <tr key={`${c.market}|${c.videoId}`} className={c.status ? "opacity-60" : ""}>
                 <td className="py-2">
                   <div className="flex gap-2">
                     <img
@@ -80,6 +82,7 @@ export function AdminVideoTable({
                     </div>
                   </div>
                 </td>
+                <td className="whitespace-nowrap">{MARKET_LABEL[c.market]}</td>
                 <td>{c.aiScore}</td>
                 <td>
                   {c.avgStars ?? "–"} ({c.ratingCount})

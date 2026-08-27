@@ -1,9 +1,10 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
 import { TECHNIQUES } from "./techniques";
+import { MARKETS, type Market } from "./market";
 
 export type VideoRow = {
-  technique: string; video_id: string; title: string; channel_title: string; duration_sec: number;
+  technique: string; market: string; video_id: string; title: string; channel_title: string; duration_sec: number;
   view_count: number; published_at: string; rank: number; ai_score: number; ai_level: string;
   ai_summary_vi: string; last_seen_at: string; created_at: string;
 };
@@ -11,7 +12,7 @@ export type OverrideRow = { technique: string; video_id: string; status: "hidden
 export type StatsRow = { technique: string; video_id: string; avg_stars: number | null; rating_count: number };
 
 export type VideoCardData = {
-  technique: string; videoId: string; title: string; channelTitle: string; durationSec: number;
+  technique: string; market: Market; videoId: string; title: string; channelTitle: string; durationSec: number;
   viewCount: number; aiScore: number; aiLevel: "basic" | "advanced"; aiSummaryVi: string;
   pinned: boolean; status: "hidden" | "gone" | null; avgStars: number | null; ratingCount: number;
 };
@@ -32,7 +33,8 @@ export function mergeCards(
       const o = ov.get(key(v.technique, v.video_id));
       const s = st.get(key(v.technique, v.video_id));
       return {
-        technique: v.technique, videoId: v.video_id, title: v.title, channelTitle: v.channel_title,
+        technique: v.technique, market: v.market === "vn" ? "vn" as const : "global" as const,
+        videoId: v.video_id, title: v.title, channelTitle: v.channel_title,
         durationSec: v.duration_sec, viewCount: v.view_count, aiScore: v.ai_score,
         aiLevel: v.ai_level === "advanced" ? "advanced" as const : "basic" as const,
         aiSummaryVi: v.ai_summary_vi, pinned: o?.pinned ?? false, status: o?.status ?? null,
@@ -64,12 +66,21 @@ async function loadTechnique(sb: SupabaseClient, slug: string) {
   return { videos: (v.data ?? []) as VideoRow[], overrides: (o.data ?? []) as OverrideRow[], stats: (s.data ?? []) as StatsRow[] };
 }
 
-export async function listTechniqueVideos(slug: string, limit = 20): Promise<VideoCardData[]> {
-  const { videos, overrides, stats } = await loadTechnique(anonClient(), slug);
-  return mergeCards(videos, overrides, stats).slice(0, limit);
+export type MarketCards = Record<Market, VideoCardData[]>;
+
+export function splitByMarket(cards: VideoCardData[], limit?: number): MarketCards {
+  const out = { vn: [], global: [] } as MarketCards;
+  for (const c of cards) out[c.market].push(c);
+  if (limit !== undefined) for (const m of MARKETS) out[m] = out[m].slice(0, limit);
+  return out;
 }
 
-export async function listOverview(perTechnique = 4): Promise<Record<string, VideoCardData[]>> {
+export async function listTechniqueVideos(slug: string, limit = 20): Promise<MarketCards> {
+  const { videos, overrides, stats } = await loadTechnique(anonClient(), slug);
+  return splitByMarket(mergeCards(videos, overrides, stats), limit);
+}
+
+export async function listOverview(perTechnique = 4): Promise<Record<string, MarketCards>> {
   const sb = anonClient();
   const [v, o, s] = await Promise.all([
     sb.from("technique_videos").select("*"),
@@ -80,8 +91,8 @@ export async function listOverview(perTechnique = 4): Promise<Record<string, Vid
   if (o.error) throw new Error(`listOverview: technique_video_overrides query failed: ${o.error.message}`);
   if (s.error) throw new Error(`listOverview: technique_video_rating_stats query failed: ${s.error.message}`);
   const all = mergeCards((v.data ?? []) as VideoRow[], (o.data ?? []) as OverrideRow[], (s.data ?? []) as StatsRow[]);
-  const out: Record<string, VideoCardData[]> = {};
-  for (const t of TECHNIQUES) out[t.slug] = all.filter((c) => c.technique === t.slug).slice(0, perTechnique);
+  const out: Record<string, MarketCards> = {};
+  for (const t of TECHNIQUES) out[t.slug] = splitByMarket(all.filter((c) => c.technique === t.slug), perTechnique);
   return out;
 }
 

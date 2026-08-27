@@ -1,4 +1,5 @@
 import { TECHNIQUES, type Technique } from "./techniques";
+import type { Market } from "./market";
 
 const MODEL = "gemini-2.5-flash";
 const TIMEOUT_MS = 25_000;
@@ -32,7 +33,7 @@ const RESPONSE_SCHEMA = {
   },
 };
 
-export function buildPrompt(technique: Technique, candidates: Candidate[]): string {
+export function buildPrompt(technique: Technique, candidates: Candidate[], market: Market = "global"): string {
   const slugs = TECHNIQUES.map((t) => `${t.slug} (${t.nameEn})`).join(", ");
   const list = candidates
     .map((c) => JSON.stringify({
@@ -47,6 +48,9 @@ export function buildPrompt(technique: Technique, candidates: Candidate[]): stri
     "Với MỖI video trả về một object:",
     "- id: giữ nguyên.",
     "- isTutorial: true chỉ khi video DẠY kỹ thuật (hướng dẫn, drill, phân tích động tác). false nếu là highlight, vlog, review vợt, quảng cáo, podcast, trận đấu.",
+    ...(market === "vn"
+      ? ["  Danh sách này dành cho người xem tiếng Việt: chỉ chấp nhận video nói/viết tiếng Việt (tiêu đề hoặc mô tả chủ yếu bằng tiếng Việt). Video tiếng Anh hoặc ngôn ngữ khác: isTutorial=false, score=0."]
+      : []),
     `- technique: slug đúng nhất trong [${slugs}] hoặc null nếu không thuộc động tác nào.`,
     "- score: 0-100, mức hữu ích để người chơi HỌC động tác đã cho (0 nếu không phải tutorial hoặc sai động tác).",
     "- level: 'basic' cho người mới, 'advanced' cho kỹ thuật nâng cao.",
@@ -77,6 +81,7 @@ export function parseClassifications(raw: unknown, validIds: Set<string>): Class
 
 export async function classifyCandidates(
   technique: Technique, candidates: Candidate[], fetchImpl: typeof fetch = fetch, keyOverride?: string,
+  market: Market = "global",
 ): Promise<Classification[]> {
   if (candidates.length === 0) return [];
   const key = keyOverride || process.env.GEMINI_API_KEY;
@@ -91,7 +96,7 @@ export async function classifyCandidates(
         headers: { "content-type": "application/json" },
         signal: ctrl.signal,
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: buildPrompt(technique, candidates) }] }],
+          contents: [{ role: "user", parts: [{ text: buildPrompt(technique, candidates, market) }] }],
           generationConfig: {
             temperature: 0.2,
             thinkingConfig: { thinkingBudget: 0 },

@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   state: { last_refreshed_at: null as string | null, locked_at: null as string | null },
   pinned: [] as { video_id: string }[],
   ranked: [] as { id: string; rank: number }[],
+  rankedVi: null as { id: string; rank: number }[] | null,
   details: [] as YtVideo[],
   cls: [] as Classification[],
 }));
@@ -57,7 +58,8 @@ vi.mock("@/lib/supabase/service", () => ({
   createServiceClient: () => ({ from: (table: string) => makeBuilder(table) }),
 }));
 vi.mock("@/lib/videos/youtube", () => ({
-  searchVideos: vi.fn(async () => h.ranked),
+  searchVideos: vi.fn(async (_q: string, _f: unknown, _k: unknown, lang: string) =>
+    lang === "vi" && h.rankedVi ? h.rankedVi : h.ranked),
   getVideoDetails: vi.fn(async () => h.details),
 }));
 vi.mock("@/lib/videos/classify", () => ({
@@ -90,6 +92,7 @@ beforeEach(() => {
   h.state = { last_refreshed_at: null, locked_at: null };
   h.pinned = [];
   h.ranked = [];
+  h.rankedVi = null;
   h.details = [];
   h.cls = [];
 });
@@ -163,6 +166,28 @@ describe("refreshTechnique — empty selection is a failure", () => {
   });
 });
 
+describe("refreshTechnique — one market empty", () => {
+  it("writes only the non-empty market, still advances last_refreshed_at and notes the empty one", async () => {
+    h.ranked = [{ id: "a", rank: 0 }];
+    h.rankedVi = [];
+    h.details = [vid({ id: "a" })];
+    h.cls = [cl("a")];
+
+    const r = await refreshTechnique("dink");
+
+    const upserts = find("technique_videos", "upsert");
+    expect(upserts).toHaveLength(1);
+    expect((upserts[0]?.calls.find((c) => c.fn === "upsert")?.args[0] as { market: string }[])[0]?.market).toBe("global");
+    const deletes = find("technique_videos", "delete");
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]?.calls.find((c) => c.fn === "eq" && c.args[0] === "market")?.args[1]).toBe("global");
+    const upd = finalStateUpdate();
+    expect(upd?.last_refreshed_at).toEqual(expect.any(String));
+    expect(upd?.last_error).toBe("no_videos_selected:vn");
+    expect(r).toMatchObject({ slug: "dink", kept: 1 });
+  });
+});
+
 describe("refreshTechnique — happy path", () => {
   it("upserts, advances last_refreshed_at and clears last_error", async () => {
     h.ranked = [{ id: "a", rank: 0 }];
@@ -171,12 +196,19 @@ describe("refreshTechnique — happy path", () => {
 
     const r = await refreshTechnique("dink");
 
-    expect(find("technique_videos", "upsert")).toHaveLength(1);
-    expect(find("technique_videos", "delete")).toHaveLength(1);
+    // One upsert + one scoped delete per market (vn, global).
+    const upserts = find("technique_videos", "upsert");
+    expect(upserts).toHaveLength(2);
+    const markets = upserts.map((u) => (u.calls.find((c) => c.fn === "upsert")?.args[0] as { market: string }[])[0]?.market);
+    expect(markets.sort()).toEqual(["global", "vn"]);
+    expect(upserts[0]?.calls.find((c) => c.fn === "upsert")?.args[1]).toEqual({ onConflict: "technique,market,video_id" });
+    const deletes = find("technique_videos", "delete");
+    expect(deletes).toHaveLength(2);
+    expect(deletes.map((d) => d.calls.find((c) => c.fn === "eq" && c.args[0] === "market")?.args[1]).sort()).toEqual(["global", "vn"]);
     const upd = finalStateUpdate();
     expect(upd?.last_refreshed_at).toEqual(expect.any(String));
     expect(upd?.last_error).toBeNull();
     expect(upd?.locked_at).toBeNull();
-    expect(r).toMatchObject({ slug: "dink", kept: 1 });
+    expect(r).toMatchObject({ slug: "dink", kept: 2 });
   });
 });

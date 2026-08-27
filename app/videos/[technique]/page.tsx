@@ -1,9 +1,10 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { TECHNIQUES, isTechniqueSlug, getTechnique } from "@/lib/videos/techniques";
 import { listTechniqueVideos } from "@/lib/videos/queries";
 import { TechniqueChips } from "@/components/videos/TechniqueChips";
-import { VideoGrid } from "@/components/videos/VideoGrid";
+import { TechniqueBrowser } from "@/components/videos/VideoBrowser";
 
 export const revalidate = 3600;
 export function generateStaticParams() { return TECHNIQUES.map((t) => ({ technique: t.slug })); }
@@ -19,7 +20,7 @@ export default async function TechniquePage({ params }: { params: Promise<{ tech
   const { technique } = await params;
   if (!isTechniqueSlug(technique)) notFound();
   const t = getTechnique(technique);
-  const cards = await listTechniqueVideos(technique, 20);
+  const byMarket = await listTechniqueVideos(technique, 20);
   return (
     <main className="mx-auto max-w-6xl px-4 pb-16">
       <header className="py-6">
@@ -27,7 +28,9 @@ export default async function TechniquePage({ params }: { params: Promise<{ tech
       </header>
       <TechniqueChips active={technique} />
       <div className="mt-6">
-        {cards.length ? <VideoGrid cards={cards} /> : <p className="text-sm text-muted-foreground">Đang cập nhật…</p>}
+        <Suspense fallback={null}>
+          <TechniqueBrowser byMarket={byMarket} />
+        </Suspense>
       </div>
     </main>
   );

@@ -34,9 +34,11 @@ async function ytGet(path: string, params: Record<string, string>, fetchImpl: ty
   return body.items ?? [];
 }
 
-export async function searchVideos(query: string, fetchImpl: typeof fetch = fetch, key?: string) {
+export async function searchVideos(
+  query: string, fetchImpl: typeof fetch = fetch, key?: string, lang: "en" | "vi" = "en",
+) {
   const items = (await ytGet("search", {
-    part: "id", type: "video", q: query, regionCode: "VN", relevanceLanguage: "en",
+    part: "id", type: "video", q: query, regionCode: "VN", relevanceLanguage: lang,
     publishedAfter: "2021-01-01T00:00:00Z", videoEmbeddable: "true",
     maxResults: "30", order: "relevance",
   }, fetchImpl, key)) as { id?: { videoId?: string } }[];
