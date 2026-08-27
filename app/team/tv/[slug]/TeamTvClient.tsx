@@ -130,6 +130,7 @@ export default function TeamTvClient({ initial, layout }: { initial: TeamEventFu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [banner, rubbers, ties, squads]);
 
+  const split = layout === "split";
   const screens: TvScreen[] = [];
 
   // ── In progress ──
@@ -186,7 +187,7 @@ export default function TeamTvClient({ initial, layout }: { initial: TeamEventFu
       key: `group:${g ?? "all"}`,
       label: g ? `Bảng ${g}` : "Xếp hạng",
       node: (
-        <div className="grid h-full grid-cols-[1.15fr_1fr] gap-5">
+        <div className={`grid h-full gap-5 ${split ? "grid-cols-1" : "grid-cols-[1.15fr_1fr]"}`}>
           <TvCard title={g ? `Bảng ${g} · Xếp hạng` : "Bảng xếp hạng"}>
             <TvStandings
               head={["#", "Đội", "Trận", "T-B", "HS trận", "HS điểm"]}
@@ -203,6 +204,7 @@ export default function TeamTvClient({ initial, layout }: { initial: TeamEventFu
               }))}
             />
           </TvCard>
+          {!split && (
           <TvCard title={`Các trận · ${done.length}/${gTies.length}`}>
             {rows.map((t) => {
               const rs = rubbersOf(t.id);
@@ -222,6 +224,7 @@ export default function TeamTvClient({ initial, layout }: { initial: TeamEventFu
               );
             })}
           </TvCard>
+          )}
         </div>
       ),
     });

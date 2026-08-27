@@ -97,6 +97,8 @@ export default function TournamentTvClient({
   }, [banner, matchesTyped, teamsTyped]);
 
   const cfg = (tournament.config ?? {}) as { tiebreakers?: TieBreakerConfig[]; randomSeed?: number };
+  const split = layout === "split";
+  const boardW = split ? 660 : 1180;
   const screens: TvScreen[] = [];
 
   // ── Live ──
@@ -149,7 +151,7 @@ export default function TournamentTvClient({
         key: `group:${g ?? "all"}`,
         label: g ? `Bảng ${g}` : "Xếp hạng",
         node: (
-          <div className="grid h-full grid-cols-[1.15fr_1fr] gap-5">
+          <div className={`grid h-full gap-5 ${split ? "grid-cols-1" : "grid-cols-[1.15fr_1fr]"}`}>
             <TvCard title={g ? `Bảng ${g} · Xếp hạng` : "Bảng xếp hạng"}>
               <TvStandings
                 head={["#", "Đội", "Trận", "Thắng", "Thua", "Hiệu số", "Điểm"]}
@@ -159,6 +161,7 @@ export default function TournamentTvClient({
                 }))}
               />
             </TvCard>
+            {!split && (
             <TvCard title={`Kết quả · ${done.length}/${gMatches.length} trận`}>
               {rows.map((m) => (
                 <TvMatchRow
@@ -174,6 +177,7 @@ export default function TournamentTvClient({
                 />
               ))}
             </TvCard>
+            )}
           </div>
         ),
       });
@@ -188,7 +192,7 @@ export default function TournamentTvClient({
       label: "Nhánh đấu",
       node: (
         <div className="flex h-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-          <BracketView matches={matchesTyped} teams={teamsTyped} variant={variant} width={1180} height={560} />
+          <BracketView matches={matchesTyped} teams={teamsTyped} variant={variant} width={boardW} height={540} />
         </div>
       ),
     });
@@ -199,7 +203,7 @@ export default function TournamentTvClient({
         label: "Plate",
         node: (
           <div className="flex h-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-            <BracketView matches={plate} teams={teamsTyped} variant="single" width={1180} height={560} />
+            <BracketView matches={plate} teams={teamsTyped} variant="single" width={boardW} height={540} />
           </div>
         ),
       });

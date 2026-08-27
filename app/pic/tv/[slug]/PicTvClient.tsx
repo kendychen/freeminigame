@@ -56,6 +56,7 @@ export default function PicTvClient({ initial, layout }: { initial: PicTvState; 
   const L = config.pointsForLoss ?? 0;
   const TB = config.tiebreakerOrder ?? "diff_first";
 
+  const split = layout === "split";
   const screens: TvScreen[] = [];
 
   // ── Live now ──
@@ -98,7 +99,7 @@ export default function PicTvClient({ initial, layout }: { initial: PicTvState; 
       key: `group:${g.id}`,
       label: `Bảng ${g.label}`,
       node: (
-        <div className="grid h-full grid-cols-[1.15fr_1fr] gap-5">
+        <div className={`grid h-full gap-5 ${split ? "grid-cols-1" : "grid-cols-[1.15fr_1fr]"}`}>
           <TvCard title={`Bảng ${g.label} · Xếp hạng`}>
             <TvStandings
               head={["#", "VĐV", "Thắng", "Thua", "Hiệu số", "Điểm"]}
@@ -109,6 +110,7 @@ export default function PicTvClient({ initial, layout }: { initial: PicTvState; 
               }))}
             />
           </TvCard>
+          {!split && (
           <TvCard title={`Kết quả · ${done.length}/${g.matches.length} trận`}>
             {rows.map((m) => {
               const s = live[m.id];
@@ -127,6 +129,7 @@ export default function PicTvClient({ initial, layout }: { initial: PicTvState; 
               );
             })}
           </TvCard>
+          )}
         </div>
       ),
     });
