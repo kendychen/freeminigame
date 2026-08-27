@@ -98,7 +98,8 @@ export default function TournamentTvClient({
 
   const cfg = (tournament.config ?? {}) as { tiebreakers?: TieBreakerConfig[]; randomSeed?: number };
   const split = layout === "split";
-  const boardW = split ? 660 : 1180;
+  // The bracket viewer does not fit-to-width; render at full size and scale into the narrower split column.
+  const boardZoom = split ? 0.56 : 1;
   const screens: TvScreen[] = [];
 
   // ── Live ──
@@ -192,7 +193,9 @@ export default function TournamentTvClient({
       label: "Nhánh đấu",
       node: (
         <div className="flex h-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-          <BracketView matches={matchesTyped} teams={teamsTyped} variant={variant} width={boardW} height={540} />
+          <div style={{ zoom: boardZoom }}>
+            <BracketView matches={matchesTyped} teams={teamsTyped} variant={variant} width={1180} height={560} />
+          </div>
         </div>
       ),
     });
@@ -203,7 +206,9 @@ export default function TournamentTvClient({
         label: "Plate",
         node: (
           <div className="flex h-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-            <BracketView matches={plate} teams={teamsTyped} variant="single" width={boardW} height={540} />
+            <div style={{ zoom: boardZoom }}>
+            <BracketView matches={plate} teams={teamsTyped} variant="single" width={1180} height={560} />
+          </div>
           </div>
         ),
       });
