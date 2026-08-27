@@ -9,6 +9,23 @@ export interface TvScreen {
   node: ReactNode;
 }
 
+export type TvLayout = "rotate" | "split";
+
+/** One match currently in play, shown in the live screen / split panel. */
+export interface TvLiveItem {
+  id: string;
+  label: string;
+  a: string;
+  b: string;
+  scoreA: number;
+  scoreB: number;
+  target?: number | null;
+  note?: string;
+}
+
+/** Key of the auto-generated "Đang đấu" screen; hidden from rotation in split layout. */
+export const LIVE_SCREEN_KEY = "live";
+
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
 const ROTATE_MS = 8_000;
@@ -102,6 +119,8 @@ export function TvShell({
   conn,
   updatedAt,
   banner,
+  layout = "rotate",
+  liveItems = [],
 }: {
   title: string;
   subtitle: string;
@@ -109,6 +128,9 @@ export function TvShell({
   conn: TvConn;
   updatedAt: number;
   banner?: ReactNode;
+  layout?: TvLayout;
+  /** Matches in play; drives the fixed right panel in split layout. */
+  liveItems?: TvLiveItem[];
 }) {
   useWakeLock();
   const zoom = useZoom();
@@ -117,7 +139,9 @@ export function TvShell({
   const [showCtl, setShowCtl] = useState(true);
   const [isFs, setIsFs] = useState(false);
 
-  const count = Math.max(screens.length, 1);
+  const split = layout === "split";
+  const rotating = split ? screens.filter((s) => s.key !== LIVE_SCREEN_KEY) : screens;
+  const count = Math.max(rotating.length, 1);
   const idx = tickIdx % count;
 
   useEffect(() => {
@@ -158,7 +182,7 @@ export function TvShell({
     else void document.documentElement.requestFullscreen?.().catch(() => {});
   };
 
-  const screen = screens[idx];
+  const screen = rotating[idx];
   const connLabel = conn === "live" ? "Trực tiếp" : conn === "poll" ? "Cập nhật định kỳ" : "Đang kết nối";
   const connDot = conn === "live" ? "bg-emerald-400 animate-pulse" : conn === "poll" ? "bg-amber-400" : "bg-slate-600";
 
@@ -193,19 +217,20 @@ export function TvShell({
           </div>
         )}
 
-        <main className="min-h-0 flex-1 px-10 pb-2 pt-4">
+        <main className={`min-h-0 flex-1 px-10 pb-2 pt-4 ${split ? "grid grid-cols-[1.35fr_1fr] gap-5" : ""}`}>
           <ScreenBoundary key={screen?.key ?? "empty"}>
             {screen ? (
-              <div className="h-full">{screen.node}</div>
+              <div className="h-full min-w-0">{screen.node}</div>
             ) : (
               <div className="flex h-full items-center justify-center text-3xl text-slate-500">Đang chuẩn bị…</div>
             )}
           </ScreenBoundary>
+          {split && <TvLivePanel items={liveItems} />}
         </main>
 
         <footer className="flex items-center justify-between px-10 pb-5 pt-2 text-base text-slate-500">
           <div className="flex items-center gap-2">
-            {screens.map((s, i) => (
+            {rotating.map((s, i) => (
               <span
                 key={s.key}
                 className={`relative overflow-hidden rounded-full px-3.5 py-1 text-sm ${
@@ -243,6 +268,40 @@ export function TvShell({
 }
 
 /* ── Shared TV primitives ─────────────────────────────────────────────────── */
+
+const PANEL_MAX = 4;
+
+function TvLivePanel({ items }: { items: TvLiveItem[] }) {
+  const shown = items.slice(0, PANEL_MAX);
+  return (
+    <TvCard
+      title={
+        <span className="flex items-center gap-2">
+          <span className="inline-block size-2.5 animate-pulse rounded-full bg-rose-500" />
+          Đang thi đấu{items.length > 0 ? ` · ${items.length} trận` : ""}
+        </span>
+      }
+    >
+      {shown.length === 0 ? (
+        <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-500">
+          <span className="text-5xl">🏓</span>
+          <span className="text-2xl">Chưa có trận nào đang đấu</span>
+        </div>
+      ) : (
+        <div className="flex h-full flex-col gap-3 p-3">
+          {shown.map((it) => (
+            <div key={it.id} className="min-h-0 flex-1">
+              <TvLiveCard label={it.label} a={it.a} b={it.b} scoreA={it.scoreA} scoreB={it.scoreB} target={it.target} note={it.note} compact />
+            </div>
+          ))}
+          {items.length > PANEL_MAX && (
+            <p className="shrink-0 text-center text-base text-slate-500">+{items.length - PANEL_MAX} trận khác đang đấu</p>
+          )}
+        </div>
+      )}
+    </TvCard>
+  );
+}
 
 export function TvCard({ title, children, className = "" }: { title?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -349,6 +408,7 @@ export function TvLiveCard({
   scoreB,
   target,
   note,
+  compact = false,
 }: {
   label: string;
   a: string;
@@ -357,25 +417,29 @@ export function TvLiveCard({
   scoreB: number;
   target?: number | null;
   note?: string;
+  /** Dense variant for the split-layout panel (stacked, smaller type). */
+  compact?: boolean;
 }) {
   const lead = scoreA === scoreB ? null : scoreA > scoreB ? "a" : "b";
+  const nameCls = compact ? "text-[20px]" : "text-[28px]";
+  const scoreCls = compact ? "text-[44px]" : "text-[84px]";
   return (
-    <div className="flex h-full flex-col rounded-3xl border border-rose-500/40 bg-gradient-to-br from-rose-500/20 via-[#0e1526]/90 to-[#0e1526]/90 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-      <div className="flex items-center justify-between text-lg">
+    <div className={`flex h-full min-h-0 flex-col border border-rose-500/40 bg-gradient-to-br from-rose-500/20 via-[#0e1526]/90 to-[#0e1526]/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${compact ? "rounded-2xl p-3" : "rounded-3xl p-5"}`}>
+      <div className={`flex items-center justify-between ${compact ? "text-sm" : "text-lg"}`}>
         <span className="flex items-center gap-2 font-bold uppercase tracking-[0.12em] text-rose-300">
-          <span className="inline-block size-3 animate-pulse rounded-full bg-rose-500" />
+          {!compact && <span className="inline-block size-3 animate-pulse rounded-full bg-rose-500" />}
           {label}
         </span>
         <span className="text-slate-400">{note ?? (target ? `Tới ${target} điểm` : "")}</span>
       </div>
-      <div className="mt-3 grid flex-1 grid-cols-[1fr_auto_1fr] items-center gap-5">
-        <p className={`break-words text-[28px] leading-snug ${lead === "a" ? "font-black text-white" : "font-semibold text-slate-300"}`}>{a}</p>
-        <p className="font-mono text-[84px] font-black leading-none tabular-nums">
+      <div className={`grid min-h-0 flex-1 grid-cols-[1fr_auto_1fr] items-center ${compact ? "mt-1 gap-3" : "mt-3 gap-5"}`}>
+        <p className={`break-words leading-snug ${nameCls} ${lead === "a" ? "font-black text-white" : "font-semibold text-slate-300"}`}>{a}</p>
+        <p className={`font-mono font-black leading-none tabular-nums ${scoreCls}`}>
           <span className={lead === "a" ? "text-white" : "text-slate-400"}>{scoreA}</span>
-          <span className="mx-3 text-slate-600">:</span>
+          <span className={`text-slate-600 ${compact ? "mx-2" : "mx-3"}`}>:</span>
           <span className={lead === "b" ? "text-white" : "text-slate-400"}>{scoreB}</span>
         </p>
-        <p className={`break-words text-right text-[28px] leading-snug ${lead === "b" ? "font-black text-white" : "font-semibold text-slate-300"}`}>{b}</p>
+        <p className={`break-words text-right leading-snug ${nameCls} ${lead === "b" ? "font-black text-white" : "font-semibold text-slate-300"}`}>{b}</p>
       </div>
     </div>
   );

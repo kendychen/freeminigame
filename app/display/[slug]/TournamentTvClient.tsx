@@ -6,7 +6,7 @@ import { computeStandings } from "@/lib/standings";
 import type { TieBreakerConfig } from "@/lib/standings/types";
 import type { Match, Team } from "@/lib/pairing/types";
 import type { DbMatch, DbTeam, DbTournament } from "@/types/database";
-import { TvShell, TvCard, TvLiveCard, TvMatchRow, TvStandings, type TvScreen } from "@/components/tv/TvShell";
+import { TvShell, TvCard, TvLiveCard, TvMatchRow, TvStandings, LIVE_SCREEN_KEY, type TvLayout, type TvLiveItem, type TvScreen } from "@/components/tv/TvShell";
 import { useTvFeed, useRecentlyCompleted } from "@/components/tv/useTvFeed";
 
 const FORMAT_LABEL: Record<string, string> = {
@@ -35,10 +35,12 @@ export default function TournamentTvClient({
   tournament,
   teams,
   initialMatches,
+  layout,
 }: {
   tournament: DbTournament;
   teams: DbTeam[];
   initialMatches: DbMatch[];
+  layout: TvLayout;
 }) {
   const { data: matches, conn, updatedAt } = useTvFeed<DbMatch[]>({
     key: `t:${tournament.id}`,
@@ -98,16 +100,26 @@ export default function TournamentTvClient({
   const screens: TvScreen[] = [];
 
   // ── Live ──
-  const liveMatches = matchesTyped.filter((m) => m.status === "live");
-  if (liveMatches.length > 0) {
-    const shown = liveMatches.slice(0, 4);
+  const liveItems: TvLiveItem[] = matchesTyped
+    .filter((m) => m.status === "live")
+    .map((m) => ({
+      id: m.id,
+      label: roundLabel(m, matchesTyped),
+      a: name(m.teamA),
+      b: name(m.teamB),
+      scoreA: m.scoreA,
+      scoreB: m.scoreB,
+      note: "Trọng tài đang chấm",
+    }));
+  if (liveItems.length > 0) {
+    const shown = liveItems.slice(0, 4);
     screens.push({
-      key: "live",
+      key: LIVE_SCREEN_KEY,
       label: "Đang đấu",
       node: (
         <div className={`grid h-full gap-5 ${shown.length === 1 ? "grid-cols-1" : "grid-cols-2"} ${shown.length > 2 ? "grid-rows-2" : ""}`}>
-          {shown.map((m) => (
-            <TvLiveCard key={m.id} label={roundLabel(m, matchesTyped)} a={name(m.teamA)} b={name(m.teamB)} scoreA={m.scoreA} scoreB={m.scoreB} note="Trọng tài đang chấm" />
+          {shown.map((it) => (
+            <TvLiveCard key={it.id} label={it.label} a={it.a} b={it.b} scoreA={it.scoreA} scoreB={it.scoreB} note={it.note} />
           ))}
         </div>
       ),
@@ -258,6 +270,8 @@ export default function TournamentTvClient({
       conn={conn}
       updatedAt={updatedAt}
       banner={bannerNode}
+      layout={layout}
+      liveItems={liveItems}
     />
   );
 }

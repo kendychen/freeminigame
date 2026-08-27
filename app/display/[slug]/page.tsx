@@ -1,15 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import type { DbMatch, DbTeam, DbTournament } from "@/types/database";
 import TournamentTvClient from "./TournamentTvClient";
+import { getTvLayout } from "@/lib/tv-layout";
 
 export const dynamic = "force-dynamic";
 
 export default async function DisplayPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ layout?: string | string[] }>;
 }) {
-  const { slug } = await params;
+  const [{ slug }, { layout: layoutParam }] = await Promise.all([params, searchParams]);
   const supabase = await createClient();
   const { data: t } = await supabase
     .from("tournaments")
@@ -34,9 +37,10 @@ export default async function DisplayPage({
     );
   }
 
-  const [{ data: teams }, { data: matches }] = await Promise.all([
+  const [{ data: teams }, { data: matches }, layout] = await Promise.all([
     supabase.from("teams").select("*").eq("tournament_id", t.id),
     supabase.from("matches").select("*").eq("tournament_id", t.id).order("round").order("match_number"),
+    getTvLayout(layoutParam),
   ]);
 
   return (
@@ -44,6 +48,7 @@ export default async function DisplayPage({
       tournament={t as DbTournament}
       teams={(teams ?? []) as DbTeam[]}
       initialMatches={(matches ?? []) as DbMatch[]}
+      layout={layout}
     />
   );
 }

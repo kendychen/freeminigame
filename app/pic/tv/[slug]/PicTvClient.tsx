@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { loadPicTvState, type PicTvState } from "@/app/actions/pic";
 import { computeStandings, type PicMatch, type PicPlayer } from "@/stores/pic-tournament";
-import { TvShell, TvCard, TvLiveCard, TvMatchRow, TvStandings, type TvScreen } from "@/components/tv/TvShell";
+import { TvShell, TvCard, TvLiveCard, TvMatchRow, TvStandings, LIVE_SCREEN_KEY, type TvLayout, type TvLiveItem, type TvScreen } from "@/components/tv/TvShell";
 import { useTvFeed, useRecentlyCompleted } from "@/components/tv/useTvFeed";
 
 const STAGE_LABEL: Record<PicMatch["stage"], string> = {
@@ -20,7 +20,7 @@ function pairName(players: PicPlayer[], ...ids: string[]) {
   return names.length ? names.join(" / ") : "Chờ xác định";
 }
 
-export default function PicTvClient({ initial }: { initial: PicTvState }) {
+export default function PicTvClient({ initial, layout }: { initial: PicTvState; layout: TvLayout }) {
   const eventId = initial.state.id;
   const { data, conn, updatedAt } = useTvFeed<PicTvState>({
     key: `pic:${eventId}`,
@@ -59,30 +59,29 @@ export default function PicTvClient({ initial }: { initial: PicTvState }) {
   const screens: TvScreen[] = [];
 
   // ── Live now ──
-  const liveMatches = allMatches.flatMap((x) => {
-    const s = x.m.status === "pending" ? live[x.m.id] : undefined;
-    return s ? [{ ...x, s }] : [];
+  const liveItems: TvLiveItem[] = allMatches.flatMap(({ m, group }) => {
+    const s = m.status === "pending" ? live[m.id] : undefined;
+    if (!s) return [];
+    return [{
+      id: m.id,
+      label: group ? `Bảng ${group} · Trận ${m.round}` : STAGE_LABEL[m.stage],
+      a: pairName(players, m.a1, m.a2),
+      b: pairName(players, m.b1, m.b2),
+      scoreA: s.scoreA,
+      scoreB: s.scoreB,
+      target: s.target,
+    }];
   });
-  if (liveMatches.length > 0) {
-    const shown = liveMatches.slice(0, 4);
+  if (liveItems.length > 0) {
+    const shown = liveItems.slice(0, 4);
     screens.push({
-      key: "live",
+      key: LIVE_SCREEN_KEY,
       label: "Đang đấu",
       node: (
         <div className={`grid h-full gap-5 ${shown.length === 1 ? "grid-cols-1" : "grid-cols-2"} ${shown.length > 2 ? "grid-rows-2" : ""}`}>
-          {shown.map(({ m, group, s }) => {
-            return (
-              <TvLiveCard
-                key={m.id}
-                label={group ? `Bảng ${group} · Trận ${m.round}` : STAGE_LABEL[m.stage]}
-                a={pairName(players, m.a1, m.a2)}
-                b={pairName(players, m.b1, m.b2)}
-                scoreA={s.scoreA}
-                scoreB={s.scoreB}
-                target={s.target}
-              />
-            );
-          })}
+          {shown.map((it) => (
+            <TvLiveCard key={it.id} label={it.label} a={it.a} b={it.b} scoreA={it.scoreA} scoreB={it.scoreB} target={it.target} />
+          ))}
         </div>
       ),
     });
@@ -247,6 +246,8 @@ export default function PicTvClient({ initial }: { initial: PicTvState }) {
       conn={conn}
       updatedAt={updatedAt}
       banner={bannerNode}
+      layout={layout}
+      liveItems={liveItems}
     />
   );
 }

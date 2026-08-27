@@ -5,7 +5,7 @@ import { loadTeamTvState } from "@/app/actions/team";
 import { computeTeamStandings } from "@/lib/team/standings";
 import { CATEGORY_LABELS } from "@/lib/team/types";
 import type { DbTeamPlayer, DbTeamRubber, DbTeamTie, TeamEventFull, TieStage } from "@/lib/team/types";
-import { TvShell, TvCard, TvMatchRow, TvStandings, type TvScreen } from "@/components/tv/TvShell";
+import { TvShell, TvCard, TvMatchRow, TvStandings, LIVE_SCREEN_KEY, type TvLayout, type TvLiveItem, type TvScreen } from "@/components/tv/TvShell";
 import { useTvFeed, useRecentlyCompleted } from "@/components/tv/useTvFeed";
 
 const TIE_STAGE_LABEL: Record<TieStage, string> = {
@@ -99,7 +99,7 @@ function TieBoard({
   );
 }
 
-export default function TeamTvClient({ initial }: { initial: TeamEventFull }) {
+export default function TeamTvClient({ initial, layout }: { initial: TeamEventFull; layout: TvLayout }) {
   const eventId = initial.event.id;
   const { data, conn, updatedAt } = useTvFeed<TeamEventFull>({
     key: `team:${eventId}`,
@@ -134,10 +134,23 @@ export default function TeamTvClient({ initial }: { initial: TeamEventFull }) {
 
   // ── In progress ──
   const inPlay = ties.filter((t) => t.status === "pending" && rubbersOf(t.id).some((r) => r.status !== "pending"));
+  const liveItems: TvLiveItem[] = inPlay.map((t) => {
+    const rs = rubbersOf(t.id);
+    const finished = rs.filter((r) => r.status !== "pending").length;
+    return {
+      id: t.id,
+      label: t.stage === "group" ? `Bảng ${t.group_label ?? ""} · Vòng ${t.round}` : TIE_STAGE_LABEL[t.stage],
+      a: squadName(t.squad_a_id),
+      b: squadName(t.squad_b_id),
+      scoreA: t.rubbers_won_a,
+      scoreB: t.rubbers_won_b,
+      note: `${finished}/${rs.length} trận xong`,
+    };
+  });
   if (inPlay.length > 0) {
     const shown = inPlay.slice(0, 2);
     screens.push({
-      key: "live",
+      key: LIVE_SCREEN_KEY,
       label: "Đang đấu",
       node: (
         <div className={`grid h-full gap-5 ${shown.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
@@ -285,6 +298,8 @@ export default function TeamTvClient({ initial }: { initial: TeamEventFull }) {
       conn={conn}
       updatedAt={updatedAt}
       banner={bannerNode}
+      layout={layout}
+      liveItems={liveItems}
     />
   );
 }
