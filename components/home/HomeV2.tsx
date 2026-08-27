@@ -18,6 +18,8 @@ import { getOptionalUser } from "@/lib/auth";
 import { getSiteStats, formatCount } from "@/lib/site-stats";
 import { FORMATS, STRUCTURED_DATA } from "./HomeV1";
 import { TechniqueShowcase } from "./TechniqueShowcase";
+import { HeroScoreCard } from "./HeroScoreCard";
+import { getHeroMatch } from "@/lib/home-live-match";
 
 const STEPS = [
   { n: "Bước 1", t: "Tạo giải, nhập đội" },
@@ -28,7 +30,7 @@ const STEPS = [
 
 /** Home page for theme V2 — header/footer come from the root layout. */
 export async function HomeV2() {
-  const [{ user }, stats] = await Promise.all([getOptionalUser(), getSiteStats()]);
+  const [{ user }, stats, heroMatch] = await Promise.all([getOptionalUser(), getSiteStats(), getHeroMatch()]);
   const TOOLS = [
     { href: "/pair/new", icon: Dices, title: "Bốc thăm realtime", desc: "Chia bảng, hiện đồng thời trên mọi máy" },
     { href: "/score/new", icon: Activity, title: "Tỷ số nhanh", desc: "Chấm điểm 1 trận, share link cho khán giả" },
@@ -86,31 +88,7 @@ export async function HomeV2() {
             </dl>
           </div>
 
-          <div
-            aria-hidden
-            className="relative overflow-hidden rounded-3xl bg-[hsl(230_45%_16%)] p-5 text-white shadow-[0_20px_50px_rgba(20,10,0,0.18)] dark:bg-card dark:shadow-none"
-          >
-            <div className="pointer-events-none absolute -bottom-16 -right-10 size-56 rounded-full bg-primary/25" />
-            <div className="flex justify-between text-xs text-white/70">
-              <span className="flex items-center gap-1.5">
-                <span className="size-2 animate-pulse rounded-full bg-red-500" /> Sân 2 · Chung kết
-              </span>
-              <span>Giải Mùa Thu 2026 <span className="opacity-60">· minh hoạ</span></span>
-            </div>
-            <div className="mt-2 divide-y divide-white/10">
-              <div className="flex items-center justify-between py-3">
-                <span className="font-semibold">Kendy / Linh</span>
-                <span className="text-4xl font-extrabold text-primary">11</span>
-              </div>
-              <div className="flex items-center justify-between py-3">
-                <span className="font-semibold">Minh / An</span>
-                <span className="text-4xl font-extrabold text-white/50">7</span>
-              </div>
-            </div>
-            <div className="mt-2 flex justify-between text-xs text-white/70">
-              <span>Trọng tài: Hùng</span><span>Set 2/3</span>
-            </div>
-          </div>
+          <HeroScoreCard match={heroMatch} />
         </section>
 
         <TechniqueShowcase />
