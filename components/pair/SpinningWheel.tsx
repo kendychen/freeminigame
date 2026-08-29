@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PairParticipant } from "@/lib/pair/shuffle";
 
 export interface SpinningWheelProps {
@@ -30,9 +30,34 @@ export function SpinningWheel({
   const remainingMs = Math.max(0, endTs - now);
   const remainingS = (remainingMs / 1000).toFixed(1);
 
-  const cycleNames = participants.length === 0
+  // Pinned members are already locked into a group — they never spin.
+  const { pinnedGroups, spinning } = useMemo(() => {
+    const order: string[] = [];
+    const byPin = new Map<string, PairParticipant[]>();
+    for (const p of participants) {
+      const pin = (p.pin ?? "").trim();
+      if (!pin) continue;
+      if (!byPin.has(pin)) {
+        byPin.set(pin, []);
+        order.push(pin);
+      }
+      byPin.get(pin)!.push(p);
+    }
+    const groups = order
+      .map((pin) => byPin.get(pin)!)
+      .filter((members) => members.length >= 2);
+    const lockedIds = new Set(groups.flat().map((p) => p.id));
+    return {
+      pinnedGroups: groups.map((members) => members.map((m) => m.name)),
+      spinning: participants.filter((p) => !lockedIds.has(p.id)),
+    };
+  }, [participants]);
+
+  const allPinned = participants.length > 0 && spinning.length === 0;
+
+  const cycleNames = spinning.length === 0
     ? ["..."]
-    : participants.map((p) => p.name);
+    : spinning.map((p) => p.name);
 
   // Cycle 3 names per "slot" representing each spot in a group
   const slotCount = Math.min(groupSize, 3);
@@ -55,6 +80,11 @@ export function SpinningWheel({
         </span>
       </div>
 
+      {allPinned ? (
+        <div className="mx-auto mb-6 max-w-2xl rounded-lg border-2 border-primary/40 bg-background p-4 text-lg font-semibold text-primary">
+          📌 Tất cả đã ghim
+        </div>
+      ) : (
       <div className="mx-auto mb-6 flex max-w-2xl flex-wrap items-center justify-center gap-3">
         {slots.map((name, i) => (
           <div
@@ -85,6 +115,22 @@ export function SpinningWheel({
           </div>
         )}
       </div>
+      )}
+
+      {pinnedGroups.length > 0 && (
+        <div className="mx-auto mb-6 max-w-2xl rounded-lg border bg-background/60 p-3 text-left text-sm">
+          <div className="mb-1 text-xs font-medium text-muted-foreground">
+            📌 Đã ghim sẵn ({pinnedGroups.length})
+          </div>
+          <ul className="space-y-0.5">
+            {pinnedGroups.map((names, i) => (
+              <li key={i} className="truncate">
+                {names.join(" + ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="mx-auto mb-3 h-3 max-w-md overflow-hidden rounded-full bg-secondary">

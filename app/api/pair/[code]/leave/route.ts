@@ -9,6 +9,20 @@ interface Participant {
   id: string;
   name: string;
   joinedAt: number;
+  pin?: string | null;
+}
+
+/** A pin group with a single member left is meaningless — release it. */
+function dropOrphanPins(participants: Participant[]): Participant[] {
+  const counts = new Map<string, number>();
+  for (const p of participants) {
+    const pin = (p.pin ?? "").trim();
+    if (pin) counts.set(pin, (counts.get(pin) ?? 0) + 1);
+  }
+  return participants.map((p) => {
+    const pin = (p.pin ?? "").trim();
+    return pin && (counts.get(pin) ?? 0) < 2 ? { ...p, pin: null } : p;
+  });
 }
 
 export async function POST(
@@ -34,7 +48,11 @@ export async function POST(
     .maybeSingle();
   if (!session) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const participants = (session.participants as Participant[]) ?? [];
-  const next = participants.filter((p) => p.id !== body.participantId);
+  const removed = participants.find((p) => p.id === body.participantId);
+  const remaining = participants.filter((p) => p.id !== body.participantId);
+  const next = (removed?.pin ?? "").trim()
+    ? dropOrphanPins(remaining)
+    : remaining;
   await sb.from("pair_sessions").update({ participants: next }).eq("code", code);
   return NextResponse.json({ ok: true });
 }

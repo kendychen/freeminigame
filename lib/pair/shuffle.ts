@@ -4,6 +4,12 @@ export interface PairParticipant {
   joinedAt: number;
   /** Optional seed tag (e.g. 'A','B' or 'Nam','Nữ'). Used by balanced draw mode. */
   tag?: string | null;
+  /**
+   * Optional pin group id. Participants sharing the same non-empty `pin` are
+   * locked together before the draw: they are pulled out of the random pool and
+   * emitted as a ready-made group ahead of the randomised ones.
+   */
+  pin?: string | null;
 }
 
 export type DrawMode = "random_all" | "balanced_by_tag";
@@ -54,9 +60,73 @@ export function shuffleParticipants(
   round: number,
   mode: DrawMode = "random_all",
 ): PairResult {
-  if (mode === "balanced_by_tag") {
-    return shuffleBalanced(participants, groupSize, seed, round);
+  const { pinnedGroups, pool } = extractPinnedGroups(participants, groupSize);
+  const base =
+    mode === "balanced_by_tag"
+      ? shuffleBalanced(pool, groupSize, seed, round)
+      : shufflePlain(pool, groupSize, seed, round);
+  if (pinnedGroups.length === 0) return base;
+  return { ...base, groups: [...pinnedGroups, ...base.groups] };
+}
+
+/**
+ * Split participants into pre-pinned groups + the remaining random pool.
+ *
+ * - A pin shared by 2..groupSize participants becomes a locked group.
+ * - A pin held by a single participant is ignored (back to the pool).
+ * - A pin held by more than groupSize participants keeps the first `groupSize`
+ *   by joinedAt; the overflow goes back to the pool.
+ *
+ * Ordering is deterministic (earliest joinedAt first, pin id as tie-break) so
+ * the same input always yields the same locked groups.
+ */
+function extractPinnedGroups(
+  participants: PairParticipant[],
+  groupSize: number,
+): { pinnedGroups: string[][]; pool: PairParticipant[] } {
+  const byPin = new Map<string, PairParticipant[]>();
+  const pool: PairParticipant[] = [];
+  for (const p of participants) {
+    const pin = (p.pin ?? "").trim();
+    if (!pin) {
+      pool.push(p);
+      continue;
+    }
+    const arr = byPin.get(pin) ?? [];
+    arr.push(p);
+    byPin.set(pin, arr);
   }
+  if (byPin.size === 0) return { pinnedGroups: [], pool };
+
+  const sortMembers = (arr: PairParticipant[]) =>
+    [...arr].sort((a, b) => a.joinedAt - b.joinedAt || a.id.localeCompare(b.id));
+
+  const entries = Array.from(byPin.entries())
+    .map(([pin, members]) => ({ pin, members: sortMembers(members) }))
+    .sort(
+      (a, b) =>
+        a.members[0]!.joinedAt - b.members[0]!.joinedAt ||
+        a.pin.localeCompare(b.pin),
+    );
+
+  const pinnedGroups: string[][] = [];
+  for (const { members } of entries) {
+    if (members.length < 2 || groupSize < 2) {
+      pool.push(...members);
+      continue;
+    }
+    pinnedGroups.push(members.slice(0, groupSize).map((m) => m.id));
+    pool.push(...members.slice(groupSize));
+  }
+  return { pinnedGroups, pool };
+}
+
+function shufflePlain(
+  participants: PairParticipant[],
+  groupSize: number,
+  seed: number,
+  round: number,
+): PairResult {
   const ids = participants.map((p) => p.id);
   const shuffled = shuffleDeterministic(ids, seed);
   const groups: string[][] = [];
@@ -93,7 +163,7 @@ function shuffleBalanced(
   }
   // Single tag bucket → fall back to plain shuffle
   if (buckets.size <= 1) {
-    return shuffleParticipants(participants, groupSize, seed, round, "random_all");
+    return shufflePlain(participants, groupSize, seed, round);
   }
 
   // Shuffle each bucket independently with a tag-derived seed offset
