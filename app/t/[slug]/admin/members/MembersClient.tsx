@@ -609,6 +609,7 @@ export function MembersClient({
           entrants={players.map((p) => ({
             id: p.id,
             name: p.seed_tag ? `${p.name} (${p.seed_tag})` : p.name,
+            tag: p.seed_tag,
           }))}
           disabledReason={
             teamCount > 0

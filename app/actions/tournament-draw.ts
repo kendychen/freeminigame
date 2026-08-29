@@ -4,6 +4,10 @@ import { customAlphabet } from "nanoid";
 import { revalidatePath } from "next/cache";
 import { requireUser, requireTournamentAdmin } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/service";
+import {
+  buildPairDrawPlan,
+  type PinnedPair,
+} from "@/lib/tournament/pair-draw-plan";
 
 const codeGen = customAlphabet("abcdefghjkmnpqrstuvwxyz23456789", 6);
 const tokenGen = customAlphabet(
@@ -22,7 +26,7 @@ interface DrawSessionRow {
   slot_sizes: number[];
   slot_tags: Record<string, string> | null;
   entrant_tokens: Record<string, string>;
-  assignments: Record<string, { g: number; p: number }>;
+  assignments: Record<string, { g: number; p: number; pinned?: boolean }>;
   status: string;
 }
 
@@ -39,6 +43,8 @@ export async function createTournamentDrawSession(input: {
   groupCount?: number;
   teamCount?: number;
   balancedByTag?: boolean;
+  /** mode "pair" only — cặp VĐV ghim sẵn vào các đội cuối danh sách */
+  pinnedPairs?: PinnedPair[];
 }): Promise<
   | { code: string; hostToken: string }
   | { error: string; existingCode?: string }
@@ -60,6 +66,8 @@ export async function createTournamentDrawSession(input: {
   let slotSizes: number[];
   let slotTags: Record<string, string> | null = null;
   let entrantIds: string[];
+  let initialAssignments: Record<string, { g: number; p: number; pinned: true }> =
+    {};
 
   if (input.mode === "pair") {
     // Không cần tạo đội trước — hệ tự tạo "Đội 1..N" khi xác nhận kết quả
@@ -78,32 +86,17 @@ export async function createTournamentDrawSession(input: {
     // Admin chọn số đội — mặc định ghép cặp 2 người/đội; số dư rải đều (đội 3 người)
     const maxTeams = Math.floor(players.length / 2);
     const teamCount = input.teamCount ?? maxTeams;
-    if (teamCount < 2 || teamCount > maxTeams)
-      return { error: "invalid_team_count" };
-    const base = Math.floor(players.length / teamCount);
-    const extra = players.length % teamCount;
-    slotSizes = Array.from({ length: teamCount }, (_, i) =>
-      base + (i < extra ? 1 : 0),
-    );
+    const plan = buildPairDrawPlan({
+      players: players.map((p) => ({ id: p.id, seedTag: p.seed_tag })),
+      teamCount,
+      pinnedPairs: input.pinnedPairs ?? [],
+      balancedByTag: !!input.balancedByTag,
+    });
+    if (!plan.ok) return { error: plan.error };
+    slotSizes = plan.slotSizes;
+    slotTags = plan.slotTags;
+    initialAssignments = plan.assignments;
     entrantIds = players.map((p) => p.id);
-
-    if (input.balancedByTag) {
-      if (players.length !== teamCount * 2) return { error: "need_even_players" };
-      const tags = new Map<string, number>();
-      for (const p of players) {
-        const tag = (p.seed_tag ?? "").trim();
-        if (!tag) return { error: "missing_tag" };
-        tags.set(tag, (tags.get(tag) ?? 0) + 1);
-      }
-      const entries = [...tags.entries()];
-      if (entries.length !== 2 || entries[0]![1] !== entries[1]![1])
-        return { error: "tags_unbalanced" };
-      // "Nam" (or alphabetical first) always draws position 1
-      entries.sort((a, b) =>
-        a[0] === "Nam" ? -1 : b[0] === "Nam" ? 1 : a[0].localeCompare(b[0]),
-      );
-      slotTags = { "1": entries[0]![0], "2": entries[1]![0] };
-    }
   } else {
     const { count: matchCount } = await svc
       .from("matches")
@@ -145,7 +138,7 @@ export async function createTournamentDrawSession(input: {
       slot_sizes: slotSizes,
       slot_tags: slotTags,
       entrant_tokens: entrantTokens,
-      assignments: {},
+      assignments: initialAssignments,
       status: "active",
     });
     if (!error) return { code, hostToken };
@@ -392,15 +385,22 @@ export async function resetTournamentDrawAssignments(
   const svc = createServiceClient();
   const { data: session } = await svc
     .from("t_draw_sessions")
-    .select("owner_id, status")
+    .select("owner_id, status, assignments")
     .eq("code", code)
     .single();
   if (!session) return { error: "session_not_found" };
   if (session.owner_id !== user.id) return { error: "unauthorized" };
   if (session.status !== "active") return { error: "session_not_active" };
+  // Giữ lại các cặp đã ghim — chỉ xoá kết quả do người chơi tự quay
+  const kept: Record<string, unknown> = {};
+  for (const [id, v] of Object.entries(
+    (session.assignments ?? {}) as Record<string, { pinned?: boolean }>,
+  )) {
+    if (v && v.pinned) kept[id] = v;
+  }
   const { error } = await svc
     .from("t_draw_sessions")
-    .update({ assignments: {}, updated_at: new Date().toISOString() })
+    .update({ assignments: kept, updated_at: new Date().toISOString() })
     .eq("code", code);
   if (error) return { error: error.message };
   return { ok: true };
@@ -420,8 +420,11 @@ export async function resetTournamentDrawEntrant(
   if (!session) return { error: "session_not_found" };
   if (session.owner_id !== user.id) return { error: "unauthorized" };
   if (session.status !== "active") return { error: "session_not_active" };
-  const assignments = { ...(session.assignments as Record<string, unknown>) };
+  const assignments = {
+    ...((session.assignments ?? {}) as Record<string, { pinned?: boolean }>),
+  };
   if (!(entrantId in assignments)) return { error: "entrant_not_drawn" };
+  if (assignments[entrantId]?.pinned) return { error: "pinned" };
   delete assignments[entrantId];
   const { error } = await svc
     .from("t_draw_sessions")

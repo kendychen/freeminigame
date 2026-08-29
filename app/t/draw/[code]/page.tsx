@@ -75,7 +75,7 @@ export default async function TournamentDrawPage({
       slotSizes={session.slot_sizes as number[]}
       slotTags={(session.slot_tags as Record<string, string> | null) ?? null}
       initialAssignments={
-        session.assignments as Record<string, { g: number; p: number }>
+        session.assignments as Record<string, { g: number; p: number; pinned?: boolean }>
       }
       initialStatus={session.status as string}
       lockedEntrantId={lockedEntrantId}

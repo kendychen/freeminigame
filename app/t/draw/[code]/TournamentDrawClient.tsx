@@ -171,12 +171,14 @@ function PersonalResultCard({
   bucketText,
   bucketIdx,
   tournamentName,
+  pinned,
 }: {
   entrantName: string;
   subLabel: string;
   bucketText: string;
   bucketIdx: number;
   tournamentName: string;
+  pinned?: boolean;
 }) {
   const [pending, setPending] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -300,6 +302,11 @@ function PersonalResultCard({
           🎉 Kết quả của bạn
         </p>
         <p className="text-2xl font-extrabold">{entrantName}</p>
+        {pinned && (
+          <p className="text-xs font-semibold opacity-80" title="Ghim sẵn">
+            📌 Ghim sẵn — bạn đã được ghim vào {bucketText}
+          </p>
+        )}
       </div>
 
       {previewUrl && (
@@ -366,7 +373,7 @@ export default function TournamentDrawClient({
   entrants: Entrant[];
   slotSizes: number[];
   slotTags: Record<string, string> | null;
-  initialAssignments: Record<string, { g: number; p: number }>;
+  initialAssignments: Record<string, { g: number; p: number; pinned?: boolean }>;
   initialStatus: string;
   lockedEntrantId: string | null;
   entrantToken: string | null;
@@ -386,6 +393,8 @@ export default function TournamentDrawClient({
   const lastAssignmentsRef = useRef(initialAssignments);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const spinTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bucketCount = slotSizes.length;
   const entrantNoun = mode === "pair" ? "VĐV" : "Đội";
@@ -421,6 +430,45 @@ export default function TournamentDrawClient({
       });
   }, [ownerId]);
 
+  const clearAnimTimers = () => {
+    if (tickRef.current) clearInterval(tickRef.current);
+    if (progRef.current) clearInterval(progRef.current);
+    if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current);
+    if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+    tickRef.current = null;
+    progRef.current = null;
+    spinTimeoutRef.current = null;
+    revealTimeoutRef.current = null;
+  };
+
+  const triggerAnimation = (
+    e: Entrant,
+    result: number,
+    position: number,
+    onDone: () => void,
+  ) => {
+    // Lượt quay mới huỷ lượt đang chạy dở (tránh 2 timer chồng nhau)
+    clearAnimTimers();
+    setAnimating({ entrant: e, result: null, position: null });
+    setProgress(0);
+    setAnimTick(0);
+    const start = Date.now();
+    tickRef.current = setInterval(() => setAnimTick((t) => t + 1), 80);
+    progRef.current = setInterval(() => {
+      setProgress(Math.min(99, ((Date.now() - start) / ANIM_DURATION) * 100));
+    }, 50);
+    spinTimeoutRef.current = setTimeout(() => {
+      if (tickRef.current) clearInterval(tickRef.current);
+      if (progRef.current) clearInterval(progRef.current);
+      setProgress(100);
+      setAnimating({ entrant: e, result, position });
+      revealTimeoutRef.current = setTimeout(() => {
+        setAnimating(null);
+        onDone();
+      }, REVEAL_HOLD);
+    }, ANIM_DURATION);
+  };
+
   // Realtime subscription
   useEffect(() => {
     const sb = getSupabaseBrowser();
@@ -436,7 +484,7 @@ export default function TournamentDrawClient({
         },
         (payload: {
           new: {
-            assignments: Record<string, { g: number; p: number }>;
+            assignments: Record<string, { g: number; p: number; pinned?: boolean }>;
             status: string;
           };
         }) => {
@@ -458,7 +506,7 @@ export default function TournamentDrawClient({
           if (newId && e) {
             const slot = newA[newId]!;
             triggerAnimation(e, slot.g, slot.p, () => {
-              setAssignments(newA);
+              setAssignments(lastAssignmentsRef.current);
             });
           } else {
             setAssignments(newA);
@@ -469,6 +517,8 @@ export default function TournamentDrawClient({
     return () => {
       void sb.removeChannel(ch);
     };
+    // triggerAnimation is intentionally omitted: re-subscribing on every render
+    // would drop realtime events mid-draw.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, entrantMap]);
 
@@ -476,35 +526,11 @@ export default function TournamentDrawClient({
     () => () => {
       if (tickRef.current) clearInterval(tickRef.current);
       if (progRef.current) clearInterval(progRef.current);
+      if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current);
+      if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
     },
     [],
   );
-
-  const triggerAnimation = (
-    e: Entrant,
-    result: number,
-    position: number,
-    onDone: () => void,
-  ) => {
-    setAnimating({ entrant: e, result: null, position: null });
-    setProgress(0);
-    setAnimTick(0);
-    const start = Date.now();
-    tickRef.current = setInterval(() => setAnimTick((t) => t + 1), 80);
-    progRef.current = setInterval(() => {
-      setProgress(Math.min(99, ((Date.now() - start) / ANIM_DURATION) * 100));
-    }, 50);
-    setTimeout(() => {
-      if (tickRef.current) clearInterval(tickRef.current);
-      if (progRef.current) clearInterval(progRef.current);
-      setProgress(100);
-      setAnimating({ entrant: e, result, position });
-      setTimeout(() => {
-        setAnimating(null);
-        onDone();
-      }, REVEAL_HOLD);
-    }, ANIM_DURATION);
-  };
 
   const bucketCounts = useMemo(() => {
     const counts = Array(bucketCount).fill(0) as number[];
@@ -570,7 +596,11 @@ export default function TournamentDrawClient({
   };
 
   const handleResetAll = () => {
-    if (!confirm("Xoá toàn bộ kết quả bốc thăm? Tất cả sẽ phải quay lại từ đầu."))
+    if (
+      !confirm(
+        "Xoá toàn bộ kết quả bốc thăm? Tất cả sẽ phải quay lại từ đầu (cặp ghim được giữ nguyên).",
+      )
+    )
       return;
     startTransition(async () => {
       const res = await resetTournamentDrawAssignments(code);
@@ -591,11 +621,15 @@ export default function TournamentDrawClient({
       className={`grid gap-3 ${bucketCount <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}
     >
       {slotSizes.map((size, gi) => {
-        const slotArr: ({ id: string; name: string } | null)[] =
+        const slotArr: ({ id: string; name: string; pinned: boolean } | null)[] =
           Array(size).fill(null);
         for (const [id, v] of Object.entries(assignments)) {
           if (v.g === gi)
-            slotArr[v.p - 1] = { id, name: entrantMap[id]?.name ?? id };
+            slotArr[v.p - 1] = {
+              id,
+              name: entrantMap[id]?.name ?? id,
+              pinned: !!v.pinned,
+            };
         }
         const filled = slotArr.filter(Boolean).length;
         return (
@@ -622,8 +656,18 @@ export default function TournamentDrawClient({
                   )}
                   {entry ? (
                     <>
-                      <span className="flex-1 break-words">{entry.name}</span>
-                      {isOwner && status === "active" && (
+                      <span className="flex-1 break-words">
+                        {entry.name}
+                        {entry.pinned && (
+                          <span
+                            title="Ghim sẵn"
+                            className="ml-1 align-middle text-[11px]"
+                          >
+                            📌
+                          </span>
+                        )}
+                      </span>
+                      {isOwner && status === "active" && !entry.pinned && (
                         <button
                           onClick={() => handleResetEntrant(entry)}
                           disabled={pending || !!animating}
@@ -710,6 +754,7 @@ export default function TournamentDrawClient({
           bucketText={bucketName(assignments[lockedEntrant.id]!.g)}
           bucketIdx={assignments[lockedEntrant.id]!.g}
           tournamentName={tournamentName}
+          pinned={!!assignments[lockedEntrant.id]!.pinned}
         />
       )}
 

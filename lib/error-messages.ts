@@ -87,6 +87,13 @@ const ERROR_VI: Record<string, string> = {
   missing_tag: "VĐV chưa được gán nhóm Nam/Nữ — gán tag ở tab Thành viên",
   invalid_group_count: "Số bảng không hợp lệ (mỗi bảng cần ít nhất 2 đội)",
   invalid_team_count: "Số đội không hợp lệ (mỗi đội cần ít nhất 2 VĐV)",
+  // Ghim cặp (pinned pairs)
+  pin_invalid: "Cặp ghim không hợp lệ — cần đúng 2 VĐV khác nhau trong danh sách",
+  pin_duplicate: "Một VĐV chỉ được ghim vào 1 cặp",
+  pin_too_many: "Số cặp ghim vượt quá số đội",
+  pin_tag_conflict:
+    "Cặp ghim phải gồm 1 Nam + 1 Nữ khi bật chế độ cân bằng theo tag",
+  pinned: "VĐV này đã được ghim, không thể quay lại",
   // Technique videos
   video_not_found: "Không tìm thấy video",
   invalid_rating: "Điểm đánh giá phải từ 1 đến 5",

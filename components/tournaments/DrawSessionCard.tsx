@@ -23,6 +23,7 @@ import {
 interface Entrant {
   id: string;
   name: string;
+  tag?: string | null;
 }
 
 interface ActiveSession {
@@ -57,6 +58,9 @@ export function DrawSessionCard({
   const [groupCount, setGroupCount] = useState(2);
   const [teamCount, setTeamCount] = useState(0); // 0 = auto (số VĐV / 2)
   const [balanced, setBalanced] = useState(true);
+  const [pinnedPairs, setPinnedPairs] = useState<[string, string][]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -87,6 +91,43 @@ export function DrawSessionCard({
   const mode: TDrawMode =
     variant === "pair" ? "pair" : isGroupFormat ? "group" : "slot";
 
+  // Danh sách VĐV có thể đã đổi (xoá/thêm) — lọc lại ngay khi render, không dùng effect
+  const validPins = pinnedPairs.filter(
+    ([a, b]) => nameById.has(a) && nameById.has(b),
+  );
+  const pinnedIds = new Set(validPins.flat());
+  const pinnable = entrants.filter((e) => !pinnedIds.has(e.id));
+  const canAddPin = validPins.length < effTeamCount;
+  const tagById = new Map(entrants.map((e) => [e.id, (e.tag ?? "").trim()]));
+  const pickedTag =
+    picked.length === 1 ? (tagById.get(picked[0]!) ?? "") : "";
+  const tagLockActive = balanced && isAllPairs && !!pickedTag;
+  const perTeamMin = Math.floor(entrants.length / effTeamCount);
+
+  const togglePick = (id: string) => {
+    if (picked.includes(id)) {
+      setPicked(picked.filter((x) => x !== id));
+      return;
+    }
+    const next = [...picked, id];
+    if (next.length === 2) {
+      setPinnedPairs([...validPins, [next[0]!, next[1]!]]);
+      setPicked([]);
+      setPickerOpen(false);
+      return;
+    }
+    setPicked(next);
+  };
+
+  const removePin = (idx: number) =>
+    setPinnedPairs(validPins.filter((_, i) => i !== idx));
+
+  const clearPins = () => {
+    setPinnedPairs([]);
+    setPicked([]);
+    setPickerOpen(false);
+  };
+
   const onCreate = () => {
     startTransition(async () => {
       const res = await createTournamentDrawSession({
@@ -95,6 +136,8 @@ export function DrawSessionCard({
         groupCount: mode === "group" ? groupCount : undefined,
         teamCount: mode === "pair" ? effTeamCount : undefined,
         balancedByTag: mode === "pair" ? balanced && isAllPairs : undefined,
+        pinnedPairs:
+          mode === "pair" && validPins.length > 0 ? validPins : undefined,
       });
       if ("error" in res) {
         toast({
@@ -104,6 +147,7 @@ export function DrawSessionCard({
         });
         return;
       }
+      clearPins();
       toast({
         title: "Đã tạo phiên bốc thăm!",
         description: "Gửi link riêng cho từng người bên dưới",
@@ -125,6 +169,7 @@ export function DrawSessionCard({
         return;
       }
       setActive(null);
+      clearPins();
       toast({ title: "Đã hủy phiên bốc thăm" });
     });
   };
@@ -276,7 +321,12 @@ export function DrawSessionCard({
                     <Label>Số đội</Label>
                     <select
                       value={effTeamCount}
-                      onChange={(e) => setTeamCount(Number(e.target.value))}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        setTeamCount(n);
+                        if (validPins.length > n)
+                          setPinnedPairs(validPins.slice(0, n));
+                      }}
                       className="flex h-10 rounded-md border border-input bg-background px-3 text-sm"
                     >
                       {Array.from(
@@ -314,6 +364,104 @@ export function DrawSessionCard({
                     </span>
                   )}
                 </label>
+
+                <div className="space-y-2 rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label className="text-sm">
+                      📌 Ghim cặp{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        (tuỳ chọn — cặp cố định, không phải quay)
+                      </span>
+                    </Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      disabled={!canAddPin || pinnable.length < 2}
+                      onClick={() => {
+                        setPicked([]);
+                        setPickerOpen(!pickerOpen);
+                      }}
+                    >
+                      {pickerOpen ? "Đóng" : "+ Thêm cặp"}
+                    </Button>
+                  </div>
+
+                  {validPins.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {validPins.map(([a, b], i) => (
+                        <span
+                          key={`${a}-${b}`}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                        >
+                          📌 Đội {effTeamCount - i} · {nameById.get(a) ?? "?"} +{" "}
+                          {nameById.get(b) ?? "?"}
+                          <button
+                            type="button"
+                            onClick={() => removePin(i)}
+                            title="Bỏ ghim"
+                            className="rounded-full p-0.5 hover:bg-primary/20"
+                          >
+                            <XCircle className="size-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {pickerOpen && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">
+                        Chọn 2 VĐV để tạo 1 cặp ghim ({picked.length}/2)
+                      </p>
+                      <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-md border p-2">
+                        {pinnable.map((e) => {
+                          const on = picked.includes(e.id);
+                          const sameTag =
+                            tagLockActive &&
+                            !on &&
+                            (tagById.get(e.id) ?? "") === pickedTag;
+                          return (
+                            <button
+                              key={e.id}
+                              type="button"
+                              disabled={sameTag}
+                              aria-disabled={sameTag}
+                              title={
+                                sameTag
+                                  ? `Cần ghép với người khác nhóm ${pickedTag}`
+                                  : undefined
+                              }
+                              onClick={() => togglePick(e.id)}
+                              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                on
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : sameTag
+                                    ? "cursor-not-allowed border-muted bg-muted/30 text-muted-foreground opacity-50"
+                                    : "border-input bg-background hover:bg-secondary"
+                              }`}
+                            >
+                              {e.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {perTeamMin > 2 && (validPins.length > 0 || pickerOpen) && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">
+                      ⚠️ Mỗi đội có {perTeamMin} người — cặp ghim sẽ có thêm
+                      người quay vào cùng đội.
+                    </p>
+                  )}
+                  {!canAddPin && (
+                    <p className="text-xs text-muted-foreground">
+                      Đã ghim đủ {effTeamCount} cặp — không thể ghim thêm.
+                    </p>
+                  )}
+                </div>
               </>
             )}
             {disabledReason ? (
