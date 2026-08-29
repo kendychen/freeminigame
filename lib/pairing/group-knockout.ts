@@ -80,7 +80,9 @@ export function generateGroupKnockout(
 
 /**
  * Once group stage completes, call this with the per-group ranked teams to produce knockout matches.
- * Snake re-pair: A1 vs B2, B1 vs A2 (so group winners avoid each other early).
+ * Seeds are laid out row by row (A1,B1,C1,…,A2,B2,C2,…) so group winners hold the
+ * top seeds and land in opposite halves. Round-1 pairings are then checked and
+ * same-group clashes are swapped away, so it is always 1st A vs 2nd B, 1st B vs 2nd A.
  * `bracket` defaults to "main"; pass "plate" for Series B (Cúp phụ).
  */
 export function promoteToKnockout(
@@ -88,22 +90,52 @@ export function promoteToKnockout(
   bracket: "main" | "plate" = "main",
 ): Match[] {
   const labels = Array.from(qualifiedByGroup.keys()).sort();
+  const groupOf = new Map<string, string>();
   const seedOrder: Team[] = [];
   let row = 0;
   let stillFilling = true;
   while (stillFilling) {
     stillFilling = false;
-    const isReverse = row % 2 === 1;
-    const ordered = isReverse ? [...labels].reverse() : labels;
-    for (const lbl of ordered) {
+    for (const lbl of labels) {
       const list = qualifiedByGroup.get(lbl);
       if (list && list[row] !== undefined) {
         seedOrder.push(list[row]!);
+        groupOf.set(list[row]!.id, lbl);
         stillFilling = true;
       }
     }
     row++;
   }
   if (seedOrder.length < 2) return [];
-  return generateSingleElim(seedOrder, { bracket });
+  const matches = generateSingleElim(seedOrder, { bracket });
+  return avoidSameGroupInFirstRound(matches, groupOf);
+}
+
+/**
+ * Swap the lower-seeded side (teamB) between round-1 matches until no match
+ * pairs two teams from the same group. Only teamB slots are exchanged so the
+ * top seeds keep their bracket positions. Gives up (leaves the clash) when no
+ * swap can fix it, e.g. every qualifier comes from one group.
+ */
+function avoidSameGroupInFirstRound(
+  matches: Match[],
+  groupOf: Map<string, string>,
+): Match[] {
+  const out = matches.map((m) => ({ ...m }));
+  const r1 = out.filter((m) => m.round === 1 && m.teamA && m.teamB);
+  const clash = (a: string | null, b: string | null) =>
+    !!a && !!b && groupOf.get(a) === groupOf.get(b);
+  for (let guard = 0; guard < r1.length * 2; guard++) {
+    const bad = r1.find((m) => clash(m.teamA, m.teamB));
+    if (!bad) break;
+    const partner = r1.find(
+      (m) =>
+        m !== bad &&
+        !clash(bad.teamA, m.teamB) &&
+        !clash(m.teamA, bad.teamB),
+    );
+    if (!partner) break;
+    [bad.teamB, partner.teamB] = [partner.teamB, bad.teamB];
+  }
+  return out;
 }
