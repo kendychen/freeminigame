@@ -122,6 +122,57 @@ describe("shuffleParticipants — pinned groups", () => {
     expect(res.byes.length).toBe(1);
   });
 
+  it("groupSize 3: a pin of 2 is topped up with one random member", () => {
+    const participants = makeParticipants(9, (i) =>
+      i < 2 ? { pin: "trio" } : {},
+    );
+    const res = shuffleParticipants(participants, 3, 21, 1);
+    expect(res.groups.length).toBe(3);
+    for (const g of res.groups) expect(g.length).toBe(3);
+    expect(res.byes.length).toBe(0);
+    expect(res.groups[0]).toContain("p1");
+    expect(res.groups[0]).toContain("p2");
+    expect(new Set(flat(res.groups)).size).toBe(9);
+  });
+
+  it("groupSize 4: a pin of 2 is topped up, byes match an unpinned draw", () => {
+    const pinned = makeParticipants(12, (i) => (i < 2 ? { pin: "quad" } : {}));
+    const res = shuffleParticipants(pinned, 4, 42, 1);
+    const plain = shuffleParticipants(makeParticipants(12), 4, 42, 1);
+    expect(res.groups.length).toBe(3);
+    for (const g of res.groups) expect(g.length).toBe(4);
+    expect(res.byes.length).toBe(plain.byes.length);
+    expect(res.byes.length).toBe(0);
+    expect(res.groups[0]).toContain("p1");
+    expect(res.groups[0]).toContain("p2");
+    expect(new Set(flat(res.groups)).size).toBe(12);
+  });
+
+  it("groupSize 4 with remainder: top-up keeps the bye count intact", () => {
+    const pinned = makeParticipants(14, (i) => (i < 2 ? { pin: "quad" } : {}));
+    const res = shuffleParticipants(pinned, 4, 9, 1);
+    const plain = shuffleParticipants(makeParticipants(14), 4, 9, 1);
+    expect(res.groups.length).toBe(3);
+    expect(res.byes.length).toBe(plain.byes.length);
+    expect(res.byes.length).toBe(2);
+    expect(new Set([...flat(res.groups), ...res.byes]).size).toBe(14);
+    for (const g of res.groups) expect(g.length).toBe(4);
+  });
+
+  it("two short pins in the same draw are both topped up", () => {
+    const participants = makeParticipants(12, (i) => {
+      if (i < 2) return { pin: "a" };
+      if (i === 2 || i === 3) return { pin: "b" };
+      return {};
+    });
+    const res = shuffleParticipants(participants, 3, 33, 1);
+    expect(res.groups.length).toBe(4);
+    for (const g of res.groups) expect(g.length).toBe(3);
+    expect(res.groups[0]).toEqual(expect.arrayContaining(["p1", "p2"]));
+    expect(res.groups[1]).toEqual(expect.arrayContaining(["p3", "p4"]));
+    expect(new Set(flat(res.groups)).size).toBe(12);
+  });
+
   it("pinned draw is deterministic for the same seed", () => {
     const build = () =>
       makeParticipants(10, (i) => (i < 2 ? { pin: "k" } : {}));
@@ -155,6 +206,19 @@ describe("shuffleParticipants — balanced_by_tag", () => {
     expect(rest).not.toContain("p1");
     expect(rest).not.toContain("p2");
     expect(new Set([...rest, ...res.byes]).size).toBe(6);
+  });
+
+  it("top-up under balanced_by_tag keeps sizes and loses nobody", () => {
+    const participants = makeParticipants(12, (i) => ({
+      tag: i % 2 === 0 ? "Nam" : "Nữ",
+      ...(i < 2 ? { pin: "duo" } : {}),
+    }));
+    const res = shuffleParticipants(participants, 4, 42, 1, "balanced_by_tag");
+    expect(res.groups.length).toBe(3);
+    for (const g of res.groups) expect(g.length).toBe(4);
+    expect(res.groups[0]).toEqual(expect.arrayContaining(["p1", "p2"]));
+    expect(res.byes.length).toBe(0);
+    expect(new Set(flat(res.groups)).size).toBe(12);
   });
 
   it("single tag bucket falls back to plain shuffle", () => {

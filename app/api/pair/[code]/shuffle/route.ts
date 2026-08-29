@@ -84,16 +84,24 @@ export async function POST(
 
   // Phase 1: broadcast "shuffling" state — all clients show spinner.
   const shufflingUntil = new Date(Date.now() + spinMs).toISOString();
-  const { error: phaseErr1 } = await sb
+  // Guard on the status we read: if anything (a pin, another shuffle) changed
+  // the row in between, this update matches 0 rows and we bail out instead of
+  // drawing from a stale participant list.
+  const { data: phase1Rows, error: phaseErr1 } = await sb
     .from("pair_sessions")
     .update({
       status: "shuffling",
       shuffling_until: shufflingUntil,
       result: null,
     })
-    .eq("code", code);
+    .eq("code", code)
+    .eq("status", session.status)
+    .select("code");
   if (phaseErr1) {
     return NextResponse.json({ error: phaseErr1.message }, { status: 500 });
+  }
+  if (!phase1Rows || phase1Rows.length === 0) {
+    return NextResponse.json({ error: "already_shuffling" }, { status: 409 });
   }
 
   // Wait spinMs server-side (max 10s, well within 15s function limit)

@@ -61,12 +61,70 @@ export function shuffleParticipants(
   mode: DrawMode = "random_all",
 ): PairResult {
   const { pinnedGroups, pool } = extractPinnedGroups(participants, groupSize);
-  const base =
+  const draw = (rest: PairParticipant[]) =>
     mode === "balanced_by_tag"
-      ? shuffleBalanced(pool, groupSize, seed, round)
-      : shufflePlain(pool, groupSize, seed, round);
-  if (pinnedGroups.length === 0) return base;
-  return { ...base, groups: [...pinnedGroups, ...base.groups] };
+      ? shuffleBalanced(rest, groupSize, seed, round)
+      : shufflePlain(rest, groupSize, seed, round);
+  if (pinnedGroups.length === 0) return draw(pool);
+
+  // A pinned group smaller than groupSize is topped up from the pool first, so
+  // the number of full groups (and therefore the byes) stays exactly what an
+  // unpinned draw of the same headcount would produce.
+  const ordered =
+    mode === "balanced_by_tag"
+      ? interleaveByTag(pool, seed)
+      : shuffleDeterministic(pool, seed);
+  const taken = new Set<string>();
+  const filled: string[][] = [];
+  let cursor = 0;
+  for (const g of pinnedGroups) {
+    const group = [...g];
+    while (group.length < groupSize && cursor < ordered.length) {
+      const pick = ordered[cursor]!;
+      cursor += 1;
+      taken.add(pick.id);
+      group.push(pick.id);
+    }
+    filled.push(group);
+  }
+  const base = draw(pool.filter((p) => !taken.has(p.id)));
+  return { ...base, groups: [...filled, ...base.groups] };
+}
+
+/**
+ * Flatten the pool into a tag-alternating order (same bucket shuffling as the
+ * balanced draw) so top-up picks stay tag-balanced instead of biased.
+ */
+function interleaveByTag(
+  participants: PairParticipant[],
+  seed: number,
+): PairParticipant[] {
+  const buckets = new Map<string, PairParticipant[]>();
+  for (const p of participants) {
+    const key = (p.tag ?? "").trim() || "_";
+    const arr = buckets.get(key) ?? [];
+    arr.push(p);
+    buckets.set(key, arr);
+  }
+  const keys = Array.from(buckets.keys()).sort();
+  const shuffled = keys.map((k, i) =>
+    shuffleDeterministic(buckets.get(k)!, (seed + i * 1009) >>> 0),
+  );
+  const out: PairParticipant[] = [];
+  let row = 0;
+  while (out.length < participants.length) {
+    let progressed = false;
+    for (const bucket of shuffled) {
+      const item = bucket[row];
+      if (item) {
+        out.push(item);
+        progressed = true;
+      }
+    }
+    if (!progressed) break;
+    row += 1;
+  }
+  return out;
 }
 
 /**

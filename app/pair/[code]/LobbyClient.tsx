@@ -123,6 +123,19 @@ export function LobbyClient({
   }, [pinGroups]);
 
   const canPin = isHost && !isShuffled && !isShuffling;
+  const pinActive = pinMode && canPin;
+
+  // Members can leave while the host is picking — only ids still in the room
+  // count towards the counter and the confirm button. Once the draw starts
+  // (canPin false) the selection is dropped entirely, so nothing stale can
+  // survive into a later render.
+  const pinSelValid = useMemo(
+    () =>
+      canPin
+        ? pinSel.filter((id) => session.participants.some((p) => p.id === id))
+        : [],
+    [canPin, pinSel, session.participants],
+  );
 
   const togglePinSel = (id: string) => {
     setPinSel((prev) =>
@@ -137,12 +150,13 @@ export function LobbyClient({
 
   const onConfirmPin = async () => {
     if (!hostToken) return;
+    const ids = pinSelValid;
     setPinBusy(true);
     try {
       const res = await fetch(`/api/pair/${code}/pin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hostToken, ids: pinSel }),
+        body: JSON.stringify({ hostToken, ids }),
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -153,8 +167,14 @@ export function LobbyClient({
         });
         return;
       }
-      toast({ title: `Đã ghim ${pinSel.length} người` });
+      toast({ title: `Đã ghim ${ids.length} người` });
       exitPinMode();
+    } catch {
+      toast({
+        title: "Ghim thất bại",
+        description: "Mất kết nối — thử lại",
+        variant: "destructive",
+      });
     } finally {
       setPinBusy(false);
     }
@@ -177,6 +197,12 @@ export function LobbyClient({
           variant: "destructive",
         });
       }
+    } catch {
+      toast({
+        title: "Bỏ ghim thất bại",
+        description: "Mất kết nối — thử lại",
+        variant: "destructive",
+      });
     } finally {
       setPinBusy(false);
     }
@@ -568,12 +594,12 @@ export function LobbyClient({
           )}
         </CardHeader>
         <CardContent className="space-y-3">
-          {pinMode && (
+          {pinActive && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
               <span className="flex-1">
                 Chạm vào người bạn muốn ghim chung ·{" "}
                 <strong>
-                  Đã chọn {pinSel.length}/{session.group_size}
+                  Đã chọn {pinSelValid.length}/{session.group_size}
                 </strong>
               </span>
               <Button
@@ -581,12 +607,12 @@ export function LobbyClient({
                 onClick={onConfirmPin}
                 disabled={
                   pinBusy ||
-                  pinSel.length < 2 ||
-                  pinSel.length > session.group_size
+                  pinSelValid.length < 2 ||
+                  pinSelValid.length > session.group_size
                 }
               >
                 <Pin className="size-4" />
-                Ghim {pinSel.length} người
+                Ghim {pinSelValid.length} người
               </Button>
               <Button size="sm" variant="ghost" onClick={exitPinMode}>
                 Huỷ
@@ -632,7 +658,7 @@ export function LobbyClient({
                 const members = session.participantMembers?.[p.id] ?? [];
                 const accent = pinAccentOf.get(p.id);
                 const selected = pinSel.includes(p.id);
-                const selectable = pinMode && !accent;
+                const selectable = pinActive && !accent;
                 return (
                   <div
                     key={p.id}

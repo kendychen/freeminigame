@@ -33,7 +33,7 @@ export async function POST(
   const sb = createServiceClient();
   const { data: session } = await sb
     .from("pair_sessions")
-    .select("host_token, status, group_size, participants")
+    .select("host_token, status, group_size, participants, expires_at")
     .eq("code", code)
     .maybeSingle();
   if (!session) {
@@ -41,6 +41,9 @@ export async function POST(
   }
   if (session.host_token !== body.hostToken) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (new Date(session.expires_at).getTime() < Date.now()) {
+    return NextResponse.json({ error: "expired" }, { status: 410 });
   }
   if (session.status !== "lobby" && session.status !== "locked") {
     return NextResponse.json({ error: "pin_stage_over" }, { status: 409 });
@@ -58,12 +61,19 @@ export async function POST(
     const next = participants.map((p) =>
       p.pin === target ? { ...p, pin: null } : p,
     );
-    const { error } = await sb
+    const { data: written, error } = await sb
       .from("pair_sessions")
       .update({ participants: next })
-      .eq("code", code);
+      .eq("code", code)
+      .eq("status", session.status)
+      .select("code");
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    // The draw may have started between the read and this write — the status
+    // guard makes that a no-op instead of a pin silently lost in the spin.
+    if (!written || written.length === 0) {
+      return NextResponse.json({ error: "pin_stage_over" }, { status: 409 });
     }
     return NextResponse.json({ ok: true, participants: next });
   }
@@ -87,12 +97,17 @@ export async function POST(
   const pin = newPinId();
   const idSet = new Set(unique);
   const next = participants.map((p) => (idSet.has(p.id) ? { ...p, pin } : p));
-  const { error } = await sb
+  const { data: written, error } = await sb
     .from("pair_sessions")
     .update({ participants: next })
-    .eq("code", code);
+    .eq("code", code)
+    .eq("status", session.status)
+    .select("code");
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!written || written.length === 0) {
+    return NextResponse.json({ error: "pin_stage_over" }, { status: 409 });
   }
   return NextResponse.json({ ok: true, pin, participants: next });
 }
