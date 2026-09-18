@@ -761,6 +761,12 @@ export async function applyIndividualDraw(
   eventId: string,
   groupSlots: string[][],
   advancePerGroup: number,
+  options?: {
+    /** Sinh luôn lịch xoay cặp cho từng bảng (chế độ bảng nam/nữ riêng) */
+    generateSchedule?: boolean;
+    /** Số bảng nam đứng đầu danh sách — kiểm tra bảng thuần giới */
+    splitMaleGroupCount?: number;
+  },
 ): Promise<{ ok: true } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -798,6 +804,31 @@ export async function applyIndividualDraw(
   }
   if (total !== players.length) return { error: "incomplete_assignment" };
 
+  const splitMG = options?.splitMaleGroupCount;
+  if (splitMG != null) {
+    const genderMap =
+      ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+        ?.playerGenders) ?? {};
+    for (let gi = 0; gi < groupSlots.length; gi++) {
+      const want: "M" | "F" = gi < splitMG ? "M" : "F";
+      const label = String.fromCharCode(65 + gi);
+      for (const pid of groupSlots[gi]!) {
+        if (genderMap[pid] !== want)
+          return {
+            error: `Bảng ${label} phải toàn ${want === "M" ? "nam" : "nữ"} — kiểm tra lại phân giới tính`,
+          };
+      }
+    }
+  }
+
+  const withSchedule = options?.generateSchedule === true;
+  if (withSchedule && groupSlots.some((g) => g.length < 4 || g.length > 16))
+    return { error: "Mỗi bảng cần 4–16 VĐV — đổi số bảng nam/nữ" };
+
+  const scheduleMode =
+    ((ev.config as { scheduleMode?: "standard" | "hd" })?.scheduleMode) ??
+    "standard";
+
   for (let gi = 0; gi < groupSlots.length; gi++) {
     const label = String.fromCharCode(65 + gi);
     const { data: grp, error: grpErr } = await svc
@@ -810,6 +841,21 @@ export async function applyIndividualDraw(
     const slotIds = groupSlots[gi]!;
     await svc.from("pic_group_players").insert(
       slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
+    );
+
+    if (!withSchedule) continue;
+    const schedule = generateGroupSchedule(slotIds.length, scheduleMode);
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
     );
   }
 
@@ -1345,6 +1391,7 @@ export async function createPicDraw(
   eventId: string,
   groupCount: number,
   advancePerGroup: number,
+  split?: { maleGroupCount: number; femaleGroupCount: number } | null,
 ): Promise<{ code: string; hostToken: string } | { error: string }> {
   const { user } = await requireUser();
   const svc = createServiceClient();
@@ -1366,9 +1413,62 @@ export async function createPicDraw(
   const players = playersData ?? [];
   if (players.length < 4) return { error: "Cần ít nhất 4 VĐV" };
 
-  const groupSize = Math.floor(players.length / groupCount);
   const title = ((cfg.name as string) ?? "Bốc thăm PIC").slice(0, 100);
-  const participants = players.map((p) => ({ id: p.id, name: p.name, joinedAt: Date.now() }));
+  const now = Date.now();
+  let groupSize = Math.floor(players.length / groupCount);
+  let participants: {
+    id: string;
+    name: string;
+    joinedAt: number;
+    tag?: string;
+  }[] = players.map((p) => ({ id: p.id, name: p.name, joinedAt: now }));
+  let drawMode: "random_all" | "split_by_tag" = "random_all";
+  let groupPlan: { size: number; tag: string }[] | null = null;
+
+  if (split) {
+    // Bảng nam & bảng nữ riêng: mỗi bảng thuần một giới, sĩ số nam/nữ có thể
+    // lệch nhau nên phải mô tả bằng group_plan thay vì group_size chung.
+    const genders =
+      ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+        ?.playerGenders) ?? {};
+    const males = players.filter((p) => genders[p.id] === "M");
+    const females = players.filter((p) => genders[p.id] === "F");
+    if (males.length + females.length !== players.length)
+      return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi tạo phiên" };
+    const mg = split.maleGroupCount;
+    const fg = split.femaleGroupCount;
+    if (mg < 1 || fg < 1) return { error: "invalid_group_count" };
+
+    const snakeSizes = (count: number, k: number): number[] => {
+      const sizes: number[] = Array.from({ length: k }, () => 0);
+      let dir = 1, gi = 0;
+      for (let i = 0; i < count; i++) {
+        sizes[gi]!++;
+        const next = gi + dir;
+        if (next >= k || next < 0) dir = -dir;
+        else gi += dir;
+      }
+      return sizes;
+    };
+    const maleSizes = snakeSizes(males.length, mg);
+    const femaleSizes = snakeSizes(females.length, fg);
+    const allSizes = [...maleSizes, ...femaleSizes];
+    if (Math.min(...allSizes) < 4 || Math.max(...allSizes) > 16)
+      return { error: "Mỗi bảng cần 4–16 VĐV — đổi số bảng nam/nữ" };
+
+    groupPlan = [
+      ...maleSizes.map((size) => ({ size, tag: "Nam" })),
+      ...femaleSizes.map((size) => ({ size, tag: "Nữ" })),
+    ];
+    groupSize = Math.max(...allSizes);
+    drawMode = "split_by_tag";
+    participants = players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      joinedAt: now,
+      tag: genders[p.id] === "M" ? "Nam" : "Nữ",
+    }));
+  }
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomBytes(3).toString("hex");
@@ -1380,12 +1480,25 @@ export async function createPicDraw(
       group_size: groupSize,
       participants,
       status: "locked",
+      draw_mode: drawMode,
+      group_plan: groupPlan,
       expires_at: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
     });
     if (!insertErr) {
       await svc
         .from("pic_events")
-        .update({ config: { ...cfg, drawCode: code, drawGroupCount: groupCount, drawAdvancePerGroup: advancePerGroup } })
+        .update({
+          config: {
+            ...cfg,
+            drawCode: code,
+            drawGroupCount: groupCount,
+            drawAdvancePerGroup: advancePerGroup,
+            // Bước áp dụng đọc cờ này để sinh luôn lịch xoay cặp cho bảng thuần giới
+            liveSplitGender: split
+              ? { maleGroupCount: split.maleGroupCount, femaleGroupCount: split.femaleGroupCount }
+              : null,
+          },
+        })
         .eq("id", eventId);
       revalidatePath(`/pic/${eventId}`);
       return { code, hostToken };
@@ -1413,6 +1526,10 @@ export async function applyPicDraw(
   const groupCount = (cfg.drawGroupCount as number) ?? 1;
   const advancePerGroup = (cfg.drawAdvancePerGroup as number) ?? 1;
   if (!drawCode) return { error: "no_draw" };
+  const split =
+    (cfg.liveSplitGender as { maleGroupCount: number; femaleGroupCount: number } | null | undefined) ??
+    null;
+  const scheduleMode = (cfg.scheduleMode as "standard" | "hd" | undefined) ?? "standard";
 
   // Idempotency: skip if groups already created
   const { data: existingGroups } = await svc
@@ -1433,14 +1550,40 @@ export async function applyPicDraw(
   const result = session.result as { groups: string[][]; byes: string[] } | null;
   if (!result || result.groups.length === 0) return { error: "no_result" };
 
-  // Build final group slots: start from pair session groups, distribute byes
+  // Build final group slots: start from pair session groups, distribute byes.
   const groupSlots: string[][] = result.groups.map((g) => [...g]);
-  for (const byeId of result.byes ?? []) {
-    let minIdx = 0;
-    for (let i = 1; i < groupSlots.length; i++) {
-      if (groupSlots[i]!.length < groupSlots[minIdx]!.length) minIdx = i;
+  const byes = result.byes ?? [];
+  if (split) {
+    // Bảng thuần giới: bye chỉ được nhét vào bảng cùng giới, nếu không thì
+    // bảng nam sẽ lẫn nữ. Với group_plan thì thực tế không còn bye nào.
+    if (byes.length > 0) {
+      const genders =
+        ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+          ?.playerGenders) ?? {};
+      const mg = split.maleGroupCount;
+      for (const byeId of byes) {
+        const isMale = genders[byeId] === "M";
+        const range = isMale
+          ? Array.from({ length: mg }, (_, i) => i)
+          : Array.from({ length: groupSlots.length - mg }, (_, i) => mg + i);
+        if (range.length === 0) return { error: "Không xếp được VĐV dư vào bảng cùng giới" };
+        let minIdx = range[0]!;
+        for (const i of range) {
+          if (groupSlots[i]!.length < groupSlots[minIdx]!.length) minIdx = i;
+        }
+        groupSlots[minIdx]!.push(byeId);
+      }
     }
-    groupSlots[minIdx]!.push(byeId);
+    if (groupSlots.some((g) => g.length < 4 || g.length > 16))
+      return { error: "Mỗi bảng cần 4–16 VĐV — hủy phiên và đổi số bảng nam/nữ" };
+  } else {
+    for (const byeId of byes) {
+      let minIdx = 0;
+      for (let i = 1; i < groupSlots.length; i++) {
+        if (groupSlots[i]!.length < groupSlots[minIdx]!.length) minIdx = i;
+      }
+      groupSlots[minIdx]!.push(byeId);
+    }
   }
 
   const labels = "ABCDEFGH";
@@ -1458,11 +1601,31 @@ export async function applyPicDraw(
     await svc.from("pic_group_players").insert(
       slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
     );
+
+    // Bảng thuần giới đánh đôi cùng giới → sinh luôn lịch xoay cặp,
+    // không cần bước phân hạng A/B.
+    if (!split) continue;
+    const schedule = generateGroupSchedule(slotIds.length, scheduleMode);
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: eventId,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
+    );
   }
 
   await svc
     .from("pic_events")
-    .update({ config: { ...cfg, drawCode: null, advancePerGroup }, updated_at: new Date().toISOString() })
+    .update({
+      config: { ...cfg, drawCode: null, advancePerGroup, liveSplitGender: null },
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", eventId);
 
   revalidatePath(`/pic/${eventId}`);
@@ -1759,6 +1922,7 @@ export async function createPicIndividualDrawSession(
   groupCount: number,
   advancePerGroup: number,
   genderQuota = false,
+  split?: { maleGroupCount: number; femaleGroupCount: number } | null,
 ): Promise<
   { code: string; hostToken: string; playerTokens: Record<string, string> }
   | { error: string }
@@ -1811,7 +1975,28 @@ export async function createPicIndividualDrawSession(
   let groupSizes: number[];
   let slotTags: Record<string, string> | null = null;
 
-  if (genderQuota) {
+  if (split) {
+    // Bảng nam & bảng nữ riêng: bảng nam đứng trước (A, B, …), bảng nữ nối tiếp.
+    // Mỗi bảng thuần một giới → slot_tags gán cùng một tag cho cả bảng.
+    const genders =
+      ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
+        ?.playerGenders) ?? {};
+    const maleCount = players.filter((p) => genders[p.id] === "M").length;
+    const femaleCount = players.filter((p) => genders[p.id] === "F").length;
+    if (maleCount + femaleCount !== pc)
+      return { error: "Còn VĐV chưa gán Nam/Nữ — gán đủ trước khi tạo phiên" };
+    const mg = split.maleGroupCount;
+    const fg = split.femaleGroupCount;
+    if (mg < 1 || fg < 1) return { error: "invalid_group_count" };
+    const maleSizes = snakeSizes(maleCount, mg);
+    const femaleSizes = snakeSizes(femaleCount, fg);
+    groupSizes = [...maleSizes, ...femaleSizes];
+    slotTags = {};
+    for (let g = 0; g < groupSizes.length; g++) {
+      const tag = g < mg ? "Nam" : "Nữ";
+      for (let p = 1; p <= groupSizes[g]!; p++) slotTags[`${g}-${p}`] = tag;
+    }
+  } else if (genderQuota) {
     // Giới hạn Nam/Nữ mỗi bảng: slot 1..q của bảng dành cho Nam, còn lại cho Nữ
     const genders =
       ((ev.config as { playerGenders?: Record<string, "M" | "F"> })
@@ -1841,7 +2026,17 @@ export async function createPicIndividualDrawSession(
   const cfg = (ev.config as Record<string, unknown>) ?? {};
   await svc
     .from("pic_events")
-    .update({ config: { ...cfg, advancePerGroup }, updated_at: new Date().toISOString() })
+    .update({
+      config: {
+        ...cfg,
+        advancePerGroup,
+        // Cờ để bước áp dụng biết phải sinh lịch xoay cặp cho từng bảng thuần giới
+        liveSplitGender: split
+          ? { maleGroupCount: split.maleGroupCount, femaleGroupCount: split.femaleGroupCount }
+          : null,
+      },
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", eventId);
 
   const code = shortCode();
@@ -2015,8 +2210,18 @@ export async function applyPicIndividualDrawSession(
     .select("config")
     .eq("id", session.event_id)
     .single();
-  const cfg = (ev?.config ?? {}) as { advancePerGroup?: number };
+  const cfg = (ev?.config ?? {}) as {
+    advancePerGroup?: number;
+    scheduleMode?: "standard" | "hd";
+    liveSplitGender?: { maleGroupCount: number; femaleGroupCount: number } | null;
+  };
   const advancePerGroup = cfg.advancePerGroup ?? 1;
+  // Phiên bảng nam/nữ riêng: mỗi bảng thuần giới nên sinh luôn lịch xoay cặp,
+  // không đi qua bước phân hạng A/B như phiên thường.
+  const split = cfg.liveSplitGender ?? null;
+  const scheduleMode = cfg.scheduleMode ?? "standard";
+  if (split && groupSlots.some((g) => g.length < 4 || g.length > 16))
+    return { error: "Mỗi bảng cần 4–16 VĐV — hủy phiên và đổi số bảng nam/nữ" };
 
   // Create groups (mirrors applyIndividualDraw)
   for (let gi = 0; gi < groupSlots.length; gi++) {
@@ -2032,12 +2237,27 @@ export async function applyPicIndividualDrawSession(
     await svc.from("pic_group_players").insert(
       slotIds.map((pid, seed) => ({ group_id: grp.id, player_id: pid, seed })),
     );
+
+    if (!split) continue;
+    const schedule = generateGroupSchedule(slotIds.length, scheduleMode);
+    await svc.from("pic_matches").insert(
+      schedule.map((slot, i) => ({
+        event_id: session.event_id,
+        group_id: grp.id,
+        round: i + 1,
+        stage: "group",
+        a1_id: slotIds[slot.a[0]]!,
+        a2_id: slotIds[slot.a[1]]!,
+        b1_id: slotIds[slot.b[0]]!,
+        b2_id: slotIds[slot.b[1]]!,
+      })),
+    );
   }
 
   await svc
     .from("pic_events")
     .update({
-      config: { ...cfg, advancePerGroup },
+      config: { ...cfg, advancePerGroup, liveSplitGender: null },
       updated_at: new Date().toISOString(),
     })
     .eq("id", session.event_id);

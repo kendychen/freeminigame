@@ -12,7 +12,17 @@ export interface PairParticipant {
   pin?: string | null;
 }
 
-export type DrawMode = "random_all" | "balanced_by_tag";
+export type DrawMode = "random_all" | "balanced_by_tag" | "split_by_tag";
+
+/**
+ * One planned group for `split_by_tag`: an exact headcount plus the tag every
+ * member of that group must carry (e.g. 3 groups of 6 "Nam" then 2 of 5 "Nữ").
+ * Lets a lobby hold groups of different sizes, which `group_size` alone can't.
+ */
+export interface GroupPlanEntry {
+  size: number;
+  tag: string;
+}
 
 export interface PairResult {
   round: number;
@@ -59,7 +69,13 @@ export function shuffleParticipants(
   seed: number,
   round: number,
   mode: DrawMode = "random_all",
+  plan?: GroupPlanEntry[] | null,
 ): PairResult {
+  // Split draw is plan-driven: group sizes and the tag of each group are fixed
+  // up front, so pins (which assume uniform groupSize) don't apply here.
+  if (mode === "split_by_tag" && plan && plan.length > 0) {
+    return shuffleSplitByPlan(participants, plan, seed, round);
+  }
   const { pinnedGroups, pool } = extractPinnedGroups(participants, groupSize);
   const draw = (rest: PairParticipant[]) =>
     mode === "balanced_by_tag"
@@ -89,6 +105,50 @@ export function shuffleParticipants(
   }
   const base = draw(pool.filter((p) => !taken.has(p.id)));
   return { ...base, groups: [...filled, ...base.groups] };
+}
+
+/**
+ * Fill each planned group only from participants carrying that group's tag.
+ * Each tag bucket is shuffled once with a tag-derived seed offset, then sliced
+ * across the groups requesting that tag. Anyone left over (untagged, or a tag
+ * with more people than planned slots) goes to byes.
+ */
+function shuffleSplitByPlan(
+  participants: PairParticipant[],
+  plan: GroupPlanEntry[],
+  seed: number,
+  round: number,
+): PairResult {
+  const buckets = new Map<string, PairParticipant[]>();
+  for (const p of participants) {
+    const key = (p.tag ?? "").trim();
+    const arr = buckets.get(key) ?? [];
+    arr.push(p);
+    buckets.set(key, arr);
+  }
+
+  const tagKeys = Array.from(buckets.keys()).sort();
+  const queues = new Map<string, PairParticipant[]>();
+  tagKeys.forEach((k, i) => {
+    queues.set(k, shuffleDeterministic(buckets.get(k)!, (seed + i * 1009) >>> 0));
+  });
+
+  const groups: string[][] = [];
+  for (const entry of plan) {
+    const queue = queues.get(entry.tag.trim()) ?? [];
+    const group: string[] = [];
+    while (group.length < entry.size && queue.length > 0) {
+      group.push(queue.shift()!.id);
+    }
+    groups.push(group);
+  }
+
+  const byes: string[] = [];
+  for (const queue of queues.values()) {
+    for (const p of queue) byes.push(p.id);
+  }
+
+  return { round, shuffledAt: Date.now(), groups, byes };
 }
 
 /**

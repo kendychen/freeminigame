@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { shuffleParticipants, type PairParticipant } from "@/lib/pair/shuffle";
+import {
+  shuffleParticipants,
+  type PairParticipant,
+  type GroupPlanEntry,
+} from "@/lib/pair/shuffle";
 import { buildBracket } from "@/lib/tournament/build-bracket";
 import type { TournamentFormat } from "@/lib/pairing/types";
 
@@ -36,7 +40,7 @@ export async function POST(
   const { data: session, error } = await sb
     .from("pair_sessions")
     .select(
-      "host_token, status, group_size, participants, shuffle_count, expires_at, linked_tournament_id, team_id_map, player_id_map, team_name_pattern, draw_mode",
+      "host_token, status, group_size, participants, shuffle_count, expires_at, linked_tournament_id, team_id_map, player_id_map, team_name_pattern, draw_mode, group_plan",
     )
     .eq("code", code)
     .maybeSingle();
@@ -73,13 +77,19 @@ export async function POST(
   const seed = Date.now() & 0xffffffff;
   const drawMode = ((session as { draw_mode?: string }).draw_mode ?? "random_all") as
     | "random_all"
-    | "balanced_by_tag";
+    | "balanced_by_tag"
+    | "split_by_tag";
+  // split_by_tag lobbies carry an explicit per-group plan (size + tag) because
+  // group_size alone can't describe uneven male/female tables.
+  const groupPlan =
+    ((session as { group_plan?: GroupPlanEntry[] | null }).group_plan ?? null);
   const result = shuffleParticipants(
     participants,
     session.group_size,
     seed,
     round,
     drawMode,
+    groupPlan,
   );
 
   // Phase 1: broadcast "shuffling" state — all clients show spinner.

@@ -37,12 +37,20 @@ export default function IndividualDrawClient({
   groupSizes,
   advancePerGroup,
   onCancel,
+  groupGenders,
+  playerGenders,
 }: {
   eventId: string;
   players: Player[];
   groupSizes: number[];
   advancePerGroup: number;
   onCancel: () => void;
+  /**
+   * Chế độ bảng nam & bảng nữ riêng: giới tính bắt buộc của từng bảng
+   * (bảng nam đứng trước). Bỏ trống = bảng tự do như trước.
+   */
+  groupGenders?: ("M" | "F")[];
+  playerGenders?: Record<string, "M" | "F">;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -56,6 +64,10 @@ export default function IndividualDrawClient({
 
   const groupCount = groupSizes.length;
   const storageKey = `pic-individual-draw-${eventId}`;
+  const splitMode = (groupGenders?.length ?? 0) === groupCount && groupCount > 0;
+  const maleGroupCount = splitMode
+    ? groupGenders!.filter((g) => g === "M").length
+    : 0;
 
   // Restore on mount
   useEffect(() => {
@@ -107,12 +119,24 @@ export default function IndividualDrawClient({
     const occupied = new Set<string>();
     for (const v of Object.values(assignments)) occupied.add(`${v.g}-${v.p}`);
     const available: { g: number; p: number }[] = [];
+    // Bảng nam & bảng nữ riêng: chỉ được vào bảng đúng giới của mình.
+    const want = splitMode ? playerGenders?.[p.id] : undefined;
     for (let g = 0; g < groupCount; g++) {
+      if (splitMode && want && groupGenders![g] !== want) continue;
       for (let pos = 1; pos <= groupSizes[g]!; pos++) {
         if (!occupied.has(`${g}-${pos}`)) available.push({ g, p: pos });
       }
     }
-    if (available.length === 0) return;
+    if (available.length === 0) {
+      toast({
+        title: "Không còn chỗ",
+        description: splitMode
+          ? "Các bảng cùng giới đã đầy — kiểm tra lại phân giới tính."
+          : undefined,
+        variant: "destructive",
+      });
+      return;
+    }
     const chosen = available[Math.floor(Math.random() * available.length)]!;
 
     setDrawing({ player: p, result: null, position: null });
@@ -150,18 +174,36 @@ export default function IndividualDrawClient({
     }
 
     startTransition(async () => {
-      const res = await applyIndividualDraw(eventId, groupSlots, advancePerGroup);
+      const res = await applyIndividualDraw(
+        eventId,
+        groupSlots,
+        advancePerGroup,
+        splitMode
+          ? { generateSchedule: true, splitMaleGroupCount: maleGroupCount }
+          : undefined,
+      );
       if ("error" in res) {
         toast({ title: "Lỗi", description: res.error, variant: "destructive" });
         return;
       }
       localStorage.removeItem(storageKey);
-      toast({ title: "Đã chia bảng!", description: "Phân hạng A/B trong từng bảng để tạo lịch." });
+      toast({
+        title: "Đã chia bảng!",
+        description: splitMode
+          ? "Bảng nam đôi nam · bảng nữ đôi nữ — lịch xoay cặp đã tạo."
+          : "Phân hạng A/B trong từng bảng để tạo lịch.",
+      });
       router.refresh();
     });
   };
 
   const byId = (id: string) => players.find((p) => p.id === id);
+
+  /** "Bảng A" hoặc "Bảng A · Nam" khi mỗi bảng thuần một giới */
+  const groupLabel = (gi: number) =>
+    splitMode
+      ? `Bảng ${String.fromCharCode(65 + gi)} · ${groupGenders![gi] === "M" ? "Nam" : "Nữ"}`
+      : `Bảng ${String.fromCharCode(65 + gi)}`;
 
   return (
     <Card className="border-primary/30">
@@ -194,7 +236,7 @@ export default function IndividualDrawClient({
                   full ? "border-green-500/50 bg-green-500/5" : GROUP_COLOR[gi % GROUP_COLOR.length]
                 }`}
               >
-                <p className="text-xs font-semibold">Bảng {String.fromCharCode(65 + gi)}</p>
+                <p className="text-xs font-semibold">{groupLabel(gi)}</p>
                 <p className="font-mono text-lg font-bold">
                   {c}<span className="text-xs opacity-60">/{size}</span>
                 </p>

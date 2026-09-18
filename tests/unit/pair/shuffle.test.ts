@@ -228,3 +228,63 @@ describe("shuffleParticipants — balanced_by_tag", () => {
     expect(res.groups).toEqual(plain.groups);
   });
 });
+
+describe("shuffleParticipants — split_by_tag (bảng nam & bảng nữ riêng)", () => {
+  // 7 nam + 5 nữ → 2 bảng nam (4+3) rồi 1 bảng nữ (5): sĩ số lệch nhau,
+  // đúng trường hợp group_size đơn lẻ không diễn tả được.
+  const build = () =>
+    makeParticipants(12, (i) => ({ tag: i < 7 ? "Nam" : "Nữ" }));
+  const plan = [
+    { size: 4, tag: "Nam" },
+    { size: 3, tag: "Nam" },
+    { size: 5, tag: "Nữ" },
+  ];
+
+  it("mỗi bảng chỉ chứa người cùng giới, đúng sĩ số kế hoạch", () => {
+    const participants = build();
+    const tagOf = new Map(participants.map((p) => [p.id, p.tag]));
+    const res = shuffleParticipants(participants, 5, 42, 1, "split_by_tag", plan);
+
+    expect(res.groups.map((g) => g.length)).toEqual([4, 3, 5]);
+    for (let gi = 0; gi < plan.length; gi++) {
+      for (const id of res.groups[gi]!) {
+        expect(tagOf.get(id)).toBe(plan[gi]!.tag);
+      }
+    }
+  });
+
+  it("không mất ai và không ai bị xếp 2 bảng", () => {
+    const res = shuffleParticipants(build(), 5, 42, 1, "split_by_tag", plan);
+    const all = [...flat(res.groups), ...res.byes];
+    expect(all.length).toBe(12);
+    expect(new Set(all).size).toBe(12);
+    expect(res.byes.length).toBe(0);
+  });
+
+  it("người thừa của một giới rơi vào byes chứ không lẫn bảng khác giới", () => {
+    const participants = makeParticipants(12, (i) => ({
+      tag: i < 8 ? "Nam" : "Nữ",
+    }));
+    const tagOf = new Map(participants.map((p) => [p.id, p.tag]));
+    const res = shuffleParticipants(participants, 5, 42, 1, "split_by_tag", plan);
+
+    expect(res.groups.map((g) => g.length)).toEqual([4, 3, 4]);
+    expect(res.byes.length).toBe(1);
+    expect(tagOf.get(res.byes[0]!)).toBe("Nam");
+    for (const id of res.groups[2]!) expect(tagOf.get(id)).toBe("Nữ");
+  });
+
+  it("cùng seed cho kết quả giống nhau", () => {
+    const a = shuffleParticipants(build(), 5, 999, 1, "split_by_tag", plan);
+    const b = shuffleParticipants(build(), 5, 999, 1, "split_by_tag", plan);
+    expect(b.groups).toEqual(a.groups);
+    expect(b.byes).toEqual(a.byes);
+  });
+
+  it("không có plan thì quay về hành vi cũ (không vỡ phiên cũ)", () => {
+    const participants = build();
+    const res = shuffleParticipants(participants, 4, 42, 1, "split_by_tag");
+    const plain = shuffleParticipants(participants, 4, 42, 1, "random_all");
+    expect(res.groups).toEqual(plain.groups);
+  });
+});

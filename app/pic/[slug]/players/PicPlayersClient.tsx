@@ -451,12 +451,18 @@ export default function PicPlayersClient({
 
   const onCreateLiveIndividualDraw = () => {
     if (!canGenerate || crossTierMode) return;
-    if (genderQuota && !allGendered) {
+    if ((genderQuota || splitGender) && !allGendered) {
       toast({ title: "Chưa gán đủ Nam/Nữ", description: `Còn ${ungenderedCount} VĐV chưa gán`, variant: "destructive" });
       return;
     }
     startTransition(async () => {
-      const res = await createPicIndividualDrawSession(eventId, effG, advancePerGroup, genderQuota);
+      const res = await createPicIndividualDrawSession(
+        eventId,
+        splitGender ? effMG + effFG : effG,
+        advancePerGroup,
+        splitGender ? false : genderQuota,
+        splitGender ? { maleGroupCount: effMG, femaleGroupCount: effFG } : null,
+      );
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setLiveDraw({ code: res.code, playerTokens: res.playerTokens });
       toast({ title: "Đã tạo phiên LIVE!", description: "Chia sẻ link cho VĐV." });
@@ -481,8 +487,17 @@ export default function PicPlayersClient({
 
   const onCreateLiveDraw = () => {
     if (!canGenerate || crossTierMode) return;
+    if (splitGender && !allGendered) {
+      toast({ title: "Chưa gán đủ Nam/Nữ", description: `Còn ${ungenderedCount} VĐV chưa gán`, variant: "destructive" });
+      return;
+    }
     startTransition(async () => {
-      const res = await createPicDraw(eventId, effG, advancePerGroup);
+      const res = await createPicDraw(
+        eventId,
+        splitGender ? effMG + effFG : effG,
+        advancePerGroup,
+        splitGender ? { maleGroupCount: effMG, femaleGroupCount: effFG } : null,
+      );
       if ("error" in res) { toast({ title: "Lỗi", description: res.error, variant: "destructive" }); return; }
       setDrawCode(res.code);
       setDrawStatus("locked");
@@ -651,9 +666,22 @@ export default function PicPlayersClient({
         <IndividualDrawClient
           eventId={eventId}
           players={players}
-          groupSizes={snakePreview(pc, effG)}
+          groupSizes={
+            splitGender
+              ? [...snakePreview(maleCount, effMG), ...snakePreview(femaleCount, effFG)]
+              : snakePreview(pc, effG)
+          }
           advancePerGroup={advancePerGroup}
           onCancel={() => setIndividualDrawMode(false)}
+          groupGenders={
+            splitGender
+              ? [
+                  ...Array.from({ length: effMG }, () => "M" as const),
+                  ...Array.from({ length: effFG }, () => "F" as const),
+                ]
+              : undefined
+          }
+          playerGenders={splitGender ? genders : undefined}
         />
       )}
 
@@ -1134,30 +1162,30 @@ export default function PicPlayersClient({
                       <>
                         <Button
                           onClick={() => setIndividualDrawMode(true)}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode || splitGender}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode}
                           variant="outline"
                           size="lg"
                           className="border-primary/40 text-primary hover:bg-primary/10"
-                          title={genderQuota || typedMode || splitGender ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
+                          title={genderQuota || typedMode ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
                         >
                           <Sparkles className="size-4" />
                           ✨ Cá nhân
                         </Button>
                         <Button
                           onClick={onCreateLiveIndividualDraw}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || typedMode || splitGender}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || typedMode}
                           size="lg"
                           className="bg-red-500 hover:bg-red-600 text-white"
-                          title={typedMode || splitGender ? "Chế độ này chưa hỗ trợ bốc LIVE — dùng nút Quay bên trái" : undefined}
+                          title={typedMode ? "Chế độ này chưa hỗ trợ bốc LIVE — dùng nút Quay bên trái" : undefined}
                         >
                           <Sparkles className="size-4" />
                           🌐 Cá nhân LIVE
                         </Button>
                         <Button
                           onClick={onCreateLiveDraw}
-                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode || splitGender}
+                          disabled={!canGenerate || pending || !!drawCode || !!liveDraw || genderQuota || typedMode}
                           size="lg"
-                          title={genderQuota || typedMode || splitGender ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
+                          title={genderQuota || typedMode ? "Chế độ này chưa hỗ trợ tuỳ chọn giới tính đang bật" : undefined}
                         >
                           <Radio className="size-4" />{pending ? "Đang tạo…" : "📺 LIVE bảng"}
                         </Button>
