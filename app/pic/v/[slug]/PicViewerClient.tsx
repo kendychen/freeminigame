@@ -98,6 +98,10 @@ export default function PicViewerClient({ state }: { state: PicEventFull }) {
   const semiMatches = knockoutMatches.filter((m) => m.stage === "semifinal");
   const isDone = stage === "done";
 
+  const groupDone = groups.reduce((s, g) => s + g.matches.filter((m) => m.status === "completed").length, 0);
+  const groupTotal = groups.reduce((s, g) => s + g.matches.length, 0);
+  const groupPending = groupTotal - groupDone;
+
   const stageLabel =
     stage === "group" ? "Vòng bảng" :
     stage === "draw" ? "Chờ bốc thăm" :
@@ -127,11 +131,9 @@ export default function PicViewerClient({ state }: { state: PicEventFull }) {
           <h1 className="font-bold text-lg">{config.name}</h1>
           <p className="text-xs text-muted-foreground">
             PIC xoay cặp · {stageLabel}
-            {stage === "group" && (() => {
-              const done = groups.reduce((s, g) => s + g.matches.filter((m) => m.status === "completed").length, 0);
-              const total = groups.reduce((s, g) => s + g.matches.length, 0);
-              return <span className="ml-1">· {done}/{total} trận</span>;
-            })()}
+            {stage === "group" && groupTotal > 0 && (
+              <span className="ml-1">· {groupDone}/{groupTotal} trận</span>
+            )}
           </p>
         </div>
       </div>
@@ -208,13 +210,20 @@ export default function PicViewerClient({ state }: { state: PicEventFull }) {
         )}
 
         {/* Draw stage notice */}
-        {stage === "draw" && (
-          <div className="rounded-xl border bg-muted/30 p-5 text-center">
-            <Trophy className="mx-auto mb-2 size-7 text-primary" />
-            <p className="font-semibold">Vòng bảng hoàn thành</p>
-            <p className="mt-1 text-sm text-muted-foreground">Đang chờ ban tổ chức bốc thăm vòng trung kết…</p>
-          </div>
-        )}
+        {stage === "draw" && (() => {
+          const title = groupTotal === 0 ? "Chưa có lịch đấu vòng bảng" :
+            groupPending > 0 ? "Vòng bảng đang thi đấu" : "Vòng bảng hoàn thành";
+          const sub = groupTotal === 0 ? "Ban tổ chức chưa sinh lịch đấu vòng bảng." :
+            groupPending > 0 ? `Đã có kết quả ${groupDone}/${groupTotal} trận — đang chờ nhập tiếp…` :
+            "Đang chờ ban tổ chức bốc thăm vòng trung kết…";
+          return (
+            <div className="rounded-xl border bg-muted/30 p-5 text-center">
+              <Trophy className="mx-auto mb-2 size-7 text-muted-foreground" />
+              <p className="font-semibold">{title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
+            </div>
+          );
+        })()}
 
         {/* Group standings */}
         <div className="space-y-4">

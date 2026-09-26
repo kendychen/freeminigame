@@ -314,7 +314,8 @@ export async function picAdvanceToDraw(
   if (ev.stage !== "group") return { error: "Chưa ở vòng bảng" };
 
   const { data: matches } = await svc.from("pic_matches").select("status").eq("event_id", eventId).eq("stage", "group");
-  if (!matches || matches.some((m) => m.status !== "completed")) return { error: "Còn trận chưa kết thúc" };
+  if (!matches || matches.length === 0) return { error: "Chưa có trận vòng bảng nào" };
+  if (matches.some((m) => m.status !== "completed")) return { error: "Còn trận chưa kết thúc" };
 
   const { error } = await svc.from("pic_events").update({ stage: "draw", updated_at: new Date().toISOString() }).eq("id", eventId);
   if (error) return { error: error.message };
@@ -980,8 +981,9 @@ export async function generateCrossTierGroupMatches(
   if (evCfg) {
     await svc.from("pic_events").update({
       config: { ...(evCfg.config as Record<string, unknown>), playerCategories },
+      stage: "group",
       updated_at: new Date().toISOString(),
-    }).eq("id", eventId);
+    }).eq("id", eventId).neq("stage", "done");
   }
 
   revalidatePath(`/pic/${eventId}`);
@@ -1060,6 +1062,13 @@ export async function generateNormalGroupMatches(
   const { error } = await svc.from("pic_matches").insert(matchRows);
   if (error) return { error: error.message };
 
+  // Lịch vừa sinh ⇒ vòng bảng bắt đầu lại (tránh kẹt ở "draw" với trận chưa có kết quả)
+  await svc
+    .from("pic_events")
+    .update({ stage: "group", updated_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .neq("stage", "done");
+
   revalidatePath(`/pic/${eventId}`);
   return { ok: true };
 }
@@ -1126,7 +1135,7 @@ export async function scorePicMatch({
       .select("status")
       .eq("event_id", eventId)
       .eq("stage", "group");
-    if (all?.every((m) => m.status === "completed")) {
+    if (all && all.length > 0 && all.every((m) => m.status === "completed")) {
       await svc
         .from("pic_events")
         .update({ stage: "draw", updated_at: new Date().toISOString() })

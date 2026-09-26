@@ -132,6 +132,17 @@ export function computeStandings(
     .map((s, i) => ({ ...s, rank: i + 1 }));
 }
 
+/**
+ * Group stage counts as finished only when a schedule actually exists and every
+ * scheduled match is completed. Without the `total > 0` check a group whose
+ * matches were never generated reports as "done" and unlocks the knockout draw.
+ */
+export function isGroupStageComplete(groups: PicGroup[]): boolean {
+  const total = groups.reduce((s, g) => s + g.matches.length, 0);
+  if (total === 0) return false;
+  return groups.every((g) => g.matches.every((m) => m.status === "completed"));
+}
+
 /** Distribute N players into G groups as evenly as possible (snake seeding). */
 function distributeToGroups(players: PicPlayer[], groupCount: number): PicGroup[] {
   const groups: PicGroup[] = Array.from({ length: groupCount }, (_, i) => ({
@@ -198,7 +209,7 @@ export const usePicStore = create<PicStore>()(
                 ),
               };
             });
-            const allDone = groups.every((g) => g.matches.every((m) => m.status === "completed"));
+            const allDone = isGroupStageComplete(groups);
             return {
               current: { ...s.current, groups, stage: allDone ? "draw" : "group", updatedAt: Date.now() },
             };

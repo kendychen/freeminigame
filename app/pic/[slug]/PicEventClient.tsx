@@ -6,7 +6,7 @@ import {
   Trophy, Shuffle, CheckCircle2, Check, Pencil, X, Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { computeStandings, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
+import { computeStandings, isGroupStageComplete, type PicMatch, type PicPlayer, type PicGroup } from "@/stores/pic-tournament";
 import {
   scorePicMatch, picDrawKnockout, picAdvanceToDraw, createPicMatchScore, getPicRefereeToken, picDrawFinalPairs,
   createPicKnockoutDrawSession, getActivePicKnockoutDraw, cancelPicIndividualDrawSession, updatePicConfig,
@@ -808,7 +808,7 @@ export default function PicEventClient({ state }: { state: PicEventFull }) {
 
   const byId = (id: string) => players.find((p) => p.id === id);
   const multiGroup = groups.length > 1;
-  const allGroupDone = groups.every((g) => g.matches.every((m) => m.status === "completed"));
+  const allGroupDone = isGroupStageComplete(groups);
   const pendingCount = groups.reduce((s, g) => s + g.matches.filter((m) => m.status === "pending").length, 0);
 
   const W = config.pointsForWin ?? 2;

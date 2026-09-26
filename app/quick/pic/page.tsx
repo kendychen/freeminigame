@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  usePicStore, computeStandings,
+  usePicStore, computeStandings, isGroupStageComplete,
   type PicMatch, type PicPlayer, type PicGroup,
 } from "@/stores/pic-tournament";
 import { buildDrawPairs, DRAW_MODES, type DrawMode } from "@/lib/pic-draw";
@@ -346,7 +346,7 @@ export default function PicPage() {
     actions.scoreKnockout(matchId, scoreA, scoreB);
   };
 
-  const allGroupDone = groups.every((g) => g.matches.every((m) => m.status === "completed"));
+  const allGroupDone = isGroupStageComplete(groups);
   const pendingCount = groups.reduce(
     (sum, g) => sum + g.matches.filter((m) => m.status === "pending").length,
     0,
