@@ -26,16 +26,6 @@ import { SpinningWheel } from "@/components/pair/SpinningWheel";
 import { ChatBox } from "@/components/chat/ChatBox";
 import { translateError } from "@/lib/error-messages";
 
-/** Accent classes cycled per pin group so each locked group reads distinctly. */
-const PIN_ACCENTS = [
-  "border-amber-500/50 bg-amber-500/10",
-  "border-sky-500/50 bg-sky-500/10",
-  "border-violet-500/50 bg-violet-500/10",
-  "border-emerald-500/50 bg-emerald-500/10",
-  "border-rose-500/50 bg-rose-500/10",
-  "border-teal-500/50 bg-teal-500/10",
-];
-
 export interface LobbyClientProps {
   code: string;
   hostTokenFromUrl: string | null;
@@ -136,31 +126,21 @@ export function LobbyClient({
   const [pinSel, setPinSel] = useState<string[]>([]);
   const [pinBusy, setPinBusy] = useState(false);
 
-  const pinGroups = useMemo(() => {
-    const order: string[] = [];
-    const map = new Map<string, PairParticipant[]>();
+  // Chỉ cần biết ai đã bị ghim để không cho chọn lại. Phòng không hiện danh
+  // sách nhóm ghim cho bất kỳ ai, nên không cần màu hay thứ tự nhóm nữa.
+  const pinnedIds = useMemo(() => {
+    const counts = new Map<string, number>();
     for (const p of session.participants) {
       const pin = (p.pin ?? "").trim();
-      if (!pin) continue;
-      if (!map.has(pin)) {
-        map.set(pin, []);
-        order.push(pin);
-      }
-      map.get(pin)!.push(p);
+      if (pin) counts.set(pin, (counts.get(pin) ?? 0) + 1);
     }
-    return order
-      .map((pin) => ({ pin, members: map.get(pin)! }))
-      .filter((g) => g.members.length >= 2)
-      .map((g, i) => ({ ...g, accent: PIN_ACCENTS[i % PIN_ACCENTS.length]! }));
+    const ids = new Set<string>();
+    for (const p of session.participants) {
+      const pin = (p.pin ?? "").trim();
+      if (pin && (counts.get(pin) ?? 0) >= 2) ids.add(p.id);
+    }
+    return ids;
   }, [session.participants]);
-
-  const pinAccentOf = useMemo(() => {
-    const byId = new Map<string, string>();
-    for (const g of pinGroups) {
-      for (const m of g.members) byId.set(m.id, g.accent);
-    }
-    return byId;
-  }, [pinGroups]);
 
   const canPin = isHost && !isShuffled && !isShuffling;
   const pinActive = pinMode && canPin;
@@ -212,34 +192,6 @@ export function LobbyClient({
     } catch {
       toast({
         title: "Ghim thất bại",
-        description: "Mất kết nối — thử lại",
-        variant: "destructive",
-      });
-    } finally {
-      setPinBusy(false);
-    }
-  };
-
-  const onUnpin = async (pin: string) => {
-    if (!hostToken) return;
-    setPinBusy(true);
-    try {
-      const res = await fetch(`/api/pair/${code}/pin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hostToken, unpin: pin }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        toast({
-          title: "Bỏ ghim thất bại",
-          description: translateError(json.error),
-          variant: "destructive",
-        });
-      }
-    } catch {
-      toast({
-        title: "Bỏ ghim thất bại",
         description: "Mất kết nối — thử lại",
         variant: "destructive",
       });
@@ -799,33 +751,9 @@ export function LobbyClient({
             </div>
           )}
 
-          {pinGroups.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                Nhóm đã ghim sẵn ({pinGroups.length})
-              </p>
-              {pinGroups.map((g) => (
-                <div
-                  key={g.pin}
-                  className={`flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm ${g.accent}`}
-                >
-                  <span className="flex-1 truncate">
-                    {g.members.map((m) => m.name).join(" + ")}
-                  </span>
-                  {canPin && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pinBusy}
-                      onClick={() => onUnpin(g.pin)}
-                    >
-                      Bỏ ghim
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Không hiện danh sách nhóm đã ghim cho bất kỳ ai, kể cả host: hệ
+              thống vẫn giữ cặp, nhưng phòng không có dấu hiệu nào lộ ra. Muốn
+              bỏ ghim thì sửa ở /admin/settings. */}
 
           {session.participants.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
@@ -835,9 +763,11 @@ export function LobbyClient({
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {session.participants.map((p, i) => {
                 const members = session.participantMembers?.[p.id] ?? [];
-                const accent = pinAccentOf.get(p.id);
+                // Người đã ghim không tô màu gì: màu nền là một chỉ dấu, nhìn
+                // hai thẻ cùng màu là đoán ra cặp. Vẫn chặn chọn lại họ.
+                const isPinned = pinnedIds.has(p.id);
                 const selected = pinSel.includes(p.id);
-                const selectable = pinActive && !accent;
+                const selectable = pinActive && !isPinned;
                 return (
                   <div
                     key={p.id}
@@ -855,7 +785,7 @@ export function LobbyClient({
                         : undefined
                     }
                     className={`flex items-start gap-2 rounded-md border p-2 ${
-                      accent ?? (p.id === myId ? "bg-primary/10 border-primary/30" : "")
+                      p.id === myId ? "bg-primary/10 border-primary/30" : ""
                     } ${isShuffling ? "animate-pulse" : ""} ${
                       selectable ? "cursor-pointer hover:border-primary/50" : ""
                     } ${selected ? "ring-2 ring-primary" : ""}`}
