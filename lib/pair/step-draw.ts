@@ -1,5 +1,6 @@
 import {
   shuffleDeterministic,
+  type DrawMode,
   type PairParticipant,
   type PairResult,
 } from "./shuffle";
@@ -113,6 +114,53 @@ export interface StepDrawOutcome {
 }
 
 /**
+ * Chọn một nhóm cân bằng tag từ pool: xoay vòng qua các bucket tag, mỗi lần
+ * lấy một người từ bucket khác, nên nhóm 2 người ra A-B và nhóm 4 người ra
+ * 2A+2B khi còn đủ cả hai tag.
+ *
+ * Rút từng nhóm khác với bốc cả bảng: ở đây mỗi lượt chỉ thấy pool hiện tại,
+ * nên khi một tag đã cạn thì phần dư buộc phải ghép cùng tag. Ưu tiên khác
+ * tag trước, hết mới lấy cùng tag — không đẩy ai thành bye.
+ */
+function pickBalancedByTag(
+  pool: PairParticipant[],
+  groupSize: number,
+  seed: number,
+): string[] {
+  const buckets = new Map<string, PairParticipant[]>();
+  for (const p of pool) {
+    const key = (p.tag ?? "").trim() || "_";
+    const arr = buckets.get(key) ?? [];
+    arr.push(p);
+    buckets.set(key, arr);
+  }
+  const keys = Array.from(buckets.keys()).sort();
+  // Chỉ một tag → không có gì để cân bằng, dùng random thuần cho rẻ.
+  if (keys.length <= 1) {
+    return shuffleDeterministic(pool, seed)
+      .slice(0, groupSize)
+      .map((p) => p.id);
+  }
+  const shuffled = keys.map((k, i) =>
+    shuffleDeterministic(buckets.get(k)!, (seed + i * 1009) >>> 0),
+  );
+  // Bucket khởi điểm lệch theo seed, nếu không thì tag đứng đầu bảng chữ cái
+  // luôn được gọi tên trước ở mọi lượt quay.
+  const start = seed % shuffled.length;
+  const group: string[] = [];
+  for (let row = 0; row < groupSize; row++) {
+    for (let attempt = 0; attempt < shuffled.length; attempt++) {
+      const bucket = shuffled[(start + row + attempt) % shuffled.length]!;
+      if (bucket.length > 0) {
+        group.push(bucket.shift()!.id);
+        break;
+      }
+    }
+  }
+  return group;
+}
+
+/**
  * Rút nhóm kế tiếp. Nhóm ghim còn nguyên được ưu tiên; nếu nhóm ghim thiếu
  * người thì lấp thêm từ pool, đúng như bốc một lần.
  *
@@ -123,6 +171,7 @@ export function drawNextGroup(
   groupSize: number,
   state: StepDrawState,
   seed: number,
+  mode: DrawMode = "random_all",
 ): StepDrawOutcome {
   if (groupSize < 2) {
     return { group: null, fromPin: false, next: state, done: true };
@@ -155,9 +204,12 @@ export function drawNextGroup(
     return { group: null, fromPin: false, next, done: true };
   }
 
-  const picked = shuffleDeterministic(pool, seed)
-    .slice(0, groupSize)
-    .map((p) => p.id);
+  const picked =
+    mode === "balanced_by_tag"
+      ? pickBalancedByTag(pool, groupSize, seed)
+      : shuffleDeterministic(pool, seed)
+          .slice(0, groupSize)
+          .map((p) => p.id);
   const fin = finalize(participants, groupSize, {
     groups: [...state.groups, picked],
     byes: state.byes,
@@ -174,6 +226,7 @@ export function drawAllRemaining(
   groupSize: number,
   state: StepDrawState,
   seed: number,
+  mode: DrawMode = "random_all",
 ): { next: StepDrawState; added: string[][] } {
   let cur = state;
   const added: string[][] = [];
@@ -184,6 +237,7 @@ export function drawAllRemaining(
       groupSize,
       cur,
       (seed + step * 7919) >>> 0,
+      mode,
     );
     cur = out.next;
     if (out.group) added.push(out.group);

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import type { PairParticipant, PairResult } from "@/lib/pair/shuffle";
+import type {
+  DrawMode,
+  PairParticipant,
+  PairResult,
+} from "@/lib/pair/shuffle";
 import {
   drawNextGroup,
   drawAllRemaining,
@@ -46,7 +50,7 @@ export async function POST(
   const { data: session, error } = await sb
     .from("pair_sessions")
     .select(
-      "host_token, status, group_size, participants, result, shuffle_count, expires_at, draw_complete, linked_tournament_id, team_id_map, player_id_map, team_name_pattern",
+      "host_token, status, group_size, participants, result, shuffle_count, expires_at, draw_complete, linked_tournament_id, team_id_map, player_id_map, team_name_pattern, draw_mode",
     )
     .eq("code", code)
     .maybeSingle();
@@ -88,6 +92,10 @@ export async function POST(
     groups: prev?.groups ?? [],
     byes: prev?.byes ?? [],
   };
+  // Quay từng cặp phải tôn trọng chế độ của phòng, nếu không thì chọn "cân
+  // bằng A-B" rồi bấm "Quay 1 cặp" vẫn ra random thuần.
+  const drawMode = ((session as { draw_mode?: string }).draw_mode ??
+    "random_all") as DrawMode;
 
   // Phase 1: chốt danh sách + báo "đang quay" cho mọi màn hình.
   // Guard theo status đã đọc: nếu có ai pin/join/shuffle xen vào thì update
@@ -119,7 +127,13 @@ export async function POST(
   let complete: boolean;
 
   if (action === "all") {
-    const res = drawAllRemaining(participants, groupSize, state, seed);
+    const res = drawAllRemaining(
+      participants,
+      groupSize,
+      state,
+      seed,
+      drawMode,
+    );
     next = res.next;
     complete = true;
     // "Phát ra tất" công bố nhiều nhóm cùng lúc, nên không có một "nhóm vừa
@@ -127,7 +141,13 @@ export async function POST(
     // thay vì nêu đúng nhóm cuối như thể chỉ quay được 1 cặp.
     lastGroup = null;
   } else {
-    const res = drawNextGroup(participants, groupSize, state, seed);
+    const res = drawNextGroup(
+      participants,
+      groupSize,
+      state,
+      seed,
+      drawMode,
+    );
     next = res.next;
     complete = res.done;
     if (res.group) {

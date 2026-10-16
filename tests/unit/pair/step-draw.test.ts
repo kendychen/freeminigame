@@ -17,6 +17,20 @@ function people(n: number, pins: Record<number, string> = {}): PairParticipant[]
   }));
 }
 
+/** Người tham gia có tag, kèm pin tuỳ chọn theo số thứ tự (1-based). */
+function tagged(
+  tags: string[],
+  pins: Record<number, string> = {},
+): PairParticipant[] {
+  return tags.map((tag, i) => ({
+    id: `p${i + 1}`,
+    name: `Người ${i + 1}`,
+    joinedAt: 1000 + i,
+    tag,
+    pin: pins[i + 1] ?? null,
+  }));
+}
+
 const empty: StepDrawState = { groups: [], byes: [] };
 
 describe("drawNextGroup", () => {
@@ -109,6 +123,64 @@ describe("drawAllRemaining", () => {
     const flat = next.groups.flat();
     expect(new Set(flat).size).toBe(flat.length);
     expect([...flat, ...next.byes].sort()).toEqual(ps.map((p) => p.id).sort());
+  });
+
+  it("balanced_by_tag: mọi cặp đều A-B khi số A bằng số B", () => {
+    const ps = tagged(["A", "B", "A", "B", "A", "B", "A", "B"]);
+    const tagOf = new Map(ps.map((p) => [p.id, p.tag]));
+    for (let seed = 1; seed <= 40; seed++) {
+      const { next } = drawAllRemaining(ps, 2, empty, seed, "balanced_by_tag");
+      expect(next.groups).toHaveLength(4);
+      for (const g of next.groups) {
+        expect(new Set(g.map((id) => tagOf.get(id))).size).toBe(2);
+      }
+    }
+  });
+
+  it("balanced_by_tag: phần dư ghép cùng tag chứ không thành bye", () => {
+    // 6 A + 2 B → 2 cặp A-B, 2 cặp A-A. Không ai bị loại.
+    const ps = tagged(["A", "A", "A", "A", "A", "A", "B", "B"]);
+    const tagOf = new Map(ps.map((p) => [p.id, p.tag]));
+    for (let seed = 1; seed <= 40; seed++) {
+      const { next } = drawAllRemaining(ps, 2, empty, seed, "balanced_by_tag");
+      expect(next.groups).toHaveLength(4);
+      expect(next.byes).toEqual([]);
+      const mixed = next.groups.filter(
+        (g) => new Set(g.map((id) => tagOf.get(id))).size === 2,
+      );
+      expect(mixed).toHaveLength(2);
+    }
+  });
+
+  it("balanced_by_tag: nhóm 4 người lấy 2 A + 2 B", () => {
+    const ps = tagged(["A", "B", "A", "B", "A", "B", "A", "B"]);
+    const tagOf = new Map(ps.map((p) => [p.id, p.tag]));
+    for (let seed = 1; seed <= 30; seed++) {
+      const { next } = drawAllRemaining(ps, 4, empty, seed, "balanced_by_tag");
+      expect(next.groups).toHaveLength(2);
+      for (const g of next.groups) {
+        const tags = g.map((id) => tagOf.get(id));
+        expect(tags.filter((t) => t === "A")).toHaveLength(2);
+        expect(tags.filter((t) => t === "B")).toHaveLength(2);
+      }
+    }
+  });
+
+  it("balanced_by_tag: cặp ghim vẫn thắng, không bị tag can thiệp", () => {
+    // p1 và p3 cùng tag A nhưng được ghim → phải ở cùng cặp.
+    const ps = tagged(["A", "B", "A", "B", "A", "B"], { 1: "k", 3: "k" });
+    for (let seed = 1; seed <= 20; seed++) {
+      const { next } = drawAllRemaining(ps, 2, empty, seed, "balanced_by_tag");
+      const g = next.groups.find((x) => x.includes("p1"))!;
+      expect(g).toContain("p3");
+    }
+  });
+
+  it("không truyền mode thì giữ nguyên hành vi random cũ", () => {
+    const ps = tagged(["A", "B", "A", "B", "A", "B"]);
+    const a = drawAllRemaining(ps, 2, empty, 4242);
+    const b = drawAllRemaining(ps, 2, empty, 4242, "random_all");
+    expect(b.next.groups).toEqual(a.next.groups);
   });
 
   it("toPairResult giữ nguyên nhóm và bye", () => {
