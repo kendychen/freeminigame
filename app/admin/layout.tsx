@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { requireSiteAdmin } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 
 const NAV = [
   { href: "/admin", label: "Tổng quan", icon: LayoutDashboard },
@@ -43,9 +44,7 @@ export default async function AdminLayout({
             <span className="rounded-full border bg-secondary px-2 py-0.5 text-xs">
               {role}
             </span>
-            <span className="hidden text-sm text-muted-foreground sm:block">
-              {user.email}
-            </span>
+            <SignOutButton email={user.email} />
             <ThemeToggle />
           </div>
         </div>

@@ -19,6 +19,12 @@ export interface PairSessionState {
   linked_tournament_id: string | null;
   team_id_map: Record<string, string> | null;
   player_id_map: Record<string, string> | null;
+  /** 'all_at_once' = bốc 1 lần ra hết; 'step' = quay từng nhóm. */
+  reveal_mode?: "all_at_once" | "step";
+  /** Nhóm vừa quay ra ở lượt gần nhất (chế độ 'step'). */
+  last_group?: { index: number; ids: string[]; fromPin: boolean } | null;
+  /** Đã quay xong toàn bộ (chế độ 'step'). */
+  draw_complete?: boolean;
   /** participantId -> member display names. Only populated for group-draw lobbies. */
   participantMembers?: Record<string, string[]>;
 }

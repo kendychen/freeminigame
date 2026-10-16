@@ -8,6 +8,7 @@ import {
   Lock,
   Unlock,
   Dice5,
+  Zap,
   LogIn,
   LogOut,
   Eye,
@@ -71,6 +72,7 @@ export function LobbyClient({
   const [joinName, setJoinName] = useState("");
   const [joining, setJoining] = useState(false);
   const [shuffling, setShuffling] = useState(false);
+  const [stepBusy, setStepBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -86,6 +88,25 @@ export function LobbyClient({
   const isLocked = session.status === "locked";
   const isShuffled = session.status === "shuffled";
   const isShuffling = session.status === "shuffling";
+
+  // Quay từng nhóm: đã quay được nhóm nào chưa, và còn quay tiếp được không.
+  const drawComplete = session.draw_complete === true;
+  const stepGroupCount = session.result?.groups.length ?? 0;
+  // Những người đã được chia ở các lượt trước — không còn trong lồng cầu.
+  const spunIds = useMemo(
+    () => [
+      ...(session.result?.groups.flat() ?? []),
+      ...(session.result?.byes ?? []),
+    ],
+    [session.result],
+  );
+  const stepStarted = stepGroupCount > 0 && !drawComplete;
+  const stepDisabled =
+    stepBusy ||
+    isShuffling ||
+    shuffling ||
+    drawComplete ||
+    session.participants.length < session.group_size;
   const me = useMemo(
     () => session.participants.find((p) => p.id === myId) ?? null,
     [session.participants, myId],
@@ -300,6 +321,47 @@ export function LobbyClient({
     }
   };
 
+  // --- Quay từng nhóm --------------------------------------------------
+  const onStepDraw = async (action: "one" | "all") => {
+    if (!hostToken) return;
+    if (session.participants.length < session.group_size) {
+      toast({
+        title: "Chưa đủ người",
+        description: `Cần ít nhất ${session.group_size} người`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setStepBusy(true);
+    try {
+      const res = await fetch(`/api/pair/${code}/draw-step`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hostToken,
+          action,
+          spinDurationMs: action === "all" ? 2500 : 4000,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast({
+          title: "Lỗi bốc thăm",
+          description: translateError(json.error),
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({
+        title: "Lỗi bốc thăm",
+        description: "Mất kết nối — thử lại",
+        variant: "destructive",
+      });
+    } finally {
+      setStepBusy(false);
+    }
+  };
+
   const onToggleLock = async () => {
     if (!hostToken) return;
     await fetch(`/api/pair/${code}/lock`, {
@@ -479,6 +541,7 @@ export function LobbyClient({
           participants={session.participants}
           groupSize={session.group_size}
           shufflingUntil={session.shuffling_until}
+          assignedIds={spunIds}
         />
       )}
 
@@ -548,6 +611,9 @@ export function LobbyClient({
                   shuffling ||
                   isShuffling ||
                   isShuffled ||
+                  // Đã quay từng cặp rồi thì dùng "Phát ra tất" để quay nốt;
+                  // route bốc 1 lần sẽ từ chối vì shuffle_count đã tăng.
+                  stepGroupCount > 0 ||
                   session.participants.length < 2
                 }
                 size="sm"
@@ -561,8 +627,42 @@ export function LobbyClient({
                   ? "Đang bốc..."
                   : isShuffled
                     ? "✅ Đã bốc thăm"
-                    : "🎲 Bốc thăm"}
+                    : stepStarted
+                      ? "🎲 Bốc hết 1 lần"
+                      : "🎲 Bốc thăm"}
               </Button>
+              {!drawComplete && !isShuffled && (
+                <>
+                  <Button
+                    onClick={() => onStepDraw("one")}
+                    disabled={stepDisabled}
+                    variant="secondary"
+                    size="sm"
+                    title={`Quay ra ${session.group_size} người thành 1 cặp`}
+                  >
+                    <Dice5
+                      className={`size-4 ${
+                        stepBusy || isShuffling ? "animate-spin" : ""
+                      }`}
+                    />
+                    {stepBusy || isShuffling
+                      ? "Đang quay…"
+                      : `🎯 Quay 1 cặp${
+                          stepStarted ? ` (${stepGroupCount})` : ""
+                        }`}
+                  </Button>
+                  <Button
+                    onClick={() => onStepDraw("all")}
+                    disabled={stepDisabled}
+                    variant="outline"
+                    size="sm"
+                    title="Quay hết số người còn lại"
+                  >
+                    <Zap className="size-4" />
+                    ⚡ Phát ra tất
+                  </Button>
+                </>
+              )}
               {canPin && (
                 <Button
                   onClick={() => (pinMode ? exitPinMode() : setPinMode(true))}
@@ -706,8 +806,9 @@ export function LobbyClient({
         </CardContent>
       </Card>
 
-      {/* Result */}
-      {session.result && !isShuffling && (
+      {/* Result — ở chế độ quay từng cặp, các nhóm đã công bố vẫn hiện trong
+          lúc đang quay lượt kế tiếp, không bị ẩn đi rồi hiện lại. */}
+      {session.result && (!isShuffling || stepGroupCount > 0) && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -730,14 +831,23 @@ export function LobbyClient({
                         session.participants.find((x) => x.id === id)?.pin ?? ""
                       ).trim(),
                   );
-                  const isPinnedGroup =
-                    pins.length >= 2 &&
-                    pins[0] !== "" &&
-                    pins.every((v) => v === pins[0]);
+                  // Nhóm ghim thiếu người được lấp thêm từ pool: người được lấp
+                  // có pin rỗng, nên dùng "có từ 2 người cùng pin" thay vì
+                  // "mọi người cùng pin", nếu không nhãn ghim sẽ biến mất.
+                  const pinCounts = new Map<string, number>();
+                  for (const v of pins) {
+                    if (v) pinCounts.set(v, (pinCounts.get(v) ?? 0) + 1);
+                  }
+                  const isPinnedGroup = Array.from(pinCounts.values()).some(
+                    (n) => n >= 2,
+                  );
+                  const isLatest = session.last_group?.index === i;
                   return (
                   <div
                     key={i}
-                    className="rounded-lg border bg-card p-3 transition-shadow hover:shadow-md"
+                    className={`rounded-lg border bg-card p-3 transition-shadow hover:shadow-md ${
+                      isLatest ? "border-primary ring-2 ring-primary/40" : ""
+                    }`}
                     style={{
                       animation: `fadeInUp 0.5s ease-out ${i * 0.1}s both`,
                     }}
@@ -747,6 +857,11 @@ export function LobbyClient({
                       {isPinnedGroup && (
                         <span className="ml-1 text-primary" title="Ghim sẵn">
                           📌 ghim sẵn
+                        </span>
+                      )}
+                      {isLatest && !isPinnedGroup && (
+                        <span className="ml-1 font-medium text-primary">
+                          ✨ vừa quay
                         </span>
                       )}
                     </div>

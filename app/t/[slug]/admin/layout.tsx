@@ -11,6 +11,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { PickleballLogo } from "@/components/brand/PickleballLogo";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 
 export default async function AdminLayout({
   children,
@@ -63,7 +64,10 @@ export default async function AdminLayout({
             <PickleballLogo size={26} />
             <span className="hidden sm:inline">Hội Nhóm Pickleball</span>
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-1 sm:gap-2">
+            <SignOutButton email={user.email} />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

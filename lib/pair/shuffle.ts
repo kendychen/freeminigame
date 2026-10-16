@@ -42,7 +42,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-function shuffleDeterministic<T>(arr: T[], seed: number): T[] {
+export function shuffleDeterministic<T>(arr: T[], seed: number): T[] {
   const out = [...arr];
   const rand = mulberry32(seed);
   for (let i = out.length - 1; i > 0; i--) {

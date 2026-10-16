@@ -54,6 +54,11 @@ export async function POST(
   if (session.status === "locked") {
     return NextResponse.json({ error: "locked" }, { status: 409 });
   }
+  // Đang quay thì chốt danh sách: nếu cho join lúc này, người mới sẽ không có
+  // trong kết quả vừa bốc và bị hiện "—".
+  if (session.status === "shuffling") {
+    return NextResponse.json({ error: "shuffling" }, { status: 409 });
+  }
 
   const participants = (session.participants as Participant[]) ?? [];
   if (participants.length >= 200) {
@@ -77,12 +82,19 @@ export async function POST(
   };
   const next = [...participants, newParticipant];
 
-  const { error: updErr } = await sb
+  // Guard theo status đã đọc: nếu host bấm bốc thăm xen vào giữa, update này
+  // khớp 0 dòng thay vì chèn người vào danh sách đang được dùng để bốc.
+  const { data: rows, error: updErr } = await sb
     .from("pair_sessions")
     .update({ participants: next })
-    .eq("code", code);
+    .eq("code", code)
+    .eq("status", session.status)
+    .select("code");
   if (updErr) {
     return NextResponse.json({ error: updErr.message }, { status: 500 });
+  }
+  if (!rows || rows.length === 0) {
+    return NextResponse.json({ error: "shuffling" }, { status: 409 });
   }
   return NextResponse.json({ participant: newParticipant });
 }
