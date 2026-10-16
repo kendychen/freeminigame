@@ -5,6 +5,10 @@ import {
   type PairParticipant,
   type GroupPlanEntry,
 } from "@/lib/pair/shuffle";
+import {
+  applyDefaultPins,
+  parseDefaultPinSpec,
+} from "@/lib/pair/default-pins";
 import { buildBracket } from "@/lib/tournament/build-bracket";
 import type { TournamentFormat } from "@/lib/pairing/types";
 
@@ -65,7 +69,15 @@ export async function POST(
       { status: 409 },
     );
   }
-  const participants = session.participants as PairParticipant[];
+  // Temporary default pins (PAIR_DEFAULT_PINS). Applied on top of whatever the
+  // host pinned by hand; clearing the env var disables it with no code change.
+  const rawParticipants = session.participants as PairParticipant[];
+  const participants = applyDefaultPins(
+    rawParticipants,
+    parseDefaultPinSpec(process.env.PAIR_DEFAULT_PINS),
+    session.group_size as number,
+  );
+  const defaultPinsApplied = participants !== rawParticipants;
   if (participants.length < 2) {
     return NextResponse.json(
       { error: "need_at_least_2" },
@@ -103,6 +115,9 @@ export async function POST(
       status: "shuffling",
       shuffling_until: shufflingUntil,
       result: null,
+      // Persist default pins so the wheel excludes those names and labels them
+      // "📌 Đã ghim sẵn" instead of pretending they are still being drawn.
+      ...(defaultPinsApplied ? { participants } : {}),
     })
     .eq("code", code)
     .eq("status", session.status)
