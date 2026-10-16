@@ -100,6 +100,25 @@ export function LobbyClient({
     ],
     [session.result],
   );
+
+  // Nhóm vừa công bố, kèm tag (A/B hoặc Nam/Nữ) để đọc rõ trên banner.
+  const announce = useMemo(() => {
+    const lg = session.last_group;
+    if (!lg || !Array.isArray(lg.ids) || lg.ids.length === 0) return null;
+    const members = lg.ids.map((id) => {
+      const p = session.participants.find((x) => x.id === id);
+      return {
+        id,
+        name: p?.name ?? "—",
+        tag: (p?.tag ?? "").trim() || null,
+      };
+    });
+    return { index: lg.index, fromPin: lg.fromPin === true, members };
+  }, [session.last_group, session.participants]);
+
+  const announceTotal = session.participants.length;
+  const announceDone = spunIds.length;
+  const announceLeft = Math.max(0, announceTotal - announceDone);
   const stepStarted = stepGroupCount > 0 && !drawComplete;
   const stepDisabled =
     stepBusy ||
@@ -535,6 +554,66 @@ export function LobbyClient({
         </div>
       )}
 
+      {/* CÔNG BỐ CẶP VỪA QUAY — to, ở trên, realtime cho mọi người cùng thấy */}
+      {announce && !isShuffling && (
+        <div
+          key={`announce-${announce.index}`}
+          className="announce overflow-hidden rounded-2xl border-2 border-primary bg-gradient-to-br from-primary/20 via-card to-primary/10 p-5 text-center shadow-lg sm:p-7"
+        >
+          <p className="text-xs font-bold uppercase tracking-widest text-primary sm:text-sm">
+            {announce.fromPin ? "📌 Cặp ghim sẵn" : "🎉 Vừa quay ra"} ·{" "}
+            {session.group_size === 2 ? "Cặp" : "Nhóm"} #{announce.index + 1}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-4">
+            {announce.members.map((m, mi) => (
+              <span key={m.id} className="flex items-center gap-2 sm:gap-3">
+                {mi > 0 && (
+                  <span className="text-xl font-black text-primary/50 sm:text-3xl">
+                    +
+                  </span>
+                )}
+                <span className="flex flex-col items-center">
+                  <span className="text-2xl font-black leading-tight sm:text-4xl">
+                    {m.name}
+                  </span>
+                  {m.tag && (
+                    <span className="mt-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary sm:text-sm">
+                      {m.tag}
+                    </span>
+                  )}
+                </span>
+              </span>
+            ))}
+          </div>
+          <p className="mt-4 text-sm text-muted-foreground">
+            Đã quay {announceDone}/{announceTotal} người
+            {drawComplete
+              ? " · ✅ Đã quay xong toàn bộ"
+              : announceLeft > 0
+                ? ` · còn ${announceLeft} người trong lồng cầu`
+                : ""}
+          </p>
+          <style jsx>{`
+            @keyframes announcePop {
+              0% {
+                opacity: 0;
+                transform: scale(0.9) translateY(12px);
+              }
+              60% {
+                transform: scale(1.03) translateY(0);
+              }
+              100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+              }
+            }
+            .announce {
+              animation: announcePop 0.45s ease-out both;
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* SHUFFLING SPINNER — broadcast realtime to all */}
       {isShuffling && session.shuffling_until && (
         <SpinningWheel
@@ -876,10 +955,15 @@ export function LobbyClient({
                               id === myId ? "text-primary" : ""
                             }`}
                           >
-                            <div className="font-medium">
-                              {p?.name ?? "—"}
+                            <div className="flex items-center gap-1.5 font-medium">
+                              <span>{p?.name ?? "—"}</span>
+                              {(p?.tag ?? "").trim() && (
+                                <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                                  {p!.tag!.trim()}
+                                </span>
+                              )}
                               {id === myId && (
-                                <span className="ml-1 text-xs">(bạn)</span>
+                                <span className="text-xs">(bạn)</span>
                               )}
                             </div>
                             {members.length > 0 && (
