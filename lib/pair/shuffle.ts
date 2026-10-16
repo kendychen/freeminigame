@@ -294,19 +294,22 @@ function shuffleBalanced(
   const groups: string[][] = Array.from({ length: totalGroups }, () => []);
   const byes: string[] = [];
 
-  // Round-robin: for each "row" of a group, pick from a different tag bucket
-  // until each group has groupSize members.
-  let bucketCursor = 0;
+  // Mỗi "hàng" của một nhóm phải lấy từ một bucket tag khác, nên bucket ưu
+  // tiên được tính từ (nhóm + hàng) chứ không phải một con trỏ chạy tuần tự.
+  // Con trỏ tuần tự là bug cũ: với 2 tag và 4 cặp, hàng 0 lấy A,B,A,B rồi
+  // hàng 1 lại bắt đầu đúng ở A nên ra A+A và B+B — đủ số A/B nhưng dồn sai
+  // chỗ. Lệch theo `g + row` đảm bảo nhóm g ở hàng row luôn ngắm bucket khác.
+  const bucketCount = shuffledBuckets.length;
   for (let row = 0; row < groupSize; row++) {
     for (let g = 0; g < totalGroups; g++) {
-      // Try buckets in order starting at bucketCursor; pick the first non-empty
+      // Bucket mong muốn có thể đã hết người (số lượng các tag lệch nhau) →
+      // lùi sang bucket còn người kế tiếp thay vì bỏ trống chỗ.
       let picked: string | undefined;
-      for (let attempt = 0; attempt < shuffledBuckets.length; attempt++) {
-        const idx = (bucketCursor + attempt) % shuffledBuckets.length;
+      for (let attempt = 0; attempt < bucketCount; attempt++) {
+        const idx = (g + row + attempt) % bucketCount;
         const bucket = shuffledBuckets[idx]!;
         if (bucket.length > 0) {
           picked = bucket.shift();
-          bucketCursor = (idx + 1) % shuffledBuckets.length;
           break;
         }
       }

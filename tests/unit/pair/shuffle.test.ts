@@ -221,6 +221,46 @@ describe("shuffleParticipants — balanced_by_tag", () => {
     expect(new Set(flat(res.groups)).size).toBe(12);
   });
 
+  it("mỗi cặp phải có đúng 1 A và 1 B khi số A bằng số B", () => {
+    const tagOf = (i: number) => (i % 2 === 0 ? "A" : "B");
+    const participants = makeParticipants(8, (i) => ({ tag: tagOf(i) }));
+    const byId = new Map(participants.map((p) => [p.id, p.tag]));
+    for (let seed = 1; seed <= 60; seed++) {
+      const res = shuffleParticipants(
+        participants,
+        2,
+        seed,
+        1,
+        "balanced_by_tag",
+      );
+      for (const g of res.groups) {
+        const tags = g.map((id) => byId.get(id));
+        expect(new Set(tags).size).toBe(2);
+      }
+    }
+  });
+
+  it("nhóm 4 người lấy 2 A + 2 B, không dồn cùng tag", () => {
+    const participants = makeParticipants(12, (i) => ({
+      tag: i % 2 === 0 ? "A" : "B",
+    }));
+    const byId = new Map(participants.map((p) => [p.id, p.tag]));
+    for (let seed = 1; seed <= 30; seed++) {
+      const res = shuffleParticipants(
+        participants,
+        4,
+        seed,
+        1,
+        "balanced_by_tag",
+      );
+      for (const g of res.groups) {
+        const tags = g.map((id) => byId.get(id));
+        expect(tags.filter((t) => t === "A").length).toBe(2);
+        expect(tags.filter((t) => t === "B").length).toBe(2);
+      }
+    }
+  });
+
   it("single tag bucket falls back to plain shuffle", () => {
     const participants = makeParticipants(6, () => ({ tag: "Nam" }));
     const res = shuffleParticipants(participants, 2, 42, 1, "balanced_by_tag");
