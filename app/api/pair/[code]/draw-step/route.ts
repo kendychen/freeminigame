@@ -106,10 +106,10 @@ export async function POST(
     const res = drawAllRemaining(participants, groupSize, state, seed);
     next = res.next;
     complete = true;
-    const lastIdx = next.groups.length - 1;
-    if (lastIdx >= 0) {
-      lastGroup = { index: lastIdx, ids: next.groups[lastIdx]!, fromPin: false };
-    }
+    // "Phát ra tất" công bố nhiều nhóm cùng lúc, nên không có một "nhóm vừa
+    // quay" nào đại diện. Để null để banner tắt và cả bảng kết quả hiện ra,
+    // thay vì nêu đúng nhóm cuối như thể chỉ quay được 1 cặp.
+    lastGroup = null;
   } else {
     const res = drawNextGroup(participants, groupSize, state, seed);
     next = res.next;

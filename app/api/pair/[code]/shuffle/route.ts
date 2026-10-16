@@ -115,6 +115,10 @@ export async function POST(
       status: "shuffling",
       shuffling_until: shufflingUntil,
       result: null,
+      // Bốc 1 lần công bố cả bảng, không có "nhóm vừa quay". Phải xoá
+      // `last_group` còn sót từ lượt quay từng cặp trước đó, nếu không banner
+      // sẽ tiếp tục công bố đúng 1 cặp thay vì để hiện toàn bộ kết quả.
+      last_group: null,
       // Persist default pins so the wheel excludes those names and labels them
       // "📌 Đã ghim sẵn" instead of pretending they are still being drawn.
       ...(defaultPinsApplied ? { participants } : {}),
@@ -138,6 +142,10 @@ export async function POST(
     .update({
       status: "shuffled",
       result,
+      // Bốc 1 lần = quay xong toàn bộ: không còn ai trong lồng cầu, nên các nút
+      // "Quay 1 cặp" / "Phát ra tất" phải tắt theo.
+      last_group: null,
+      draw_complete: true,
       shuffle_count: round,
       shuffled_at: new Date().toISOString(),
       shuffling_until: null,
