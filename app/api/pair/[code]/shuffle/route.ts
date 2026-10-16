@@ -5,10 +5,8 @@ import {
   type PairParticipant,
   type GroupPlanEntry,
 } from "@/lib/pair/shuffle";
-import {
-  applyDefaultPins,
-  resolveDefaultPinSpec,
-} from "@/lib/pair/default-pins";
+import { applyDefaultPins } from "@/lib/pair/default-pins";
+import { getDefaultPinSpec } from "@/lib/pair/default-pins-store";
 import { buildBracket } from "@/lib/tournament/build-bracket";
 import type { TournamentFormat } from "@/lib/pairing/types";
 
@@ -69,12 +67,12 @@ export async function POST(
       { status: 409 },
     );
   }
-  // Temporary default pins (BUILT_IN_DEFAULT_PINS, overridable via
-  // PAIR_DEFAULT_PINS). Applied on top of whatever the host pinned by hand.
+  // Cặp ghim cố định toàn giải, cấu hình ở /admin/settings. Áp lên trên những
+  // cặp host đã ghim tay (host thắng, xem applyDefaultPins).
   const rawParticipants = session.participants as PairParticipant[];
   const participants = applyDefaultPins(
     rawParticipants,
-    resolveDefaultPinSpec(),
+    await getDefaultPinSpec(),
     session.group_size as number,
   );
   const defaultPinsApplied = participants !== rawParticipants;
@@ -119,8 +117,7 @@ export async function POST(
       // `last_group` còn sót từ lượt quay từng cặp trước đó, nếu không banner
       // sẽ tiếp tục công bố đúng 1 cặp thay vì để hiện toàn bộ kết quả.
       last_group: null,
-      // Persist default pins so the wheel excludes those names and labels them
-      // "📌 Đã ghim sẵn" instead of pretending they are still being drawn.
+      // Persist default pins so later reads see the same locked grouping.
       ...(defaultPinsApplied ? { participants } : {}),
     })
     .eq("code", code)

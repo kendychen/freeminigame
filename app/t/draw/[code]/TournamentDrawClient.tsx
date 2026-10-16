@@ -302,11 +302,6 @@ function PersonalResultCard({
           🎉 Kết quả của bạn
         </p>
         <p className="text-2xl font-extrabold">{entrantName}</p>
-        {pinned && (
-          <p className="text-xs font-semibold opacity-80" title="Ghim sẵn">
-            📌 Ghim sẵn — bạn đã được ghim vào {bucketText}
-          </p>
-        )}
       </div>
 
       {previewUrl && (
@@ -658,14 +653,6 @@ export default function TournamentDrawClient({
                     <>
                       <span className="flex-1 break-words">
                         {entry.name}
-                        {entry.pinned && (
-                          <span
-                            title="Ghim sẵn"
-                            className="ml-1 align-middle text-[11px]"
-                          >
-                            📌
-                          </span>
-                        )}
                       </span>
                       {isOwner && status === "active" && !entry.pinned && (
                         <button

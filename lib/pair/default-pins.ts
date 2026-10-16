@@ -1,16 +1,18 @@
 import type { PairParticipant } from "./shuffle";
 
 /**
- * Built-in default pins. Empty = tắt, bốc thăm chạy random hoàn toàn.
+ * Cặp ghim mặc định dạng chuỗi. Rỗng = tắt, bốc thăm chạy random hoàn toàn.
  *
  * Format: nhóm cách nhau bằng `;`, tên trong nhóm cách nhau bằng `|`.
  *   "An|Bình"          → một cặp ghim
  *   "An|Bình;C|D"      → hai cặp ghim
  *
- * Cặp ghim luôn hiện nhãn 📌 trên vòng quay và thẻ kết quả, nên người xem
- * biết cặp đó do xếp sẵn chứ không phải quay ra.
+ * Cặp ghim không hiện nhãn gì trên vòng quay hay thẻ kết quả — người xem thấy
+ * y như một cặp quay ra bình thường.
  *
- * `PAIR_DEFAULT_PINS` ghi đè hằng số này khi được set.
+ * Thứ tự ưu tiên: ô cấu hình trong /admin/settings (site_settings
+ * `pair_default_pins`, đọc ở `lib/pair/default-pins-store.ts`) → env
+ * `PAIR_DEFAULT_PINS` → hằng số này.
  */
 export const BUILT_IN_DEFAULT_PINS = "";
 
@@ -22,10 +24,32 @@ export function resolveDefaultPinSpec(
   return parseDefaultPinSpec(spec);
 }
 
+/** Chuỗi spec dùng khi chưa có cấu hình trong DB. */
+export function fallbackPinSpec(
+  env: string | undefined = process.env.PAIR_DEFAULT_PINS,
+): string {
+  return (env ?? "").trim() || BUILT_IN_DEFAULT_PINS;
+}
+
+/** Đọc `{"spec": "..."}` từ site_settings. Trả về null nếu chưa cấu hình. */
+export function parsePinSetting(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null) {
+    const spec = (value as { spec?: unknown }).spec;
+    if (typeof spec === "string") return spec;
+  }
+  return null;
+}
+
+/**
+ * Tách spec thành các nhóm tên. Nhóm cách nhau bằng `;` hoặc xuống dòng (ô
+ * cấu hình trong admin là textarea, nên dán mỗi cặp một dòng phải chạy).
+ * Nhóm dưới 2 tên bị bỏ — ghim một người là vô nghĩa.
+ */
 export function parseDefaultPinSpec(spec: string | undefined): string[][] {
   if (!spec) return [];
   return spec
-    .split(";")
+    .split(/[;\r\n]+/)
     .map((group) =>
       group
         .split("|")

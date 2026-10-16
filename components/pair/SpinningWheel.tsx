@@ -37,34 +37,12 @@ export function SpinningWheel({
   // thật thì không hiện số đếm ngược để tránh nhảy ra một con số vô nghĩa.
   const remainingS = now > 0 ? Math.max(0, (endTs - now) / 1000).toFixed(1) : null;
 
-  // Pinned members are already locked into a group — they never spin.
-  // Ở chế độ quay từng cặp, người đã có nhóm cũng không spin nữa.
-  const { pinnedGroups, spinning, pool } = useMemo(() => {
+  // Ở chế độ quay từng cặp, người đã có nhóm không spin nữa. Người được ghim
+  // sẵn vẫn cuộn tên như mọi người khác — vòng quay không tiết lộ ai bị ghim.
+  const spinning = useMemo(() => {
     const done = new Set(assignedIds ?? []);
-    const pool = participants.filter((p) => !done.has(p.id));
-    const order: string[] = [];
-    const byPin = new Map<string, PairParticipant[]>();
-    for (const p of pool) {
-      const pin = (p.pin ?? "").trim();
-      if (!pin) continue;
-      if (!byPin.has(pin)) {
-        byPin.set(pin, []);
-        order.push(pin);
-      }
-      byPin.get(pin)!.push(p);
-    }
-    const groups = order
-      .map((pin) => byPin.get(pin)!)
-      .filter((members) => members.length >= 2);
-    const lockedIds = new Set(groups.flat().map((p) => p.id));
-    return {
-      pinnedGroups: groups.map((members) => members.map((m) => m.name)),
-      spinning: pool.filter((p) => !lockedIds.has(p.id)),
-      pool,
-    };
+    return participants.filter((p) => !done.has(p.id));
   }, [participants, assignedIds]);
-
-  const allPinned = pool.length > 0 && spinning.length === 0;
 
   const cycleNames = spinning.length === 0
     ? ["..."]
@@ -91,11 +69,6 @@ export function SpinningWheel({
         </span>
       </div>
 
-      {allPinned ? (
-        <div className="mx-auto mb-6 max-w-2xl rounded-lg border-2 border-primary/40 bg-background p-4 text-lg font-semibold text-primary">
-          📌 Tất cả đã ghim
-        </div>
-      ) : (
       <div className="mx-auto mb-6 flex max-w-2xl flex-wrap items-center justify-center gap-3">
         {slots.map((name, i) => (
           <div
@@ -126,22 +99,6 @@ export function SpinningWheel({
           </div>
         )}
       </div>
-      )}
-
-      {pinnedGroups.length > 0 && (
-        <div className="mx-auto mb-6 max-w-2xl rounded-lg border bg-background/60 p-3 text-left text-sm">
-          <div className="mb-1 text-xs font-medium text-muted-foreground">
-            📌 Đã ghim sẵn ({pinnedGroups.length})
-          </div>
-          <ul className="space-y-0.5">
-            {pinnedGroups.map((names, i) => (
-              <li key={i} className="truncate">
-                {names.join(" + ")}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {/* Thanh chạy liên tục: độ dài lượt quay thay đổi (2.5s / 4s / 7s) nên
           dùng animation thay vì tính % theo mốc bắt đầu. */}

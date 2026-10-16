@@ -368,7 +368,7 @@ export function DrawSessionCard({
                 <div className="space-y-2 rounded-lg border p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Label className="text-sm">
-                      📌 Ghim cặp{" "}
+                      Ghim cặp{" "}
                       <span className="text-xs font-normal text-muted-foreground">
                         (tuỳ chọn — cặp cố định, không phải quay)
                       </span>
@@ -395,7 +395,7 @@ export function DrawSessionCard({
                           key={`${a}-${b}`}
                           className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
                         >
-                          📌 Đội {effTeamCount - i} · {nameById.get(a) ?? "?"} +{" "}
+                          Đội {effTeamCount - i} · {nameById.get(a) ?? "?"} +{" "}
                           {nameById.get(b) ?? "?"}
                           <button
                             type="button"

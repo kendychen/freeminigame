@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDefaultPins,
+  fallbackPinSpec,
   parseDefaultPinSpec,
+  parsePinSetting,
   resolveDefaultPinSpec,
   BUILT_IN_DEFAULT_PINS,
 } from "@/lib/pair/default-pins";
@@ -38,6 +40,14 @@ describe("parseDefaultPinSpec", () => {
   it("drops groups with fewer than 2 names", () => {
     expect(parseDefaultPinSpec("Solo;A|B")).toEqual([["A", "B"]]);
   });
+
+  it("accepts newlines as a group separator", () => {
+    expect(parseDefaultPinSpec("A|B\nC|D\r\nE|F")).toEqual([
+      ["A", "B"],
+      ["C", "D"],
+      ["E", "F"],
+    ]);
+  });
 });
 
 describe("resolveDefaultPinSpec", () => {
@@ -51,9 +61,34 @@ describe("resolveDefaultPinSpec", () => {
     expect(resolveDefaultPinSpec("X|Y")).toEqual([["X", "Y"]]);
   });
 
-  it("is off by default: no built-in pins, draw stays fully random", () => {
+  // Cặp cố định giờ cấu hình trong /admin/settings (site_settings), nên hằng
+  // số trong code để rỗng: không ghim gì khi admin chưa nhập.
+  it("is off by default so the draw stays fully random", () => {
     expect(BUILT_IN_DEFAULT_PINS).toBe("");
     expect(resolveDefaultPinSpec(undefined)).toEqual([]);
+  });
+});
+
+describe("fallbackPinSpec", () => {
+  it("prefers env over the built-in constant", () => {
+    expect(fallbackPinSpec("A|B")).toBe("A|B");
+    expect(fallbackPinSpec("  ")).toBe(BUILT_IN_DEFAULT_PINS);
+    expect(fallbackPinSpec(undefined)).toBe(BUILT_IN_DEFAULT_PINS);
+  });
+});
+
+describe("parsePinSetting", () => {
+  it("reads the spec out of the stored shape", () => {
+    expect(parsePinSetting({ spec: "A|B" })).toBe("A|B");
+    // Chuỗi rỗng đã lưu là cố ý tắt, phải phân biệt với "chưa cấu hình" (null).
+    expect(parsePinSetting({ spec: "" })).toBe("");
+    expect(parsePinSetting("A|B")).toBe("A|B");
+  });
+
+  it("returns null when nothing usable is stored", () => {
+    expect(parsePinSetting(null)).toBeNull();
+    expect(parsePinSetting({})).toBeNull();
+    expect(parsePinSetting({ spec: 42 })).toBeNull();
   });
 });
 

@@ -561,7 +561,7 @@ export function LobbyClient({
           className="announce overflow-hidden rounded-2xl border-2 border-primary bg-gradient-to-br from-primary/20 via-card to-primary/10 p-5 text-center shadow-lg sm:p-7"
         >
           <p className="text-xs font-bold uppercase tracking-widest text-primary sm:text-sm">
-            {announce.fromPin ? "📌 Cặp ghim sẵn" : "🎉 Vừa quay ra"} ·{" "}
+            🎉 Vừa quay ra ·{" "}
             {session.group_size === 2 ? "Cặp" : "Nhóm"} #{announce.index + 1}
           </p>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-4">
@@ -802,7 +802,7 @@ export function LobbyClient({
           {pinGroups.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">
-                📌 Nhóm đã ghim sẵn ({pinGroups.length})
+                Nhóm đã ghim sẵn ({pinGroups.length})
               </p>
               {pinGroups.map((g) => (
                 <div
@@ -810,7 +810,7 @@ export function LobbyClient({
                   className={`flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm ${g.accent}`}
                 >
                   <span className="flex-1 truncate">
-                    📌 {g.members.map((m) => m.name).join(" + ")}
+                    {g.members.map((m) => m.name).join(" + ")}
                   </span>
                   {canPin && (
                     <Button
@@ -865,7 +865,6 @@ export function LobbyClient({
                     </span>
                     <span className="flex flex-1 flex-col gap-0.5 truncate">
                       <span className="truncate font-medium">
-                        {accent && <span title="Đã ghim sẵn">📌 </span>}
                         {p.name}
                       </span>
                       {members.length > 0 && (
@@ -904,22 +903,6 @@ export function LobbyClient({
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {session.result.groups.map((groupIds, i) => {
-                  const pins = groupIds.map(
-                    (id) =>
-                      (
-                        session.participants.find((x) => x.id === id)?.pin ?? ""
-                      ).trim(),
-                  );
-                  // Nhóm ghim thiếu người được lấp thêm từ pool: người được lấp
-                  // có pin rỗng, nên dùng "có từ 2 người cùng pin" thay vì
-                  // "mọi người cùng pin", nếu không nhãn ghim sẽ biến mất.
-                  const pinCounts = new Map<string, number>();
-                  for (const v of pins) {
-                    if (v) pinCounts.set(v, (pinCounts.get(v) ?? 0) + 1);
-                  }
-                  const isPinnedGroup = Array.from(pinCounts.values()).some(
-                    (n) => n >= 2,
-                  );
                   const isLatest = session.last_group?.index === i;
                   return (
                   <div
@@ -933,12 +916,7 @@ export function LobbyClient({
                   >
                     <div className="text-xs text-muted-foreground mb-2">
                       {session.group_size === 2 ? "Cặp" : "Nhóm"} #{i + 1}
-                      {isPinnedGroup && (
-                        <span className="ml-1 text-primary" title="Ghim sẵn">
-                          📌 ghim sẵn
-                        </span>
-                      )}
-                      {isLatest && !isPinnedGroup && (
+                      {isLatest && (
                         <span className="ml-1 font-medium text-primary">
                           ✨ vừa quay
                         </span>

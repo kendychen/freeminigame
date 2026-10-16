@@ -8,10 +8,8 @@ import {
   type StepDrawState,
 } from "@/lib/pair/step-draw";
 import { applyPairResultToTournament } from "@/lib/pair/apply-draw";
-import {
-  applyDefaultPins,
-  resolveDefaultPinSpec,
-} from "@/lib/pair/default-pins";
+import { applyDefaultPins } from "@/lib/pair/default-pins";
+import { getDefaultPinSpec } from "@/lib/pair/default-pins-store";
 
 export const maxDuration = 15;
 
@@ -77,7 +75,7 @@ export async function POST(
   const rawParticipants = session.participants as PairParticipant[];
   const participants = applyDefaultPins(
     rawParticipants,
-    resolveDefaultPinSpec(),
+    await getDefaultPinSpec(),
     groupSize,
   );
   const defaultPinsApplied = participants !== rawParticipants;
