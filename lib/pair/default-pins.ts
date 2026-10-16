@@ -1,17 +1,18 @@
 import type { PairParticipant } from "./shuffle";
 
 /**
- * TEMPORARY built-in default pins. Format: groups separated by `;`, names
- * inside a group separated by `|`.
+ * Built-in default pins. Empty = tắt, bốc thăm chạy random hoàn toàn.
  *
- *   "Hoà Hồ|Lê Hoạt"            → one pinned pair
- *   "Hoà Hồ|Lê Hoạt;An|Bình"    → two pinned pairs
+ * Format: nhóm cách nhau bằng `;`, tên trong nhóm cách nhau bằng `|`.
+ *   "An|Bình"          → một cặp ghim
+ *   "An|Bình;C|D"      → hai cặp ghim
  *
- * TO TURN OFF: set this back to "" and push. That is the only edit needed.
- * `PAIR_DEFAULT_PINS` still overrides this when set, so a deploy is not
- * required to change the names.
+ * Cặp ghim luôn hiện nhãn 📌 trên vòng quay và thẻ kết quả, nên người xem
+ * biết cặp đó do xếp sẵn chứ không phải quay ra.
+ *
+ * `PAIR_DEFAULT_PINS` ghi đè hằng số này khi được set.
  */
-export const BUILT_IN_DEFAULT_PINS = "Hoà Hồ|Lê Hoạt";
+export const BUILT_IN_DEFAULT_PINS = "";
 
 /** Env override first, then the built-in constant above. */
 export function resolveDefaultPinSpec(

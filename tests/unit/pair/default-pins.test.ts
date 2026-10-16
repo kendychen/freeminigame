@@ -51,8 +51,9 @@ describe("resolveDefaultPinSpec", () => {
     expect(resolveDefaultPinSpec("X|Y")).toEqual([["X", "Y"]]);
   });
 
-  it("built-in constant currently pins Hoà Hồ with Lê Hoạt", () => {
-    expect(resolveDefaultPinSpec(undefined)).toEqual([["Hoà Hồ", "Lê Hoạt"]]);
+  it("is off by default: no built-in pins, draw stays fully random", () => {
+    expect(BUILT_IN_DEFAULT_PINS).toBe("");
+    expect(resolveDefaultPinSpec(undefined)).toEqual([]);
   });
 });
 
