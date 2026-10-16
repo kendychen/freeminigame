@@ -7,7 +7,7 @@ import {
 } from "@/lib/pair/shuffle";
 import {
   applyDefaultPins,
-  parseDefaultPinSpec,
+  resolveDefaultPinSpec,
 } from "@/lib/pair/default-pins";
 import { buildBracket } from "@/lib/tournament/build-bracket";
 import type { TournamentFormat } from "@/lib/pairing/types";
@@ -69,12 +69,12 @@ export async function POST(
       { status: 409 },
     );
   }
-  // Temporary default pins (PAIR_DEFAULT_PINS). Applied on top of whatever the
-  // host pinned by hand; clearing the env var disables it with no code change.
+  // Temporary default pins (BUILT_IN_DEFAULT_PINS, overridable via
+  // PAIR_DEFAULT_PINS). Applied on top of whatever the host pinned by hand.
   const rawParticipants = session.participants as PairParticipant[];
   const participants = applyDefaultPins(
     rawParticipants,
-    parseDefaultPinSpec(process.env.PAIR_DEFAULT_PINS),
+    resolveDefaultPinSpec(),
     session.group_size as number,
   );
   const defaultPinsApplied = participants !== rawParticipants;

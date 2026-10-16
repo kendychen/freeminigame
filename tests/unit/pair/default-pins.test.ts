@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyDefaultPins,
   parseDefaultPinSpec,
+  resolveDefaultPinSpec,
+  BUILT_IN_DEFAULT_PINS,
 } from "@/lib/pair/default-pins";
 import { shuffleParticipants, type PairParticipant } from "@/lib/pair/shuffle";
 
@@ -34,6 +36,22 @@ describe("parseDefaultPinSpec", () => {
 
   it("drops groups with fewer than 2 names", () => {
     expect(parseDefaultPinSpec("Solo;A|B")).toEqual([["A", "B"]]);
+  });
+});
+
+describe("resolveDefaultPinSpec", () => {
+  it("falls back to the built-in constant when env is unset or blank", () => {
+    const builtIn = parseDefaultPinSpec(BUILT_IN_DEFAULT_PINS);
+    expect(resolveDefaultPinSpec(undefined)).toEqual(builtIn);
+    expect(resolveDefaultPinSpec("  ")).toEqual(builtIn);
+  });
+
+  it("env overrides the built-in constant", () => {
+    expect(resolveDefaultPinSpec("X|Y")).toEqual([["X", "Y"]]);
+  });
+
+  it("built-in constant currently pins Hoà Hồ with Lê Hoạt", () => {
+    expect(resolveDefaultPinSpec(undefined)).toEqual([["Hoà Hồ", "Lê Hoạt"]]);
   });
 });
 

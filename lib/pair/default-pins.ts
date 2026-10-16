@@ -1,15 +1,26 @@
 import type { PairParticipant } from "./shuffle";
 
 /**
- * Temporary default pins, configured outside the code so they can be removed
- * without a deploy. Format: groups separated by `;`, names inside a group
- * separated by `|`.
+ * TEMPORARY built-in default pins. Format: groups separated by `;`, names
+ * inside a group separated by `|`.
  *
- *   PAIR_DEFAULT_PINS="Hoà Hồ|Lê Hoạt"
- *   PAIR_DEFAULT_PINS="Hoà Hồ|Lê Hoạt;An|Bình"
+ *   "Hoà Hồ|Lê Hoạt"            → one pinned pair
+ *   "Hoà Hồ|Lê Hoạt;An|Bình"    → two pinned pairs
  *
- * Unset the env var to turn the feature off entirely.
+ * TO TURN OFF: set this back to "" and push. That is the only edit needed.
+ * `PAIR_DEFAULT_PINS` still overrides this when set, so a deploy is not
+ * required to change the names.
  */
+export const BUILT_IN_DEFAULT_PINS = "Hoà Hồ|Lê Hoạt";
+
+/** Env override first, then the built-in constant above. */
+export function resolveDefaultPinSpec(
+  env: string | undefined = process.env.PAIR_DEFAULT_PINS,
+): string[][] {
+  const spec = (env ?? "").trim() || BUILT_IN_DEFAULT_PINS;
+  return parseDefaultPinSpec(spec);
+}
+
 export function parseDefaultPinSpec(spec: string | undefined): string[][] {
   if (!spec) return [];
   return spec
