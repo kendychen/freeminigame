@@ -8,6 +8,10 @@ import {
   type StepDrawState,
 } from "@/lib/pair/step-draw";
 import { applyPairResultToTournament } from "@/lib/pair/apply-draw";
+import {
+  applyDefaultPins,
+  resolveDefaultPinSpec,
+} from "@/lib/pair/default-pins";
 
 export const maxDuration = 15;
 
@@ -67,8 +71,16 @@ export async function POST(
     return NextResponse.json({ error: "draw_complete" }, { status: 409 });
   }
 
-  const participants = session.participants as PairParticipant[];
   const groupSize = session.group_size as number;
+  // Cặp ghim mặc định phải áp ở đây nữa, không chỉ ở route bốc 1 lần: nếu
+  // không thì "Quay 1 cặp" / "Phát ra tất" bỏ qua cặp ghim hoàn toàn.
+  const rawParticipants = session.participants as PairParticipant[];
+  const participants = applyDefaultPins(
+    rawParticipants,
+    resolveDefaultPinSpec(),
+    groupSize,
+  );
+  const defaultPinsApplied = participants !== rawParticipants;
   if (participants.length < groupSize) {
     return NextResponse.json({ error: "need_more_players" }, { status: 400 });
   }
@@ -85,7 +97,13 @@ export async function POST(
   const shufflingUntil = new Date(Date.now() + spinMs).toISOString();
   const { data: phase1, error: err1 } = await sb
     .from("pair_sessions")
-    .update({ status: "shuffling", shuffling_until: shufflingUntil })
+    .update({
+      status: "shuffling",
+      shuffling_until: shufflingUntil,
+      // Ghi pin mặc định xuống DB để mọi màn hình loại 2 tên đó khỏi lồng cầu
+      // và dán nhãn ghim sẵn, thay vì vẫn quay như chưa có gì.
+      ...(defaultPinsApplied ? { participants } : {}),
+    })
     .eq("code", code)
     .eq("status", session.status)
     .select("code");

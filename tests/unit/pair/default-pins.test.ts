@@ -6,6 +6,7 @@ import {
   BUILT_IN_DEFAULT_PINS,
 } from "@/lib/pair/default-pins";
 import { shuffleParticipants, type PairParticipant } from "@/lib/pair/shuffle";
+import { drawAllRemaining, drawNextGroup } from "@/lib/pair/step-draw";
 
 function p(
   id: string,
@@ -128,6 +129,45 @@ describe("applyDefaultPins", () => {
       expect(group).toContain("p4");
       expect(res.byes).toHaveLength(0);
       expect(new Set(res.groups.flat()).size).toBe(8);
+    }
+  });
+
+  it("step draw keeps the pinned pair together on the very first spin", () => {
+    const base = [
+      ...roster(),
+      p("p5", "E"),
+      p("p6", "F"),
+      p("p7", "G"),
+      p("p8", "H"),
+    ];
+    const pinned = applyDefaultPins(base, [["Hoà Hồ", "Lê Hoạt"]], 2);
+    for (let seed = 1; seed <= 50; seed++) {
+      const out = drawNextGroup(pinned, 2, { groups: [], byes: [] }, seed);
+      expect(out.fromPin).toBe(true);
+      expect(out.group!.slice().sort()).toEqual(["p2", "p4"]);
+    }
+  });
+
+  it("drawAllRemaining keeps the pinned pair in one group", () => {
+    const base = [
+      ...roster(),
+      p("p5", "E"),
+      p("p6", "F"),
+      p("p7", "G"),
+      p("p8", "H"),
+    ];
+    const pinned = applyDefaultPins(base, [["Hoà Hồ", "Lê Hoạt"]], 2);
+    for (let seed = 1; seed <= 50; seed++) {
+      const { next } = drawAllRemaining(
+        pinned,
+        2,
+        { groups: [], byes: [] },
+        seed,
+      );
+      const group = next.groups.find((g) => g.includes("p2"))!;
+      expect(group).toContain("p4");
+      expect(next.byes).toHaveLength(0);
+      expect(new Set(next.groups.flat()).size).toBe(8);
     }
   });
 });
