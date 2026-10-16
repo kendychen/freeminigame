@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Plus, Trash2, Upload } from "lucide-react";
+import { Check, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   addTeam,
+  addTeamMember,
   bulkImportTeams,
   deleteTeam,
+  removeTeamMember,
+  updateTeam,
 } from "@/app/actions/teams";
 import { toast } from "@/components/ui/toast";
 import { translateError } from "@/lib/error-messages";
@@ -30,19 +33,62 @@ export function TeamsClient({
   hasMatches,
   initial,
   membersByTeam,
+  players,
 }: {
   tournamentId: string;
   format: string;
   hasMatches: boolean;
   initial: TeamRow[];
   membersByTeam: Record<string, { id: string; name: string }[]>;
+  players: { id: string; name: string }[];
 }) {
   const [teams, setTeams] = useState<TeamRow[]>(initial);
+  // Thành viên hiển thị trong bảng — state để thêm/xoá cập nhật ngay.
+  const [members, setMembers] = useState(membersByTeam);
+  // Đội đang mở ô chọn VĐV để thêm thành viên.
+  const [addToTeam, setAddToTeam] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [region, setRegion] = useState("");
   const [rating, setRating] = useState("");
   const [csvText, setCsvText] = useState("");
   const [isPending, start] = useTransition();
+
+  // Sửa tên đội ngay trên bảng: id đang sửa + giá trị đang gõ.
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  const startEdit = (t: TeamRow) => {
+    setEditId(t.id);
+    setEditName(t.name);
+  };
+
+  const cancelEdit = () => {
+    setEditId(null);
+    setEditName("");
+  };
+
+  const onRename = (id: string) => {
+    const next = editName.trim();
+    const current = teams.find((t) => t.id === id)?.name ?? "";
+    if (!next || next === current) {
+      cancelEdit();
+      return;
+    }
+    start(async () => {
+      const res = await updateTeam({ id, tournamentId, name: next });
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        return;
+      }
+      setTeams((p) => p.map((t) => (t.id === id ? { ...t, name: next } : t)));
+      cancelEdit();
+      toast({ title: "Đã đổi tên đội" });
+    });
+  };
 
   const onAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +120,46 @@ export function TeamsClient({
       setRating("");
     });
   };
+
+  const onAddMember = (teamId: string, playerId: string) => {
+    if (!playerId) return;
+    const picked = players.find((p) => p.id === playerId);
+    if (!picked) return;
+    start(async () => {
+      const res = await addTeamMember({ tournamentId, teamId, playerId });
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        return;
+      }
+      setMembers((prev) => ({
+        ...prev,
+        [teamId]: [...(prev[teamId] ?? []), picked],
+      }));
+      setAddToTeam(null);
+      toast({ title: "Đã thêm thành viên", description: picked.name });
+    });
+  };
+
+  const onRemoveMember = (teamId: string, playerId: string) =>
+    start(async () => {
+      const res = await removeTeamMember({ tournamentId, teamId, playerId });
+      if ("error" in res) {
+        toast({
+          title: "Lỗi",
+          description: translateError(res.error),
+          variant: "destructive",
+        });
+        return;
+      }
+      setMembers((prev) => ({
+        ...prev,
+        [teamId]: (prev[teamId] ?? []).filter((m) => m.id !== playerId),
+      }));
+    });
 
   const onDelete = (id: string) =>
     start(async () => {
@@ -203,37 +289,137 @@ export function TeamsClient({
                 </thead>
                 <tbody>
                   {teams.map((t, i) => {
-                    const members = membersByTeam[t.id] ?? [];
+                    const teamMembers = members[t.id] ?? [];
+                    const memberIds = new Set(teamMembers.map((m) => m.id));
+                    // Chỉ cho chọn VĐV chưa ở trong đội này.
+                    const available = players.filter(
+                      (p) => !memberIds.has(p.id),
+                    );
                     return (
                       <tr key={t.id} className="border-t">
                         <td className="px-3 py-2">{i + 1}</td>
-                        <td className="px-3 py-2 font-medium">{t.name}</td>
-                        <td className="px-3 py-2 text-xs text-muted-foreground">
-                          {members.length === 0 ? (
-                            <span className="opacity-50">—</span>
+                        <td className="px-3 py-2 font-medium">
+                          {editId === t.id ? (
+                            <Input
+                              value={editName}
+                              autoFocus
+                              onChange={(e) => setEditName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  onRename(t.id);
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelEdit();
+                                }
+                              }}
+                              className="h-8"
+                            />
                           ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {members.map((m) => (
-                                <span
-                                  key={m.id}
-                                  className="rounded-full bg-secondary px-2 py-0.5"
-                                >
-                                  {m.name}
-                                </span>
-                              ))}
-                            </div>
+                            t.name
                           )}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-1">
+                            {teamMembers.length === 0 && (
+                              <span className="opacity-50">—</span>
+                            )}
+                            {teamMembers.map((m) => (
+                              <span
+                                key={m.id}
+                                className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5"
+                              >
+                                {m.name}
+                                <button
+                                  type="button"
+                                  disabled={isPending}
+                                  title={`Xoá ${m.name} khỏi đội`}
+                                  onClick={() => onRemoveMember(t.id, m.id)}
+                                  className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              </span>
+                            ))}
+                            {addToTeam === t.id ? (
+                              <select
+                                autoFocus
+                                disabled={isPending}
+                                defaultValue=""
+                                onChange={(e) =>
+                                  onAddMember(t.id, e.target.value)
+                                }
+                                onBlur={() => setAddToTeam(null)}
+                                className="h-7 rounded-md border bg-background px-1 text-xs"
+                              >
+                                <option value="">Chọn VĐV…</option>
+                                {available.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              available.length > 0 && (
+                                <button
+                                  type="button"
+                                  disabled={isPending}
+                                  title="Thêm thành viên"
+                                  onClick={() => setAddToTeam(t.id)}
+                                  className="inline-flex items-center gap-0.5 rounded-full border border-dashed px-2 py-0.5 hover:border-primary hover:text-primary disabled:opacity-50"
+                                >
+                                  <Plus className="size-3" />
+                                  Thêm
+                                </button>
+                              )
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-center">{t.region ?? "—"}</td>
                         <td className="px-3 py-2 text-center">{t.rating ?? "—"}</td>
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => onDelete(t.id)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            {editId === t.id ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={isPending}
+                                  title="Lưu tên"
+                                  onClick={() => onRename(t.id)}
+                                >
+                                  <Check className="size-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Huỷ"
+                                  onClick={cancelEdit}
+                                >
+                                  <X className="size-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Sửa tên"
+                                  onClick={() => startEdit(t)}
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  title="Xoá đội"
+                                  onClick={() => onDelete(t.id)}
+                                >
+                                  <Trash2 className="size-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
