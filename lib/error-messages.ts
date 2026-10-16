@@ -33,6 +33,9 @@ const ERROR_VI: Record<string, string> = {
   shuffling: "Đang quay bốc thăm — chờ công bố xong",
   closed: "Phòng đã đóng",
   teams_exist: "Đội đã tồn tại — xoá đội trước khi bốc lại",
+  team_not_found: "Không tìm thấy đội trong giải này",
+  player_not_found: "Không tìm thấy VĐV trong giải này",
+  already_member: "VĐV đã ở trong đội này",
   groups_incomplete: "Vòng bảng chưa kết thúc — nhập đủ điểm trước",
   already_promoted: "Knockout đã được tạo trước đó",
   previous_round_incomplete:

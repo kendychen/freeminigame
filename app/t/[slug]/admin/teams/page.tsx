@@ -25,6 +25,13 @@ export default async function TeamsPage({
     .eq("tournament_id", t.id)
     .order("seed", { ascending: true, nullsFirst: false });
 
+  // Danh sách VĐV của giải, để admin chọn khi thêm thành viên vào đội.
+  const { data: players } = await supabase
+    .from("players")
+    .select("id, name")
+    .eq("tournament_id", t.id)
+    .order("name", { ascending: true });
+
   const teamIds = (teams ?? []).map((x) => x.id);
   const { data: memberRows } = teamIds.length
     ? await supabase
@@ -51,6 +58,7 @@ export default async function TeamsPage({
       hasMatches={(matchCount ?? 0) > 0}
       initial={teams ?? []}
       membersByTeam={membersByTeam}
+      players={players ?? []}
     />
   );
 }
