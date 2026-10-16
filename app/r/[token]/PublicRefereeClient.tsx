@@ -31,6 +31,11 @@ export function PublicRefereeClient({
 }) {
   const [match, setMatch] = useState<DbMatch>(initialMatch);
   const [teams, setTeams] = useState<TeamLite[]>(initialTeams);
+  // Poll lại thành viên cùng với đội: sửa đội sau khi trọng tài mở link thì
+  // tên người đánh phải cập nhật, không đứng im ở lần render đầu.
+  const [members, setMembers] = useState<Record<string, string[]>>(
+    membersByTeam ?? {},
+  );
   const cancelled = useRef(false);
 
   useEffect(() => {
@@ -42,10 +47,12 @@ export function PublicRefereeClient({
         const data = (await res.json()) as {
           match: DbMatch;
           teams: TeamLite[];
+          membersByTeam?: Record<string, string[]>;
         };
         if (cancelled.current) return;
         setMatch(data.match);
         if (data.teams) setTeams(data.teams);
+        if (data.membersByTeam) setMembers(data.membersByTeam);
       } catch {
         // network blip — let next tick handle it
       }
@@ -90,7 +97,7 @@ export function PublicRefereeClient({
       exitHref={null}
       onFinalize={onFinalize}
       onReopen={onReopen}
-      membersByTeam={membersByTeam}
+      membersByTeam={members}
       pickleballMode
     />
   );

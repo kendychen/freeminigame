@@ -34,6 +34,11 @@ export function PublicGroupRefereeClient({
 }) {
   const [matches, setMatches] = useState<DbMatch[]>(initialMatches);
   const [teams, setTeams] = useState<TeamLite[]>(initialTeams);
+  // Thành viên cũng được poll lại: sửa đội sau khi trọng tài mở link thì
+  // danh sách người đánh phải cập nhật theo, không đứng im ở lần render đầu.
+  const [members, setMembers] = useState<Record<string, string[]>>(
+    membersByTeam ?? {},
+  );
   const [activeId, setActiveId] = useState<string | null>(null);
   const cancelled = useRef(false);
 
@@ -46,10 +51,12 @@ export function PublicGroupRefereeClient({
         const data = (await res.json()) as {
           matches?: DbMatch[];
           teams?: TeamLite[];
+          membersByTeam?: Record<string, string[]>;
         };
         if (cancelled.current) return;
         if (data.matches) setMatches(data.matches);
         if (data.teams) setTeams(data.teams);
+        if (data.membersByTeam) setMembers(data.membersByTeam);
       } catch {
         /* swallow */
       }
@@ -132,7 +139,7 @@ export function PublicGroupRefereeClient({
         exitHref={null}
         onFinalize={onFinalize}
         onReopen={onReopen}
-        membersByTeam={membersByTeam}
+        membersByTeam={members}
         pickleballMode
         headerExtra={
           <button
@@ -190,6 +197,9 @@ export function PublicGroupRefereeClient({
                   {ms.map((m) => {
                     const a = teamById(m.team_a_id);
                     const b = teamById(m.team_b_id);
+                    // Trọng tài cần biết ai đánh, không chỉ tên đội.
+                    const membersA = a ? members[a.id] ?? [] : [];
+                    const membersB = b ? members[b.id] ?? [] : [];
                     const isCompleted = m.status === "completed";
                     const isLive = m.status === "live";
                     const isBye = m.status === "bye";
@@ -215,15 +225,22 @@ export function PublicGroupRefereeClient({
                           {isCompleted && (
                             <Trophy className="size-3.5 shrink-0 text-primary" />
                           )}
-                          <div className="flex flex-1 items-center gap-2 truncate text-sm">
+                          <div className="flex flex-1 items-center gap-2 text-sm">
                             <span
-                              className={`flex-1 truncate ${
+                              className={`flex min-w-0 flex-1 flex-col ${
                                 isCompleted && m.winner_team_id === m.team_a_id
                                   ? "font-semibold text-primary"
                                   : ""
                               }`}
                             >
-                              {a?.name ?? (isBye ? "—" : "TBD")}
+                              <span className="truncate">
+                                {a?.name ?? (isBye ? "—" : "TBD")}
+                              </span>
+                              {membersA.length > 0 && (
+                                <span className="truncate text-[11px] font-normal text-muted-foreground">
+                                  {membersA.join(" · ")}
+                                </span>
+                              )}
                             </span>
                             <span className="shrink-0 rounded bg-secondary px-2 py-0.5 font-mono text-xs tabular-nums">
                               {isBye
@@ -231,13 +248,20 @@ export function PublicGroupRefereeClient({
                                 : `${m.score_a} - ${m.score_b}`}
                             </span>
                             <span
-                              className={`flex-1 truncate text-right ${
+                              className={`flex min-w-0 flex-1 flex-col text-right ${
                                 isCompleted && m.winner_team_id === m.team_b_id
                                   ? "font-semibold text-primary"
                                   : ""
                               }`}
                             >
-                              {b?.name ?? (isBye ? "BYE" : "TBD")}
+                              <span className="truncate">
+                                {b?.name ?? (isBye ? "BYE" : "TBD")}
+                              </span>
+                              {membersB.length > 0 && (
+                                <span className="truncate text-[11px] font-normal text-muted-foreground">
+                                  {membersB.join(" · ")}
+                                </span>
+                              )}
                             </span>
                           </div>
                         </div>

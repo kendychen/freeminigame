@@ -5,6 +5,36 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
+ * Thành viên của từng đội, dạng { teamId: ["Tên A", "Tên B"] }.
+ *
+ * Trọng tài cần biết ai đang đánh, không chỉ tên đội. Trước đây endpoint này
+ * chỉ trả `teams`, nên mỗi lần poll 3s lại ghi đè danh sách đội mà không có
+ * thành viên — tên người đánh chỉ có ở lần render đầu rồi đứng im.
+ */
+async function loadMembersByTeam(
+  svc: ReturnType<typeof createServiceClient>,
+  teamIds: string[],
+): Promise<Record<string, string[]>> {
+  if (teamIds.length === 0) return {};
+  const { data } = await svc
+    .from("team_members")
+    .select("team_id, players(name)")
+    .in("team_id", teamIds);
+  type Row = {
+    team_id: string;
+    players: { name: string } | { name: string }[] | null;
+  };
+  const out: Record<string, string[]> = {};
+  for (const r of (data ?? []) as Row[]) {
+    const arr = out[r.team_id] ?? [];
+    const p = Array.isArray(r.players) ? r.players[0] : r.players;
+    if (p?.name) arr.push(p.name);
+    out[r.team_id] = arr;
+  }
+  return out;
+}
+
+/**
  * Public polling endpoint for the anonymous referee page.
  * Returns the current match state plus team names. No auth required.
  */
@@ -74,6 +104,7 @@ export async function GET(
         scopeValue: scoped.scope_value,
         matches: matches ?? [],
         teams: teams ?? [],
+        membersByTeam: await loadMembersByTeam(svc, teamIds),
         tournament: { name: t.name, slug: t.slug },
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
@@ -112,6 +143,7 @@ export async function GET(
       scope: "match",
       match,
       teams: teams ?? [],
+      membersByTeam: await loadMembersByTeam(svc, ids),
       tournament: { name: t.name, slug: t.slug },
     },
     {
